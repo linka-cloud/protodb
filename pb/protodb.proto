@@ -1,0 +1,114 @@
+// Copyright 2021 Linka Cloud  All rights reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package protodb;
+
+option csharp_namespace = "LinkaCloud.ProtoDB";
+option java_package = "cloud.linka.protodb";
+option java_outer_classname = "ProtoDB";
+option java_multiple_files = true;
+option objc_class_prefix = "LKPDB";
+option go_package = "go.linka.cloud/protodb/pb;pb";
+option cc_enable_arenas = true;
+
+import "defaults/defaults.proto";
+import "patch/go.proto";
+import "field_filter.proto";
+
+import "google/protobuf/wrappers.proto";
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+import "google/protobuf/any.proto";
+
+option (go.lint).all = true;
+
+
+service ProtoDB {
+  rpc Get(GetRequest) returns (GetResponse);
+  rpc Put(PutRequest) returns (PutResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc Tx(stream TxRequest) returns (stream TxResponse);
+  rpc Watch(WatchRequest) returns (stream WatchEvent);
+}
+
+
+message PutRequest {
+  google.protobuf.Any payload = 1;
+}
+
+message PutResponse {
+  google.protobuf.Any result = 1;
+}
+
+message DeleteRequest {
+  google.protobuf.Any payload = 1;
+}
+
+message DeleteResponse {}
+
+message GetRequest {
+  google.protobuf.Any search = 1;
+  repeated linka.cloud.protofilters.FieldFilter filters = 2;
+  Paging paging = 3;
+}
+
+message GetResponse {
+  repeated google.protobuf.Any results = 1;
+  PagingInfo paging = 2;
+}
+
+message TxRequest {
+  oneof request {
+    GetRequest get = 1;
+    PutRequest put = 2;
+    DeleteRequest delete = 3;
+    google.protobuf.BoolValue commit = 4;
+  }
+}
+
+message TxResponse {
+  oneof response {
+    GetResponse get = 1;
+    PutResponse put = 2;
+    DeleteResponse delete = 3;
+  }
+}
+
+message Paging {
+  uint64 limit = 1;
+  uint64 offset = 2;
+}
+
+message PagingInfo {
+  bool has_next = 1;
+}
+
+message WatchRequest {
+  google.protobuf.Any search = 1;
+  repeated linka.cloud.protofilters.FieldFilter filters = 2;
+}
+
+message WatchEvent {
+  enum Type {
+    ENTER = 0;
+    LEAVE = 1;
+    UPDATE = 2;
+  }
+  Type type = 1;
+  google.protobuf.Any old = 2;
+  google.protobuf.Any new = 3;
+}
+
