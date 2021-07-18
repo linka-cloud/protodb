@@ -20,8 +20,8 @@ import (
 	"sync"
 
 	"github.com/dgraph-io/badger/v2"
-	"go.linka.cloud/protofilters"
-	"go.linka.cloud/protofilters/matcher"
+	pf "go.linka.cloud/protofilters"
+	"go.linka.cloud/protofilters/filters"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -29,12 +29,14 @@ var (
 	ErrClosed = errors.New("transaction closed")
 )
 
-func newTx(ctx context.Context, db *badger.DB) (Tx, error) {
-	return &tx{ctx: ctx, txn: db.NewTransaction(true)}, nil
+func newTx(ctx context.Context, db *db) (Tx, error) {
+	return &tx{ctx: ctx, txn: db.bdb.NewTransaction(true), db: db}, nil
 }
 
 type tx struct {
 	ctx context.Context
+
+	db  *db
 	txn *badger.Txn
 
 	applyDefaults bool
@@ -43,7 +45,7 @@ type tx struct {
 	done bool
 }
 
-func (t *tx) Get(ctx context.Context, m proto.Message, paging *Paging, filters ...*protofilters.FieldFilter) (out []proto.Message, info *PagingInfo, err error) {
+func (t *tx) Get(ctx context.Context, m proto.Message, paging *Paging, filters ...*filters.FieldFilter) (out []proto.Message, info *PagingInfo, err error) {
 	if t.closed() {
 		return nil, nil, ErrClosed
 	}
@@ -63,11 +65,11 @@ func (t *tx) Get(ctx context.Context, m proto.Message, paging *Paging, filters .
 		}
 		v := m.ProtoReflect().New().Interface()
 		if err := it.Item().Value(func(val []byte) error {
-			if err := proto.Unmarshal(val, v); err != nil {
+			if err := t.db.unmarshal(val, v); err != nil {
 				return err
 			}
 			if len(filters) != 0 {
-				ok, err := matcher.MatchFilters(m, filters...)
+				ok, err := pf.MatchFilters(m, filters...)
 				if err != nil {
 					return err
 				}
@@ -94,7 +96,7 @@ func (t *tx) Put(ctx context.Context, m proto.Message) (proto.Message, error) {
 	}
 	// TODO(adphi): apply protoc-gen-defaults annotations with protoreflect
 	k := dataPrefix(m)
-	b, err := proto.Marshal(m)
+	b, err := t.db.marshal(m)
 	if err != nil {
 		return nil, err
 	}

@@ -18,8 +18,9 @@ import (
 	"context"
 	"io"
 
-	"go.linka.cloud/protofilters"
+	"go.linka.cloud/protofilters/filters"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
 
 	"go.linka.cloud/protodb/pb"
@@ -44,11 +45,11 @@ type Tx interface {
 }
 
 type Reader interface {
-	Get(ctx context.Context, m proto.Message, paging *Paging, filters ...*protofilters.FieldFilter) ([]proto.Message, *PagingInfo, error)
+	Get(ctx context.Context, m proto.Message, paging *Paging, filters ...*filters.FieldFilter) ([]proto.Message, *PagingInfo, error)
 }
 
 type Watcher interface {
-	Watch(ctx context.Context, m proto.Message, filters ...*protofilters.FieldFilter) (<-chan Event, error)
+	Watch(ctx context.Context, m proto.Message, filters ...*filters.FieldFilter) (<-chan Event, error)
 }
 
 type Writer interface {
@@ -66,7 +67,8 @@ type Committer interface {
 }
 
 type Registerer interface {
-	Register(ctx context.Context, file *descriptorpb.FileDescriptorProto) error
+	RegisterProto(ctx context.Context, file *descriptorpb.FileDescriptorProto) error
+	Register(ctx context.Context, file protoreflect.FileDescriptor) error
 }
 
 type EventType = pb.WatchEventType

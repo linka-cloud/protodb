@@ -92,3 +92,12 @@ var WatchEventFields = struct {
 	Old:  "old",
 	New:  "new",
 }
+
+var RegisterRequestFields = struct {
+	File string
+}{
+	File: "file",
+}
+
+var RegisterResponseFields = struct {
+}{}

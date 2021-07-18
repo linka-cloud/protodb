@@ -38,6 +38,13 @@ type server struct {
 	pb.UnimplementedProtoDBServer
 }
 
+func (s *server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
+	if err := s.db.RegisterProto(ctx, req.File); err != nil {
+		return nil, err
+	}
+	return &pb.RegisterResponse{}, nil
+}
+
 func (s *server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
 	a, i, err := s.get(ctx, s.db, req)
 	if err != nil {

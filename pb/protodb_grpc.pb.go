@@ -24,6 +24,7 @@ type ProtoDBClient interface {
 	Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
 	Tx(ctx context.Context, opts ...grpc.CallOption) (ProtoDB_TxClient, error)
 	Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (ProtoDB_WatchClient, error)
+	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
 }
 
 type protoDBClient struct {
@@ -124,6 +125,15 @@ func (x *protoDBWatchClient) Recv() (*WatchEvent, error) {
 	return m, nil
 }
 
+func (c *protoDBClient) Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error) {
+	out := new(RegisterResponse)
+	err := c.cc.Invoke(ctx, "/protodb.ProtoDB/Register", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ProtoDBServer is the server API for ProtoDB service.
 // All implementations must embed UnimplementedProtoDBServer
 // for forward compatibility
@@ -133,6 +143,7 @@ type ProtoDBServer interface {
 	Delete(context.Context, *DeleteRequest) (*DeleteResponse, error)
 	Tx(ProtoDB_TxServer) error
 	Watch(*WatchRequest, ProtoDB_WatchServer) error
+	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
 	mustEmbedUnimplementedProtoDBServer()
 }
 
@@ -154,6 +165,9 @@ func (UnimplementedProtoDBServer) Tx(ProtoDB_TxServer) error {
 }
 func (UnimplementedProtoDBServer) Watch(*WatchRequest, ProtoDB_WatchServer) error {
 	return status.Errorf(codes.Unimplemented, "method Watch not implemented")
+}
+func (UnimplementedProtoDBServer) Register(context.Context, *RegisterRequest) (*RegisterResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Register not implemented")
 }
 func (UnimplementedProtoDBServer) mustEmbedUnimplementedProtoDBServer() {}
 
@@ -269,6 +283,24 @@ func (x *protoDBWatchServer) Send(m *WatchEvent) error {
 	return x.ServerStream.SendMsg(m)
 }
 
+func _ProtoDB_Register_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RegisterRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProtoDBServer).Register(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/protodb.ProtoDB/Register",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProtoDBServer).Register(ctx, req.(*RegisterRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ProtoDB_ServiceDesc is the grpc.ServiceDesc for ProtoDB service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -287,6 +319,10 @@ var ProtoDB_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _ProtoDB_Delete_Handler,
+		},
+		{
+			MethodName: "Register",
+			Handler:    _ProtoDB_Register_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

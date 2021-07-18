@@ -16,12 +16,13 @@ package embed
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
 	assert2 "github.com/stretchr/testify/assert"
 	require2 "github.com/stretchr/testify/require"
-	"go.linka.cloud/protofilters"
+	"go.linka.cloud/protofilters/filters"
 	"google.golang.org/protobuf/proto"
 
 	"go.linka.cloud/protodb"
@@ -55,6 +56,8 @@ func init() {
 }
 
 func TestEmbed(t *testing.T) {
+	dbPath := "TestEmbed"
+	defer os.RemoveAll(dbPath)
 	require := require2.New(t)
 	assert := assert2.New(t)
 	equal := func(e, g proto.Message) {
@@ -65,7 +68,7 @@ func TestEmbed(t *testing.T) {
 	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	db, err := protodb.Open(ctx, protodb.WithPath(":memory:"), protodb.WithApplyDefaults(true))
+	db, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
 	require.NoError(err)
 	assert.NotNil(db)
 	defer db.Close()
@@ -148,6 +151,8 @@ func TestEmbed(t *testing.T) {
 }
 
 func TestEmbedWatchWithFilter(t *testing.T) {
+	dbPath := "TestEmbedWatchWithFilter"
+	defer os.RemoveAll(dbPath)
 	require := require2.New(t)
 	assert := assert2.New(t)
 	equal := func(e, g proto.Message) {
@@ -158,16 +163,16 @@ func TestEmbedWatchWithFilter(t *testing.T) {
 	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	db, err := protodb.Open(ctx, protodb.WithPath(":memory:"), protodb.WithApplyDefaults(true))
+	db, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
 	require.NoError(err)
 	assert.NotNil(db)
 	defer db.Close()
 
 	watches := make(chan protodb.Event)
 	go func() {
-		ch, err := db.Watch(ctx, &pb.Interface{}, &protofilters.FieldFilter{
+		ch, err := db.Watch(ctx, &pb.Interface{}, &filters.FieldFilter{
 			Field:  pb.InterfaceFields.Status,
-			Filter: protofilters.NumberEquals(float64(pb.StatusUp)),
+			Filter: filters.NumberEquals(float64(pb.StatusUp)),
 		})
 		require.NoError(err)
 		for e := range ch {
@@ -225,4 +230,21 @@ func TestEmbedWatchWithFilter(t *testing.T) {
 	time.Sleep(time.Second)
 	cancel()
 	<-watches
+}
+
+func TestRegister(t *testing.T) {
+	dbPath := "TestRegister"
+	defer os.RemoveAll(dbPath)
+	require := require2.New(t)
+	assert := assert2.New(t)
+
+	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	db, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
+	require.NoError(err)
+	assert.NotNil(db)
+	defer db.Close()
+
+	require.NoError(db.Register(ctx, (&pb.Interface{}).ProtoReflect().Descriptor().ParentFile()))
 }

@@ -20,7 +20,6 @@ option go_package = "go.linka.cloud/protodb/tests/pb;pb";
 
 import "defaults/defaults.proto";
 import "patch/go.proto";
-import "field_filter.proto";
 import "validate/validate.proto";
 
 import "google/protobuf/wrappers.proto";

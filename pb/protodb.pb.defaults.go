@@ -63,3 +63,9 @@ func (x *WatchRequest) Default() {
 
 func (x *WatchEvent) Default() {
 }
+
+func (x *RegisterRequest) Default() {
+}
+
+func (x *RegisterResponse) Default() {
+}

@@ -40,14 +40,15 @@ func (m *PutRequest) Validate() error {
 		return nil
 	}
 
-	if v, ok := interface{}(m.GetPayload()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return PutRequestValidationError{
-				field:  "Payload",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
+	if m.GetPayload() == nil {
+		return PutRequestValidationError{
+			field:  "Payload",
+			reason: "value is required",
 		}
+	}
+
+	if a := m.GetPayload(); a != nil {
+
 	}
 
 	return nil
@@ -190,14 +191,15 @@ func (m *DeleteRequest) Validate() error {
 		return nil
 	}
 
-	if v, ok := interface{}(m.GetPayload()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return DeleteRequestValidationError{
-				field:  "Payload",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
+	if m.GetPayload() == nil {
+		return DeleteRequestValidationError{
+			field:  "Payload",
+			reason: "value is required",
 		}
+	}
+
+	if a := m.GetPayload(); a != nil {
+
 	}
 
 	return nil
@@ -329,14 +331,15 @@ func (m *GetRequest) Validate() error {
 		return nil
 	}
 
-	if v, ok := interface{}(m.GetSearch()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return GetRequestValidationError{
-				field:  "Search",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
+	if m.GetSearch() == nil {
+		return GetRequestValidationError{
+			field:  "Search",
+			reason: "value is required",
 		}
+	}
+
+	if a := m.GetSearch(); a != nil {
+
 	}
 
 	for idx, item := range m.GetFilters() {
@@ -566,6 +569,12 @@ func (m *TxRequest) Validate() error {
 					cause:  err,
 				}
 			}
+		}
+
+	default:
+		return TxRequestValidationError{
+			field:  "Request",
+			reason: "value is required",
 		}
 
 	}
@@ -873,14 +882,15 @@ func (m *WatchRequest) Validate() error {
 		return nil
 	}
 
-	if v, ok := interface{}(m.GetSearch()).(interface{ Validate() error }); ok {
-		if err := v.Validate(); err != nil {
-			return WatchRequestValidationError{
-				field:  "Search",
-				reason: "embedded message failed validation",
-				cause:  err,
-			}
+	if m.GetSearch() == nil {
+		return WatchRequestValidationError{
+			field:  "Search",
+			reason: "value is required",
 		}
+	}
+
+	if a := m.GetSearch(); a != nil {
+
 	}
 
 	for idx, item := range m.GetFilters() {
@@ -1040,3 +1050,143 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = WatchEventValidationError{}
+
+// Validate checks the field values on RegisterRequest with the rules defined
+// in the proto definition for this message. If any rules are violated, an
+// error is returned.
+func (m *RegisterRequest) Validate() error {
+	if m == nil {
+		return nil
+	}
+
+	if v, ok := interface{}(m.GetFile()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return RegisterRequestValidationError{
+				field:  "File",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	return nil
+}
+
+// RegisterRequestValidationError is the validation error returned by
+// RegisterRequest.Validate if the designated constraints aren't met.
+type RegisterRequestValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e RegisterRequestValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e RegisterRequestValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e RegisterRequestValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e RegisterRequestValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e RegisterRequestValidationError) ErrorName() string { return "RegisterRequestValidationError" }
+
+// Error satisfies the builtin error interface
+func (e RegisterRequestValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sRegisterRequest.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = RegisterRequestValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = RegisterRequestValidationError{}
+
+// Validate checks the field values on RegisterResponse with the rules defined
+// in the proto definition for this message. If any rules are violated, an
+// error is returned.
+func (m *RegisterResponse) Validate() error {
+	if m == nil {
+		return nil
+	}
+
+	return nil
+}
+
+// RegisterResponseValidationError is the validation error returned by
+// RegisterResponse.Validate if the designated constraints aren't met.
+type RegisterResponseValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e RegisterResponseValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e RegisterResponseValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e RegisterResponseValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e RegisterResponseValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e RegisterResponseValidationError) ErrorName() string { return "RegisterResponseValidationError" }
+
+// Error satisfies the builtin error interface
+func (e RegisterResponseValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sRegisterResponse.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = RegisterResponseValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = RegisterResponseValidationError{}
