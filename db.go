@@ -167,10 +167,6 @@ func (d *db) Get(ctx context.Context, m proto.Message, paging *Paging, filters .
 }
 
 func (d *db) Put(ctx context.Context, m proto.Message) (proto.Message, error) {
-	opts, _ := optsFromCtx(ctx)
-	if opts.applyDefaults {
-		defaults(m)
-	}
 	tx, err := d.Tx(ctx)
 	if err != nil {
 		return nil, err
@@ -202,7 +198,6 @@ func (d *db) Delete(ctx context.Context, m proto.Message) error {
 }
 
 func (d *db) Tx(ctx context.Context) (Tx, error) {
-	ctx = ctxWithOpts(ctx, d.opts)
 	return newTx(ctx, d)
 }
 
@@ -358,6 +353,7 @@ func (d *db) recoverRegister(file *descriptorpb.FileDescriptorProto) error {
 }
 
 func defaults(m proto.Message) {
+	// TODO(adphi): apply protoc-gen-defaults annotations with protoreflect
 	if v, ok := m.(interface{ Default() }); ok {
 		v.Default()
 	}

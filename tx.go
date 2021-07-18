@@ -94,7 +94,9 @@ func (t *tx) Put(ctx context.Context, m proto.Message) (proto.Message, error) {
 	if m == nil {
 		return nil, errors.New("empty message")
 	}
-	// TODO(adphi): apply protoc-gen-defaults annotations with protoreflect
+	if t.db.opts.applyDefaults {
+		defaults(m)
+	}
 	k := dataPrefix(m)
 	b, err := t.db.marshal(m)
 	if err != nil {
