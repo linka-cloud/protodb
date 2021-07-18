@@ -17,8 +17,10 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
 	"google.golang.org/protobuf/types/known/anypb"
 
@@ -123,7 +125,7 @@ func (s *server) Tx(stream pb.ProtoDB_TxServer) error {
 }
 
 func (s *server) Watch(req *pb.WatchRequest, stream pb.ProtoDB_WatchServer) error {
-	d, err := unmarshalToDynamic(req.Search)
+	d, err := s.unmarshalToDynamic(req.Search)
 	if err != nil {
 		return err
 	}
@@ -158,7 +160,7 @@ func (s *server) Watch(req *pb.WatchRequest, stream pb.ProtoDB_WatchServer) erro
 }
 
 func (s *server) get(ctx context.Context, r protodb.Reader, get *pb.GetRequest) ([]*anypb.Any, *pb.PagingInfo, error) {
-	d, err := unmarshalToDynamic(get.Search)
+	d, err := s.unmarshalToDynamic(get.Search)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -174,7 +176,7 @@ func (s *server) get(ctx context.Context, r protodb.Reader, get *pb.GetRequest) 
 }
 
 func (s *server) put(ctx context.Context, w protodb.Writer, put *pb.PutRequest) (*anypb.Any, error) {
-	d, err := unmarshalToDynamic(put.Payload)
+	d, err := s.unmarshalToDynamic(put.Payload)
 	if err != nil {
 		return nil, err
 	}
@@ -190,7 +192,7 @@ func (s *server) put(ctx context.Context, w protodb.Writer, put *pb.PutRequest) 
 }
 
 func (s *server) delete(ctx context.Context, w protodb.Writer, del *pb.DeleteRequest) error {
-	d, err := unmarshalToDynamic(del.Payload)
+	d, err := s.unmarshalToDynamic(del.Payload)
 	if err != nil {
 		return err
 	}
@@ -208,10 +210,18 @@ func toAnySlice(m ...proto.Message) (out []*anypb.Any, err error) {
 	return
 }
 
-func unmarshalToDynamic(a *anypb.Any) (*dynamicpb.Message, error) {
-	var d dynamicpb.Message
-	if err := anypb.UnmarshalTo(a, &d, proto.UnmarshalOptions{}); err != nil {
+func (s *server) unmarshalToDynamic(a *anypb.Any) (*dynamicpb.Message, error) {
+	desc, err := s.db.Resolver().FindDescriptorByName(a.MessageName())
+	if err != nil {
 		return nil, err
 	}
-	return &d, nil
+	md, ok := desc.(protoreflect.MessageDescriptor)
+	if !ok {
+		return nil, fmt.Errorf("unexpected descriptor type: %T", md)
+	}
+	d := dynamicpb.NewMessage(md)
+	if err := anypb.UnmarshalTo(a, d, proto.UnmarshalOptions{}); err != nil {
+		return nil, err
+	}
+	return d, nil
 }

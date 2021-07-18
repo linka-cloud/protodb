@@ -263,6 +263,10 @@ func (d *db) Register(ctx context.Context, fd protoreflect.FileDescriptor) error
 	return d.RegisterProto(ctx, pdesc.ToFileDescriptorProto(fd))
 }
 
+func (d *db) Resolver() pdesc.Resolver {
+	return d.reg
+}
+
 func (d *db) registerFileDescriptorProto(file *descriptorpb.FileDescriptorProto) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
@@ -362,7 +366,7 @@ func defaults(m proto.Message) {
 func isAlreadyRegistered(r interface{}) (bool, error) {
 	switch v := r.(type) {
 	case string:
-		return strings.Contains(v, "is already registered"), errors.New(strings.Split(v, "\n")[0])
+		return strings.Contains(v, "is already registered") || strings.Contains(v, "duplicate registration"), errors.New(strings.Split(v, "\n")[0])
 	case error:
 		return false, v
 	default:

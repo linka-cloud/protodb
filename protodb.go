@@ -20,6 +20,7 @@ import (
 
 	"go.linka.cloud/protofilters/filters"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
 
@@ -69,6 +70,7 @@ type Committer interface {
 type Registerer interface {
 	RegisterProto(ctx context.Context, file *descriptorpb.FileDescriptorProto) error
 	Register(ctx context.Context, file protoreflect.FileDescriptor) error
+	Resolver() protodesc.Resolver
 }
 
 type EventType = pb.WatchEventType

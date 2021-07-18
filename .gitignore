@@ -1,2 +1,4 @@
 .idea
 .bin
+/test.*
+/tests/server/external_test.go
