@@ -29,9 +29,9 @@ const (
 
 func dataPrefix(m proto.Message) []byte {
 	if k, _ := keyFor(m); k != "" {
-		return []byte(fmt.Sprintf("%s/%s/%s", data, m.ProtoReflect().Type().Descriptor().FullName(), k))
+		return []byte(fmt.Sprintf("%s/%s/%s", data, m.ProtoReflect().Descriptor().FullName(), k))
 	}
-	return []byte(fmt.Sprintf("%s/%s/", data, m.ProtoReflect().Type().Descriptor().FullName()))
+	return []byte(fmt.Sprintf("%s/%s/", data, m.ProtoReflect().Descriptor().FullName()))
 }
 
 func descriptorPrefix(d *descriptorpb.FileDescriptorProto) []byte {

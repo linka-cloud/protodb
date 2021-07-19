@@ -16,6 +16,7 @@ package embed
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -26,26 +27,27 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"go.linka.cloud/protodb"
-	"go.linka.cloud/protodb/tests/pb"
+	"go.linka.cloud/protodb/pb"
+	testpb "go.linka.cloud/protodb/tests/pb"
 )
 
 var (
-	i0 = &pb.Interface{
+	i0 = &testpb.Interface{
 		Name: "eth0",
-		Addresses: []*pb.IPAddress{{
-			Address: &pb.IPAddress_IPV4{IPV4: "10.0.0.1/24"},
+		Addresses: []*testpb.IPAddress{{
+			Address: &testpb.IPAddress_IPV4{IPV4: "10.0.0.1/24"},
 		}},
-		Status: pb.StatusUp,
+		Status: testpb.StatusUp,
 	}
 
 	i0Old proto.Message
 
-	i1 = &pb.Interface{
+	i1 = &testpb.Interface{
 		Name: "eth1",
-		Addresses: []*pb.IPAddress{{
-			Address: &pb.IPAddress_IPV4{IPV4: "10.0.1.1/24"},
+		Addresses: []*testpb.IPAddress{{
+			Address: &testpb.IPAddress_IPV4{IPV4: "10.0.1.1/24"},
 		}},
-		Status: pb.StatusDown,
+		Status: testpb.StatusDown,
 		Mtu:    9000,
 	}
 )
@@ -75,7 +77,7 @@ func TestEmbed(t *testing.T) {
 
 	watches := make(chan protodb.Event)
 	go func() {
-		ch, err := db.Watch(ctx, &pb.Interface{})
+		ch, err := db.Watch(ctx, &testpb.Interface{})
 		require.NoError(err)
 		for e := range ch {
 			watches <- e
@@ -92,7 +94,7 @@ func TestEmbed(t *testing.T) {
 	assert.Nil(e.Old())
 	equal(i0, e.New())
 
-	is, i, err := db.Get(ctx, &pb.Interface{}, nil)
+	is, i, err := db.Get(ctx, &testpb.Interface{}, nil)
 	require.NoError(err)
 	assert.Nil(i)
 	assert.Len(is, 1)
@@ -107,7 +109,7 @@ func TestEmbed(t *testing.T) {
 	assert.Nil(e.Old())
 	equal(i1, e.New())
 
-	is, i, err = db.Get(ctx, &pb.Interface{}, nil)
+	is, i, err = db.Get(ctx, &testpb.Interface{}, nil)
 	require.NoError(err)
 	assert.Nil(i)
 	assert.Len(is, 2)
@@ -115,7 +117,7 @@ func TestEmbed(t *testing.T) {
 	equal(i1, is[1])
 
 	i0Old = proto.Clone(i0)
-	i0.Status = pb.StatusDown
+	i0.Status = testpb.StatusDown
 	r, err = db.Put(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
@@ -126,7 +128,7 @@ func TestEmbed(t *testing.T) {
 	equal(i0, e.New())
 
 	i0Old = proto.Clone(i0)
-	i0.Status = pb.StatusUp
+	i0.Status = testpb.StatusUp
 	r, err = db.Put(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
@@ -170,9 +172,9 @@ func TestEmbedWatchWithFilter(t *testing.T) {
 
 	watches := make(chan protodb.Event)
 	go func() {
-		ch, err := db.Watch(ctx, &pb.Interface{}, &filters.FieldFilter{
-			Field:  pb.InterfaceFields.Status,
-			Filter: filters.NumberEquals(float64(pb.StatusUp)),
+		ch, err := db.Watch(ctx, &testpb.Interface{}, &filters.FieldFilter{
+			Field:  testpb.InterfaceFields.Status,
+			Filter: filters.NumberEquals(float64(testpb.StatusUp)),
 		})
 		require.NoError(err)
 		for e := range ch {
@@ -197,7 +199,7 @@ func TestEmbedWatchWithFilter(t *testing.T) {
 	assert.Equal(i1, r)
 
 	i0Old = proto.Clone(i0)
-	i0.Status = pb.StatusDown
+	i0.Status = testpb.StatusDown
 	r, err = db.Put(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
@@ -208,7 +210,7 @@ func TestEmbedWatchWithFilter(t *testing.T) {
 	equal(i0, e.New())
 
 	i0Old = proto.Clone(i0)
-	i0.Status = pb.StatusUp
+	i0.Status = testpb.StatusUp
 	r, err = db.Put(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
@@ -246,5 +248,55 @@ func TestRegister(t *testing.T) {
 	assert.NotNil(db)
 	defer db.Close()
 
-	require.NoError(db.Register(ctx, (&pb.Interface{}).ProtoReflect().Descriptor().ParentFile()))
+	require.NoError(db.Register(ctx, (&testpb.Interface{}).ProtoReflect().Descriptor().ParentFile()))
+}
+
+func TestBatchInsertAndQuery(t *testing.T) {
+	dbPath := "TestBatchInsertAndQuery"
+	defer os.RemoveAll(dbPath)
+	require := require2.New(t)
+	assert := assert2.New(t)
+
+	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	db, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
+	require.NoError(err)
+	assert.NotNil(db)
+	defer db.Close()
+
+	tx, err := db.Tx(ctx)
+	require.NoError(err)
+	start := time.Now()
+	max := 100_000
+	for i := 0; i < max; i++ {
+		n := fmt.Sprintf("eth%d", i)
+		i := &testpb.Interface{
+			Name: n,
+		}
+		m, err := tx.Put(ctx, i)
+		require.NoError(err)
+		i, ok := m.(*testpb.Interface)
+		require.True(ok)
+		assert.Equal(uint32(1500), i.Mtu)
+	}
+	require.NoError(tx.Commit(ctx))
+	t.Logf("inserted %d items in %v", max, time.Since(start))
+	batch := 1000
+	for i := 0; i*batch <= max; i++ {
+		start = time.Now()
+		paging := &pb.Paging{Limit: uint64(batch), Offset: uint64(i * batch)}
+		ms, pinfo, err := db.Get(ctx, &testpb.Interface{}, paging, &filters.FieldFilter{Field: "name", Filter: filters.StringRegex(`^eth\d+$`)})
+		require.NoError(err)
+		if i%10 == 0 {
+			t.Logf("queried %v on %d items in %v", paging, max, time.Since(start))
+		}
+		require.NotNil(pinfo)
+		assert.Equal(i*batch+len(ms) < max, pinfo.HasNext)
+		if i*batch < max {
+			assert.Len(ms, batch)
+		} else {
+			assert.Len(ms, 0)
+		}
+	}
 }
