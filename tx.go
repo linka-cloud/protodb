@@ -199,8 +199,8 @@ func (tx *tx) close() {
 	tx.m.Unlock()
 }
 
-func hash(m proto.Message) (string, error) {
-	b, err := proto.Marshal(m)
+func hash(m interface{ MarshalVT() ([]byte, error) }) (string, error) {
+	b, err := m.MarshalVT()
 	if err != nil {
 		return "", err
 	}
