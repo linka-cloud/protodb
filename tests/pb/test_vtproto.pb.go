@@ -2,7 +2,7 @@
 // protoc-gen-go-vtproto version: v0.2.0
 // source: tests/pb/test.proto
 
-package pb
+package testpb
 
 import (
 	fmt "fmt"

@@ -14,7 +14,7 @@
 
 syntax = "proto3";
 
-package protodb;
+package linka.cloud.protodb;
 
 option csharp_namespace = "LinkaCloud.ProtoDB";
 option java_package = "cloud.linka.protodb";
@@ -24,15 +24,12 @@ option objc_class_prefix = "LKPDB";
 option go_package = "go.linka.cloud/protodb/pb;pb";
 option cc_enable_arenas = true;
 
-import "defaults/defaults.proto";
 import "patch/go.proto";
 import "validate/validate.proto";
 
 import "filters/field_filter.proto";
 import "google/protobuf/descriptor.proto";
 import "google/protobuf/wrappers.proto";
-import "google/protobuf/timestamp.proto";
-import "google/protobuf/duration.proto";
 import "google/protobuf/any.proto";
 
 option (go.lint).all = true;
@@ -95,10 +92,13 @@ message TxResponse {
 message Paging {
   uint64 limit = 1;
   uint64 offset = 2;
+  // token is an optional continuation token, used internally speedup queries
+  string token = 3;
 }
 
 message PagingInfo {
   bool has_next = 1;
+  string token = 2;
 }
 
 message WatchRequest {

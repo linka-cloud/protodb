@@ -96,7 +96,7 @@ func TestEmbed(t *testing.T) {
 
 	is, i, err := db.Get(ctx, &testpb.Interface{}, nil)
 	require.NoError(err)
-	assert.Nil(i)
+	assert.NotNil(i)
 	assert.Len(is, 1)
 	equal(i0, is[0])
 
@@ -111,7 +111,7 @@ func TestEmbed(t *testing.T) {
 
 	is, i, err = db.Get(ctx, &testpb.Interface{}, nil)
 	require.NoError(err)
-	assert.Nil(i)
+	assert.NotNil(i)
 	assert.Len(is, 2)
 	equal(i0, is[0])
 	equal(i1, is[1])
@@ -282,18 +282,22 @@ func TestBatchInsertAndQuery(t *testing.T) {
 	}
 	require.NoError(tx.Commit(ctx))
 	t.Logf("inserted %d items in %v", max, time.Since(start))
-	batch := 1000
-	for i := 0; i*batch <= max; i++ {
+	batch := 100
+	tk := ""
+	regex := `^eth\d*0$`
+	for i := 0; i*batch <= max/10; i++ {
 		start = time.Now()
-		paging := &pb.Paging{Limit: uint64(batch), Offset: uint64(i * batch)}
-		ms, pinfo, err := db.Get(ctx, &testpb.Interface{}, paging, &filters.FieldFilter{Field: "name", Filter: filters.StringRegex(`^eth\d+$`)})
+		paging := &pb.Paging{Limit: uint64(batch), Offset: uint64(i * batch), Token: tk}
+		ms, pinfo, err := db.Get(ctx, &testpb.Interface{}, paging, &filters.FieldFilter{Field: "name", Filter: filters.StringRegex(regex)})
 		require.NoError(err)
 		if i%10 == 0 {
-			t.Logf("queried %v on %d items in %v", paging, max, time.Since(start))
+			t.Logf("queried name=~\"%s\" (offset: %v, limit: %v) on %d items in %v", regex, paging.GetOffset(), paging.GetLimit(), max, time.Since(start))
 		}
 		require.NotNil(pinfo)
-		assert.Equal(i*batch+len(ms) < max, pinfo.HasNext)
-		if i*batch < max {
+		assert.NotEmpty(pinfo.Token)
+		tk = pinfo.Token
+		assert.Equal(i*batch+len(ms) < max/10, pinfo.HasNext)
+		if i*batch < max/10 {
 			assert.Len(ms, batch)
 		} else {
 			assert.Len(ms, 0)

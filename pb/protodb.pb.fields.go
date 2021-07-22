@@ -64,15 +64,19 @@ var TxResponseFields = struct {
 var PagingFields = struct {
 	Limit  string
 	Offset string
+	Token  string
 }{
 	Limit:  "limit",
 	Offset: "offset",
+	Token:  "token",
 }
 
 var PagingInfoFields = struct {
 	HasNext string
+	Token   string
 }{
 	HasNext: "has_next",
+	Token:   "token",
 }
 
 var WatchRequestFields = struct {

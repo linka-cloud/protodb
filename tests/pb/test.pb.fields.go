@@ -1,4 +1,4 @@
-package pb
+package testpb
 
 var InterfaceFields = struct {
 	Name      string

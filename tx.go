@@ -15,14 +15,20 @@
 package protodb
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha512"
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/dgraph-io/badger/v2"
 	pf "go.linka.cloud/protofilters"
 	"go.linka.cloud/protofilters/filters"
 	"google.golang.org/protobuf/proto"
+
+	"go.linka.cloud/protodb/internal/token"
 )
 
 var (
@@ -45,112 +51,161 @@ type tx struct {
 	done bool
 }
 
-func (t *tx) Get(ctx context.Context, m proto.Message, paging *Paging, filters ...*filters.FieldFilter) (out []proto.Message, info *PagingInfo, err error) {
-	if t.closed() {
+func (tx *tx) Get(ctx context.Context, m proto.Message, paging *Paging, queryFilters ...*filters.FieldFilter) (out []proto.Message, info *PagingInfo, err error) {
+	if tx.closed() {
 		return nil, nil, ErrClosed
 	}
-	it := t.txn.NewIterator(badger.IteratorOptions{PrefetchValues: false, Prefix: dataPrefix(m)})
+	prefix := dataPrefix(m)
+	it := tx.txn.NewIterator(badger.IteratorOptions{Prefix: prefix, PrefetchValues: false})
 	defer it.Close()
-	count := uint64(0)
+	hasContinuationToken := paging.GetToken() != ""
+	inToken := &token.Token{}
+	if err := inToken.Decode(paging.GetToken()); err != nil {
+		return nil, nil, err
+	}
+	hash, err := hash(filters.New(queryFilters...))
+	if err != nil {
+		return nil, nil, fmt.Errorf("hash filters: %w", err)
+	}
+	outToken := &token.Token{
+		Ts:          tx.txn.ReadTs(),
+		Type:        string(m.ProtoReflect().Descriptor().FullName()),
+		FiltersHash: hash,
+	}
+	if err := outToken.ValidateFor(inToken); err != nil {
+		return nil, nil, err
+	}
+	var (
+		count   = uint64(0)
+		match   = true
+		hasNext = false
+	)
 	for it.Rewind(); it.Valid(); it.Next() {
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
 		}
-		count++
-		if paging != nil && paging.Offset > 0 && count < paging.Offset {
+		item := it.Item()
+		if item.Version() <= inToken.Ts &&
+			count < paging.GetOffset() &&
+			bytes.Compare(item.Key(), inToken.GetLastPrefix()) <= 0 {
 			continue
 		}
-		if paging != nil && paging.Limit > 0 && count > paging.Limit {
-			return out, &PagingInfo{HasNext: true}, nil
-		}
 		v := m.ProtoReflect().New().Interface()
-		if err := it.Item().Value(func(val []byte) error {
-			if err := t.db.unmarshal(val, v); err != nil {
+		if err := item.Value(func(val []byte) error {
+			if err := tx.db.unmarshal(val, v); err != nil {
 				return err
 			}
-			if len(filters) != 0 {
-				ok, err := pf.MatchFilters(m, filters...)
+			if len(queryFilters) != 0 {
+				match, err = pf.MatchFilters(v, queryFilters...)
 				if err != nil {
 					return err
 				}
-				if !ok {
-					count--
-					return nil
+				if match {
+					count++
 				}
 			}
-			out = append(out, v)
 			return nil
 		}); err != nil {
 			return nil, nil, err
 		}
+		if max := paging.GetOffset() + paging.GetLimit(); max != 0 {
+			if count == max+1 || (hasContinuationToken && count == paging.GetLimit()+1) {
+				hasNext = true
+				break
+			}
+			if !hasContinuationToken && count <= paging.GetOffset() {
+				continue
+			}
+		}
+		if !match {
+			continue
+		}
+		outToken.LastPrefix = make([]byte, len(item.Key()))
+		copy(outToken.LastPrefix, item.Key())
+		out = append(out, v)
 	}
-	return out, nil, nil
+	tks, err := outToken.Encode()
+	if err != nil {
+		return nil, nil, err
+	}
+	return out, &PagingInfo{HasNext: hasNext, Token: tks}, nil
 }
 
-func (t *tx) Put(ctx context.Context, m proto.Message) (proto.Message, error) {
-	if t.closed() {
+func (tx *tx) Put(ctx context.Context, m proto.Message) (proto.Message, error) {
+	if tx.closed() {
 		return nil, ErrClosed
 	}
 	if m == nil {
 		return nil, errors.New("empty message")
 	}
-	if t.db.opts.applyDefaults {
+	if tx.db.opts.applyDefaults {
 		defaults(m)
 	}
 	k := dataPrefix(m)
-	b, err := t.db.marshal(m)
+	b, err := tx.db.marshal(m)
 	if err != nil {
 		return nil, err
 	}
-	if err := t.txn.Set(k, b); err != nil {
+	if err := tx.txn.Set(k, b); err != nil {
 		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
-		t.close()
+		tx.close()
 		return nil, err
 	}
 	return m, nil
 }
 
-func (t *tx) Delete(ctx context.Context, m proto.Message) error {
-	if t.closed() {
+func (tx *tx) Delete(ctx context.Context, m proto.Message) error {
+	if tx.closed() {
 		return ErrClosed
 	}
 	if m == nil {
 		return errors.New("empty message")
 	}
 	// TODO(adphi): should we check / read for key first ?
-	if err := t.txn.Delete(dataPrefix(m)); err != nil {
+	if err := tx.txn.Delete(dataPrefix(m)); err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {
-		t.close()
+		tx.close()
 		return err
 	}
 	return nil
 }
 
-func (t *tx) Commit(ctx context.Context) error {
-	if t.closed() {
+func (tx *tx) Commit(ctx context.Context) error {
+	if tx.closed() {
 		return ErrClosed
 	}
-	defer t.close()
-	return t.txn.Commit()
+	defer tx.close()
+	return tx.txn.Commit()
 }
 
-func (t *tx) Close() {
-	t.txn.Discard()
-	t.close()
+func (tx *tx) Close() {
+	tx.txn.Discard()
+	tx.close()
 }
 
-func (t *tx) closed() bool {
-	t.m.RLock()
-	defer t.m.RUnlock()
-	return t.done
+func (tx *tx) closed() bool {
+	tx.m.RLock()
+	defer tx.m.RUnlock()
+	return tx.done
 }
 
-func (t *tx) close() {
-	t.m.Lock()
-	t.done = true
-	t.m.Unlock()
+func (tx *tx) close() {
+	tx.m.Lock()
+	tx.done = true
+	tx.m.Unlock()
+}
+
+func hash(m proto.Message) (string, error) {
+	b, err := proto.Marshal(m)
+	if err != nil {
+		return "", err
+	}
+	sha := sha512.New()
+	sha.Write(b)
+	h := sha.Sum(nil)
+	return base64.StdEncoding.EncodeToString(h), nil
 }

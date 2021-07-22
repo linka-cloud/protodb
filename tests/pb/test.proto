@@ -23,9 +23,6 @@ import "patch/go.proto";
 import "validate/validate.proto";
 
 import "google/protobuf/wrappers.proto";
-import "google/protobuf/timestamp.proto";
-import "google/protobuf/duration.proto";
-import "google/protobuf/any.proto";
 
 option (go.lint).all = true;
 

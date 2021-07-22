@@ -751,6 +751,8 @@ func (m *Paging) Validate() error {
 
 	// no validation rules for Offset
 
+	// no validation rules for Token
+
 	return nil
 }
 
@@ -816,6 +818,8 @@ func (m *PagingInfo) Validate() error {
 	}
 
 	// no validation rules for HasNext
+
+	// no validation rules for Token
 
 	return nil
 }

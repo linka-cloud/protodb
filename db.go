@@ -69,18 +69,18 @@ type db struct {
 	reg *preg.Files
 }
 
-func (d *db) Watch(ctx context.Context, m proto.Message, filters ...*filters.FieldFilter) (<-chan Event, error) {
+func (db *db) Watch(ctx context.Context, m proto.Message, filters ...*filters.FieldFilter) (<-chan Event, error) {
 	k := dataPrefix(m)
 	ch := make(chan Event)
 	go func() {
 		defer close(ch)
-		err := d.bdb.Subscribe(ctx, func(kv *badger.KVList) error {
+		err := db.bdb.Subscribe(ctx, func(kv *badger.KVList) error {
 			for _, v := range kv.Kv {
 				var err error
 				var typ EventType
 				var new proto.Message
 				var old proto.Message
-				if err := d.bdb.View(func(txn *badger.Txn) error {
+				if err := db.bdb.View(func(txn *badger.Txn) error {
 					it := txn.NewKeyIterator(v.Key, badger.IteratorOptions{AllVersions: true, PrefetchValues: false})
 					defer it.Close()
 					for it.Rewind(); it.Valid(); it.Next() {
@@ -90,7 +90,7 @@ func (d *db) Watch(ctx context.Context, m proto.Message, filters ...*filters.Fie
 						}
 						return item.Value(func(val []byte) error {
 							o := m.ProtoReflect().New().Interface()
-							if err := d.unmarshal(val, o); err != nil {
+							if err := db.unmarshal(val, o); err != nil {
 								return err
 							}
 							old = o
@@ -103,7 +103,7 @@ func (d *db) Watch(ctx context.Context, m proto.Message, filters ...*filters.Fie
 				}
 				if len(v.Value) != 0 {
 					new = m.ProtoReflect().New().Interface()
-					if err := d.unmarshal(v.Value, new); err != nil {
+					if err := db.unmarshal(v.Value, new); err != nil {
 						return err
 					}
 				}
@@ -157,8 +157,8 @@ func (d *db) Watch(ctx context.Context, m proto.Message, filters ...*filters.Fie
 	return ch, nil
 }
 
-func (d *db) Get(ctx context.Context, m proto.Message, paging *Paging, filters ...*filters.FieldFilter) ([]proto.Message, *PagingInfo, error) {
-	tx, err := d.Tx(ctx)
+func (db *db) Get(ctx context.Context, m proto.Message, paging *Paging, filters ...*filters.FieldFilter) ([]proto.Message, *PagingInfo, error) {
+	tx, err := db.Tx(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -166,8 +166,8 @@ func (d *db) Get(ctx context.Context, m proto.Message, paging *Paging, filters .
 	return tx.Get(ctx, m, paging, filters...)
 }
 
-func (d *db) Put(ctx context.Context, m proto.Message) (proto.Message, error) {
-	tx, err := d.Tx(ctx)
+func (db *db) Put(ctx context.Context, m proto.Message) (proto.Message, error) {
+	tx, err := db.Tx(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -182,8 +182,8 @@ func (d *db) Put(ctx context.Context, m proto.Message) (proto.Message, error) {
 	return m, tx.Commit(ctx)
 }
 
-func (d *db) Delete(ctx context.Context, m proto.Message) error {
-	tx, err := d.Tx(ctx)
+func (db *db) Delete(ctx context.Context, m proto.Message) error {
+	tx, err := db.Tx(ctx)
 	if err != nil {
 		return err
 	}
@@ -197,15 +197,15 @@ func (d *db) Delete(ctx context.Context, m proto.Message) error {
 	return tx.Commit(ctx)
 }
 
-func (d *db) Tx(ctx context.Context) (Tx, error) {
-	return newTx(ctx, d)
+func (db *db) Tx(ctx context.Context) (Tx, error) {
+	return newTx(ctx, db)
 }
 
-func (d *db) Close() error {
-	return d.bdb.Close()
+func (db *db) Close() error {
+	return db.bdb.Close()
 }
 
-func (d *db) unmarshal(b []byte, m proto.Message) error {
+func (db *db) unmarshal(b []byte, m proto.Message) error {
 	switch v := interface{}(m).(type) {
 	case interface{ UnmarshalVT(b []byte) error }:
 		return v.UnmarshalVT(b)
@@ -216,7 +216,7 @@ func (d *db) unmarshal(b []byte, m proto.Message) error {
 	}
 }
 
-func (d *db) marshal(m proto.Message) ([]byte, error) {
+func (db *db) marshal(m proto.Message) ([]byte, error) {
 	switch v := interface{}(m).(type) {
 	case interface{ MarshalVT() ([]byte, error) }:
 		return v.MarshalVT()
@@ -227,16 +227,16 @@ func (d *db) marshal(m proto.Message) ([]byte, error) {
 	}
 }
 
-func (d *db) RegisterProto(ctx context.Context, file *descriptorpb.FileDescriptorProto) error {
+func (db *db) RegisterProto(ctx context.Context, file *descriptorpb.FileDescriptorProto) error {
 	if file == nil || file.GetName() == "" {
 		return errors.New("invalid file")
 	}
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if err := d.registerFileDescriptorProto(file); err != nil {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	if err := db.registerFileDescriptorProto(file); err != nil {
 		return err
 	}
-	txn := d.bdb.NewTransaction(true)
+	txn := db.bdb.NewTransaction(true)
 	defer txn.Discard()
 	b, err := proto.Marshal(file)
 	if err != nil {
@@ -254,58 +254,58 @@ func (d *db) RegisterProto(ctx context.Context, file *descriptorpb.FileDescripto
 	return nil
 }
 
-func (d *db) Register(ctx context.Context, fd protoreflect.FileDescriptor) error {
-	return d.RegisterProto(ctx, pdesc.ToFileDescriptorProto(fd))
+func (db *db) Register(ctx context.Context, fd protoreflect.FileDescriptor) error {
+	return db.RegisterProto(ctx, pdesc.ToFileDescriptorProto(fd))
 }
 
-func (d *db) Resolver() pdesc.Resolver {
-	return d.reg
+func (db *db) Resolver() pdesc.Resolver {
+	return db.reg
 }
 
-func (d *db) registerFileDescriptorProto(file *descriptorpb.FileDescriptorProto) (err error) {
+func (db *db) registerFileDescriptorProto(file *descriptorpb.FileDescriptorProto) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			var ok bool
 			ok, err = isAlreadyRegistered(e)
 			if ok {
-				err = d.recoverRegister(file)
+				err = db.recoverRegister(file)
 			}
 		}
 	}()
-	fd, err := pdesc.NewFile(file, d.reg)
+	fd, err := pdesc.NewFile(file, db.reg)
 	if err != nil {
 		return err
 	}
-	if err := d.reg.RegisterFile(fd); err != nil {
+	if err := db.reg.RegisterFile(fd); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (d *db) load() error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
+func (db *db) load() error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
 	var fdps []*descriptorpb.FileDescriptorProto
-	d.reg.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
+	db.reg.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
 		// we can't register it now as the protogistry.globalMutex would dead lock
 		fdps = append(fdps, pdesc.ToFileDescriptorProto(fd))
 		return true
 	})
 	for _, v := range fdps {
-		if err := d.registerFileDescriptorProto(v); err != nil {
+		if err := db.registerFileDescriptorProto(v); err != nil {
 			return err
 		}
 	}
-	return d.bdb.View(func(txn *badger.Txn) error {
+	return db.bdb.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.IteratorOptions{Prefix: []byte(descriptors)})
 		defer it.Close()
 		for it.Rewind(); it.Valid(); it.Next() {
 			if err := it.Item().Value(func(val []byte) error {
 				fdp := &descriptorpb.FileDescriptorProto{}
-				if err := d.unmarshal(val, fdp); err != nil {
+				if err := db.unmarshal(val, fdp); err != nil {
 					return err
 				}
-				return d.registerFileDescriptorProto(fdp)
+				return db.registerFileDescriptorProto(fdp)
 
 			}); err != nil {
 				return err
@@ -315,8 +315,8 @@ func (d *db) load() error {
 	})
 }
 
-func (d *db) recoverRegister(file *descriptorpb.FileDescriptorProto) error {
-	return d.bdb.Update(func(txn *badger.Txn) error {
+func (db *db) recoverRegister(file *descriptorpb.FileDescriptorProto) error {
+	return db.bdb.Update(func(txn *badger.Txn) error {
 		key := descriptorPrefix(file)
 		it := txn.NewIterator(badger.IteratorOptions{Prefix: key})
 		defer it.Close()

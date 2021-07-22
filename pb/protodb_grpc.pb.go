@@ -37,7 +37,7 @@ func NewProtoDBClient(cc grpc.ClientConnInterface) ProtoDBClient {
 
 func (c *protoDBClient) Get(ctx context.Context, in *GetRequest, opts ...grpc.CallOption) (*GetResponse, error) {
 	out := new(GetResponse)
-	err := c.cc.Invoke(ctx, "/protodb.ProtoDB/Get", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/linka.cloud.protodb.ProtoDB/Get", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func (c *protoDBClient) Get(ctx context.Context, in *GetRequest, opts ...grpc.Ca
 
 func (c *protoDBClient) Put(ctx context.Context, in *PutRequest, opts ...grpc.CallOption) (*PutResponse, error) {
 	out := new(PutResponse)
-	err := c.cc.Invoke(ctx, "/protodb.ProtoDB/Put", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/linka.cloud.protodb.ProtoDB/Put", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +55,7 @@ func (c *protoDBClient) Put(ctx context.Context, in *PutRequest, opts ...grpc.Ca
 
 func (c *protoDBClient) Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error) {
 	out := new(DeleteResponse)
-	err := c.cc.Invoke(ctx, "/protodb.ProtoDB/Delete", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/linka.cloud.protodb.ProtoDB/Delete", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +63,7 @@ func (c *protoDBClient) Delete(ctx context.Context, in *DeleteRequest, opts ...g
 }
 
 func (c *protoDBClient) Tx(ctx context.Context, opts ...grpc.CallOption) (ProtoDB_TxClient, error) {
-	stream, err := c.cc.NewStream(ctx, &ProtoDB_ServiceDesc.Streams[0], "/protodb.ProtoDB/Tx", opts...)
+	stream, err := c.cc.NewStream(ctx, &ProtoDB_ServiceDesc.Streams[0], "/linka.cloud.protodb.ProtoDB/Tx", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +94,7 @@ func (x *protoDBTxClient) Recv() (*TxResponse, error) {
 }
 
 func (c *protoDBClient) Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (ProtoDB_WatchClient, error) {
-	stream, err := c.cc.NewStream(ctx, &ProtoDB_ServiceDesc.Streams[1], "/protodb.ProtoDB/Watch", opts...)
+	stream, err := c.cc.NewStream(ctx, &ProtoDB_ServiceDesc.Streams[1], "/linka.cloud.protodb.ProtoDB/Watch", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -127,7 +127,7 @@ func (x *protoDBWatchClient) Recv() (*WatchEvent, error) {
 
 func (c *protoDBClient) Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error) {
 	out := new(RegisterResponse)
-	err := c.cc.Invoke(ctx, "/protodb.ProtoDB/Register", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/linka.cloud.protodb.ProtoDB/Register", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +192,7 @@ func _ProtoDB_Get_Handler(srv interface{}, ctx context.Context, dec func(interfa
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/protodb.ProtoDB/Get",
+		FullMethod: "/linka.cloud.protodb.ProtoDB/Get",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ProtoDBServer).Get(ctx, req.(*GetRequest))
@@ -210,7 +210,7 @@ func _ProtoDB_Put_Handler(srv interface{}, ctx context.Context, dec func(interfa
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/protodb.ProtoDB/Put",
+		FullMethod: "/linka.cloud.protodb.ProtoDB/Put",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ProtoDBServer).Put(ctx, req.(*PutRequest))
@@ -228,7 +228,7 @@ func _ProtoDB_Delete_Handler(srv interface{}, ctx context.Context, dec func(inte
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/protodb.ProtoDB/Delete",
+		FullMethod: "/linka.cloud.protodb.ProtoDB/Delete",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ProtoDBServer).Delete(ctx, req.(*DeleteRequest))
@@ -293,7 +293,7 @@ func _ProtoDB_Register_Handler(srv interface{}, ctx context.Context, dec func(in
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/protodb.ProtoDB/Register",
+		FullMethod: "/linka.cloud.protodb.ProtoDB/Register",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ProtoDBServer).Register(ctx, req.(*RegisterRequest))
@@ -305,7 +305,7 @@ func _ProtoDB_Register_Handler(srv interface{}, ctx context.Context, dec func(in
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var ProtoDB_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "protodb.ProtoDB",
+	ServiceName: "linka.cloud.protodb.ProtoDB",
 	HandlerType: (*ProtoDBServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
