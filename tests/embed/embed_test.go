@@ -94,7 +94,7 @@ func TestEmbed(t *testing.T) {
 	assert.Nil(e.Old())
 	equal(i0, e.New())
 
-	is, i, err := db.Get(ctx, &testpb.Interface{}, nil)
+	is, i, err := db.Get(ctx, &testpb.Interface{})
 	require.NoError(err)
 	assert.NotNil(i)
 	assert.Len(is, 1)
@@ -109,7 +109,7 @@ func TestEmbed(t *testing.T) {
 	assert.Nil(e.Old())
 	equal(i1, e.New())
 
-	is, i, err = db.Get(ctx, &testpb.Interface{}, nil)
+	is, i, err = db.Get(ctx, &testpb.Interface{})
 	require.NoError(err)
 	assert.NotNil(i)
 	assert.Len(is, 2)
@@ -172,10 +172,10 @@ func TestEmbedWatchWithFilter(t *testing.T) {
 
 	watches := make(chan protodb.Event)
 	go func() {
-		ch, err := db.Watch(ctx, &testpb.Interface{}, &filters.FieldFilter{
+		ch, err := db.Watch(ctx, &testpb.Interface{}, protodb.WithFilters(&protodb.FieldFilter{
 			Field:  testpb.InterfaceFields.Status,
 			Filter: filters.NumberEquals(float64(testpb.StatusUp)),
-		})
+		}))
 		require.NoError(err)
 		for e := range ch {
 			watches <- e
@@ -288,7 +288,7 @@ func TestBatchInsertAndQuery(t *testing.T) {
 	for i := 0; i*batch <= max/10; i++ {
 		start = time.Now()
 		paging := &pb.Paging{Limit: uint64(batch), Offset: uint64(i * batch), Token: tk}
-		ms, pinfo, err := db.Get(ctx, &testpb.Interface{}, paging, &filters.FieldFilter{Field: "name", Filter: filters.StringRegex(regex)})
+		ms, pinfo, err := db.Get(ctx, &testpb.Interface{}, protodb.WithPaging(paging), protodb.WithFilters(&protodb.FieldFilter{Field: "name", Filter: filters.StringRegex(regex)}))
 		require.NoError(err)
 		if i%10 == 0 {
 			t.Logf("queried name=~\"%s\" (offset: %v, limit: %v) on %d items in %v", regex, paging.GetOffset(), paging.GetLimit(), max, time.Since(start))
