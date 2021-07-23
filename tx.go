@@ -25,7 +25,6 @@ import (
 
 	"github.com/dgraph-io/badger/v2"
 	pf "go.linka.cloud/protofilters"
-	"go.linka.cloud/protofilters/filters"
 	"google.golang.org/protobuf/proto"
 
 	"go.linka.cloud/protodb/internal/token"
@@ -51,19 +50,20 @@ type tx struct {
 	done bool
 }
 
-func (tx *tx) Get(ctx context.Context, m proto.Message, paging *Paging, queryFilters ...*filters.FieldFilter) (out []proto.Message, info *PagingInfo, err error) {
+func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...QueryOption) (out []proto.Message, info *PagingInfo, err error) {
 	if tx.closed() {
 		return nil, nil, ErrClosed
 	}
+	o := makeOpts(opts...)
 	prefix := dataPrefix(m)
 	it := tx.txn.NewIterator(badger.IteratorOptions{Prefix: prefix, PrefetchValues: false})
 	defer it.Close()
-	hasContinuationToken := paging.GetToken() != ""
+	hasContinuationToken := o.paging.GetToken() != ""
 	inToken := &token.Token{}
-	if err := inToken.Decode(paging.GetToken()); err != nil {
+	if err := inToken.Decode(o.paging.GetToken()); err != nil {
 		return nil, nil, err
 	}
-	hash, err := hash(filters.New(queryFilters...))
+	hash, err := hash(NewFilter(o.filters...))
 	if err != nil {
 		return nil, nil, fmt.Errorf("hash filters: %w", err)
 	}
@@ -86,7 +86,7 @@ func (tx *tx) Get(ctx context.Context, m proto.Message, paging *Paging, queryFil
 		}
 		item := it.Item()
 		if item.Version() <= inToken.Ts &&
-			count < paging.GetOffset() &&
+			count < o.paging.GetOffset() &&
 			bytes.Compare(item.Key(), inToken.GetLastPrefix()) <= 0 {
 			continue
 		}
@@ -95,8 +95,8 @@ func (tx *tx) Get(ctx context.Context, m proto.Message, paging *Paging, queryFil
 			if err := tx.db.unmarshal(val, v); err != nil {
 				return err
 			}
-			if len(queryFilters) != 0 {
-				match, err = pf.MatchFilters(v, queryFilters...)
+			if len(o.filters) != 0 {
+				match, err = pf.MatchFilters(v, o.filters...)
 				if err != nil {
 					return err
 				}
@@ -108,12 +108,12 @@ func (tx *tx) Get(ctx context.Context, m proto.Message, paging *Paging, queryFil
 		}); err != nil {
 			return nil, nil, err
 		}
-		if max := paging.GetOffset() + paging.GetLimit(); max != 0 {
-			if count == max+1 || (hasContinuationToken && count == paging.GetLimit()+1) {
+		if max := o.paging.GetOffset() + o.paging.GetLimit(); max != 0 {
+			if count == max+1 || (hasContinuationToken && count == o.paging.GetLimit()+1) {
 				hasNext = true
 				break
 			}
-			if !hasContinuationToken && count <= paging.GetOffset() {
+			if !hasContinuationToken && count <= o.paging.GetOffset() {
 				continue
 			}
 		}

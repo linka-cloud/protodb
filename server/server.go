@@ -129,7 +129,7 @@ func (s *server) Watch(req *pb.WatchRequest, stream pb.ProtoDB_WatchServer) erro
 	if err != nil {
 		return err
 	}
-	ch, err := s.db.Watch(stream.Context(), d, req.Filters...)
+	ch, err := s.db.Watch(stream.Context(), d, watchOpts(req)...)
 	if err != nil {
 		return err
 	}
@@ -164,7 +164,7 @@ func (s *server) get(ctx context.Context, r protodb.Reader, get *pb.GetRequest) 
 	if err != nil {
 		return nil, nil, err
 	}
-	res, i, err := r.Get(ctx, d, get.Paging, get.Filters...)
+	res, i, err := r.Get(ctx, d, getOpts(get)...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -224,4 +224,12 @@ func (s *server) unmarshalToDynamic(a *anypb.Any) (*dynamicpb.Message, error) {
 		return nil, err
 	}
 	return d, nil
+}
+
+func getOpts(r *pb.GetRequest) (opts []protodb.QueryOption) {
+	return append(opts, protodb.WithFilters(r.Filters...), protodb.WithPaging(r.Paging))
+}
+
+func watchOpts(r *pb.WatchRequest) (opts []protodb.QueryOption) {
+	return append(opts, protodb.WithFilters(r.Filters...))
 }

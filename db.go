@@ -24,7 +24,6 @@ import (
 
 	"github.com/dgraph-io/badger/v2"
 	pf "go.linka.cloud/protofilters"
-	"go.linka.cloud/protofilters/filters"
 	"google.golang.org/protobuf/proto"
 	pdesc "google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -69,7 +68,9 @@ type db struct {
 	reg *preg.Files
 }
 
-func (db *db) Watch(ctx context.Context, m proto.Message, filters ...*filters.FieldFilter) (<-chan Event, error) {
+func (db *db) Watch(ctx context.Context, m proto.Message, opts ...QueryOption) (<-chan Event, error) {
+	o := makeOpts(opts...)
+
 	k := dataPrefix(m)
 	ch := make(chan Event)
 	go func() {
@@ -107,7 +108,7 @@ func (db *db) Watch(ctx context.Context, m proto.Message, filters ...*filters.Fi
 						return err
 					}
 				}
-				if len(filters) == 0 {
+				if len(o.filters) == 0 {
 					if new == nil {
 						typ = pb.WatchEventLeave
 					} else if old != nil {
@@ -120,14 +121,14 @@ func (db *db) Watch(ctx context.Context, m proto.Message, filters ...*filters.Fi
 				}
 				var was bool
 				if old != nil {
-					was, err = pf.MatchFilters(old, filters...)
+					was, err = pf.MatchFilters(old, o.filters...)
 					if err != nil {
 						return err
 					}
 				}
 				var is bool
 				if new != nil {
-					is, err = pf.MatchFilters(new, filters...)
+					is, err = pf.MatchFilters(new, o.filters...)
 					if err != nil {
 						return err
 					}
@@ -157,13 +158,13 @@ func (db *db) Watch(ctx context.Context, m proto.Message, filters ...*filters.Fi
 	return ch, nil
 }
 
-func (db *db) Get(ctx context.Context, m proto.Message, paging *Paging, filters ...*filters.FieldFilter) ([]proto.Message, *PagingInfo, error) {
+func (db *db) Get(ctx context.Context, m proto.Message, opts ...QueryOption) ([]proto.Message, *PagingInfo, error) {
 	tx, err := db.Tx(ctx)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer tx.Close()
-	return tx.Get(ctx, m, paging, filters...)
+	return tx.Get(ctx, m, opts...)
 }
 
 func (db *db) Put(ctx context.Context, m proto.Message) (proto.Message, error) {

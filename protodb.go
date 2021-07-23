@@ -27,8 +27,13 @@ import (
 	"go.linka.cloud/protodb/pb"
 )
 
-type Paging = pb.Paging
-type PagingInfo = pb.PagingInfo
+type (
+	Paging       = pb.Paging
+	PagingInfo   = pb.PagingInfo
+	Filter       = filters.Filter
+	FieldFilter  = filters.FieldFilter
+	FieldsFilter = filters.FieldsFilter
+)
 
 type DB interface {
 	Registerer
@@ -46,11 +51,11 @@ type Tx interface {
 }
 
 type Reader interface {
-	Get(ctx context.Context, m proto.Message, paging *Paging, filters ...*filters.FieldFilter) ([]proto.Message, *PagingInfo, error)
+	Get(ctx context.Context, m proto.Message, opts ...QueryOption) ([]proto.Message, *PagingInfo, error)
 }
 
 type Watcher interface {
-	Watch(ctx context.Context, m proto.Message, filters ...*filters.FieldFilter) (<-chan Event, error)
+	Watch(ctx context.Context, m proto.Message, opts ...QueryOption) (<-chan Event, error)
 }
 
 type Writer interface {
@@ -87,3 +92,7 @@ type Event interface {
 	New() proto.Message
 	Err() error
 }
+
+var (
+	NewFilter = filters.New
+)
