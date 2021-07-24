@@ -28,10 +28,10 @@ var (
 	_ *wrapperspb.BoolValue
 )
 
-func (x *PutRequest) Default() {
+func (x *SetRequest) Default() {
 }
 
-func (x *PutResponse) Default() {
+func (x *SetResponse) Default() {
 }
 
 func (x *DeleteRequest) Default() {

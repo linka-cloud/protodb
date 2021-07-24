@@ -69,34 +69,34 @@ var defaultOptions = options{
 	path: DefaultPath,
 }
 
-type QueryOption func(o *queryOpts)
+type GetOption func(o *getOpts)
 
-func WithPaging(paging *Paging) QueryOption {
-	return func(o *queryOpts) {
+func WithPaging(paging *Paging) GetOption {
+	return func(o *getOpts) {
 		o.paging = paging
 	}
 }
 
-func WithFilters(filters ...*FieldFilter) QueryOption {
-	return func(o *queryOpts) {
+func WithFilters(filters ...*FieldFilter) GetOption {
+	return func(o *getOpts) {
 		o.filters = filters
 	}
 }
 
-func WithFieldMask(fieldMask *fieldmaskpb.FieldMask) QueryOption {
-	return func(o *queryOpts) {
+func WithFieldMask(fieldMask *fieldmaskpb.FieldMask) GetOption {
+	return func(o *getOpts) {
 		o.fieldMask = fieldMask
 	}
 }
 
-type queryOpts struct {
+type getOpts struct {
 	paging    *Paging
 	filters   []*FieldFilter
 	fieldMask *fieldmaskpb.FieldMask
 }
 
-func makeQueryOpts(opts ...QueryOption) queryOpts {
-	o := queryOpts{}
+func makeGetOpts(opts ...GetOption) getOpts {
+	o := getOpts{}
 	for _, fn := range opts {
 		if fn != nil {
 			fn(&o)
@@ -105,20 +105,20 @@ func makeQueryOpts(opts ...QueryOption) queryOpts {
 	return o
 }
 
-type WriteOption func(o *writeOpts)
+type SetOption func(o *setOpts)
 
-func WithTTL(d time.Duration) WriteOption {
-	return func(o *writeOpts) {
+func WithTTL(d time.Duration) SetOption {
+	return func(o *setOpts) {
 		o.ttl = d
 	}
 }
 
-type writeOpts struct {
+type setOpts struct {
 	ttl time.Duration
 }
 
-func makeWriteOpts(opts ...WriteOption) writeOpts {
-	o := writeOpts{}
+func makeSetOpts(opts ...SetOption) setOpts {
+	o := setOpts{}
 	for _, fn := range opts {
 		if fn != nil {
 			fn(&o)

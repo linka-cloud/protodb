@@ -38,7 +38,7 @@ option (go.lint).all = true;
 
 service ProtoDB {
   rpc Get(GetRequest) returns (GetResponse);
-  rpc Put(PutRequest) returns (PutResponse);
+  rpc Set(SetRequest) returns (SetResponse);
   rpc Delete(DeleteRequest) returns (DeleteResponse);
   rpc Tx(stream TxRequest) returns (stream TxResponse);
   rpc Watch(WatchRequest) returns (stream WatchEvent);
@@ -47,12 +47,12 @@ service ProtoDB {
 }
 
 
-message PutRequest {
+message SetRequest {
   google.protobuf.Any payload = 1 [(validate.rules).any = {required: true}];
   google.protobuf.Duration ttl = 2;
 }
 
-message PutResponse {
+message SetResponse {
   google.protobuf.Any result = 1;
 }
 
@@ -77,7 +77,7 @@ message TxRequest {
   oneof request {
     option (validate.required) = true;
     GetRequest get = 1;
-    PutRequest put = 2;
+    SetRequest set = 2;
     DeleteRequest delete = 3;
     google.protobuf.BoolValue commit = 4;
   }
@@ -86,7 +86,7 @@ message TxRequest {
 message TxResponse {
   oneof response {
     GetResponse get = 1;
-    PutResponse put = 2;
+    SetResponse set = 2;
     DeleteResponse delete = 3;
   }
 }

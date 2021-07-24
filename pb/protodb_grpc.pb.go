@@ -20,7 +20,7 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ProtoDBClient interface {
 	Get(ctx context.Context, in *GetRequest, opts ...grpc.CallOption) (*GetResponse, error)
-	Put(ctx context.Context, in *PutRequest, opts ...grpc.CallOption) (*PutResponse, error)
+	Set(ctx context.Context, in *SetRequest, opts ...grpc.CallOption) (*SetResponse, error)
 	Delete(ctx context.Context, in *DeleteRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
 	Tx(ctx context.Context, opts ...grpc.CallOption) (ProtoDB_TxClient, error)
 	Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (ProtoDB_WatchClient, error)
@@ -44,9 +44,9 @@ func (c *protoDBClient) Get(ctx context.Context, in *GetRequest, opts ...grpc.Ca
 	return out, nil
 }
 
-func (c *protoDBClient) Put(ctx context.Context, in *PutRequest, opts ...grpc.CallOption) (*PutResponse, error) {
-	out := new(PutResponse)
-	err := c.cc.Invoke(ctx, "/linka.cloud.protodb.ProtoDB/Put", in, out, opts...)
+func (c *protoDBClient) Set(ctx context.Context, in *SetRequest, opts ...grpc.CallOption) (*SetResponse, error) {
+	out := new(SetResponse)
+	err := c.cc.Invoke(ctx, "/linka.cloud.protodb.ProtoDB/Set", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +139,7 @@ func (c *protoDBClient) Register(ctx context.Context, in *RegisterRequest, opts 
 // for forward compatibility
 type ProtoDBServer interface {
 	Get(context.Context, *GetRequest) (*GetResponse, error)
-	Put(context.Context, *PutRequest) (*PutResponse, error)
+	Set(context.Context, *SetRequest) (*SetResponse, error)
 	Delete(context.Context, *DeleteRequest) (*DeleteResponse, error)
 	Tx(ProtoDB_TxServer) error
 	Watch(*WatchRequest, ProtoDB_WatchServer) error
@@ -154,8 +154,8 @@ type UnimplementedProtoDBServer struct {
 func (UnimplementedProtoDBServer) Get(context.Context, *GetRequest) (*GetResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Get not implemented")
 }
-func (UnimplementedProtoDBServer) Put(context.Context, *PutRequest) (*PutResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Put not implemented")
+func (UnimplementedProtoDBServer) Set(context.Context, *SetRequest) (*SetResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Set not implemented")
 }
 func (UnimplementedProtoDBServer) Delete(context.Context, *DeleteRequest) (*DeleteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Delete not implemented")
@@ -200,20 +200,20 @@ func _ProtoDB_Get_Handler(srv interface{}, ctx context.Context, dec func(interfa
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ProtoDB_Put_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(PutRequest)
+func _ProtoDB_Set_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ProtoDBServer).Put(ctx, in)
+		return srv.(ProtoDBServer).Set(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/linka.cloud.protodb.ProtoDB/Put",
+		FullMethod: "/linka.cloud.protodb.ProtoDB/Set",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ProtoDBServer).Put(ctx, req.(*PutRequest))
+		return srv.(ProtoDBServer).Set(ctx, req.(*SetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -313,8 +313,8 @@ var ProtoDB_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ProtoDB_Get_Handler,
 		},
 		{
-			MethodName: "Put",
-			Handler:    _ProtoDB_Put_Handler,
+			MethodName: "Set",
+			Handler:    _ProtoDB_Set_Handler,
 		},
 		{
 			MethodName: "Delete",

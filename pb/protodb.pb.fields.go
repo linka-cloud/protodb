@@ -1,6 +1,6 @@
 package pb
 
-var PutRequestFields = struct {
+var SetRequestFields = struct {
 	Payload string
 	Ttl     string
 }{
@@ -8,7 +8,7 @@ var PutRequestFields = struct {
 	Ttl:     "ttl",
 }
 
-var PutResponseFields = struct {
+var SetResponseFields = struct {
 	Result string
 }{
 	Result: "result",
@@ -43,23 +43,23 @@ var GetResponseFields = struct {
 
 var TxRequestFields = struct {
 	Get    string
-	Put    string
+	Set    string
 	Delete string
 	Commit string
 }{
 	Get:    "get",
-	Put:    "put",
+	Set:    "set",
 	Delete: "delete",
 	Commit: "commit",
 }
 
 var TxResponseFields = struct {
 	Get    string
-	Put    string
+	Set    string
 	Delete string
 }{
 	Get:    "get",
-	Put:    "put",
+	Set:    "set",
 	Delete: "delete",
 }
 

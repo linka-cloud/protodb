@@ -50,11 +50,11 @@ type tx struct {
 	done bool
 }
 
-func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...QueryOption) (out []proto.Message, info *PagingInfo, err error) {
+func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...GetOption) (out []proto.Message, info *PagingInfo, err error) {
 	if tx.closed() {
 		return nil, nil, ErrClosed
 	}
-	o := makeQueryOpts(opts...)
+	o := makeGetOpts(opts...)
 	prefix := dataPrefix(m)
 	it := tx.txn.NewIterator(badger.IteratorOptions{Prefix: prefix, PrefetchValues: false})
 	defer it.Close()
@@ -131,7 +131,7 @@ func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...QueryOption) (ou
 	return out, &PagingInfo{HasNext: hasNext, Token: tks}, nil
 }
 
-func (tx *tx) Put(ctx context.Context, m proto.Message, opts ...WriteOption) (proto.Message, error) {
+func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error) {
 	if tx.closed() {
 		return nil, ErrClosed
 	}
@@ -141,7 +141,7 @@ func (tx *tx) Put(ctx context.Context, m proto.Message, opts ...WriteOption) (pr
 	if tx.db.opts.applyDefaults {
 		defaults(m)
 	}
-	o := makeWriteOpts(opts...)
+	o := makeSetOpts(opts...)
 	k := dataPrefix(m)
 	b, err := tx.db.marshal(m)
 	if err != nil {

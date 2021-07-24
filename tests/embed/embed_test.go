@@ -85,7 +85,7 @@ func TestEmbed(t *testing.T) {
 		close(watches)
 	}()
 
-	r, err := db.Put(ctx, i0)
+	r, err := db.Set(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
 	assert.Equal(i0, r)
@@ -100,7 +100,7 @@ func TestEmbed(t *testing.T) {
 	assert.Len(is, 1)
 	equal(i0, is[0])
 
-	r, err = db.Put(ctx, i1)
+	r, err = db.Set(ctx, i1)
 	require.NoError(err)
 	require.NotNil(r)
 	equal(i1, r)
@@ -118,7 +118,7 @@ func TestEmbed(t *testing.T) {
 
 	i0Old = proto.Clone(i0)
 	i0.Status = testpb.StatusDown
-	r, err = db.Put(ctx, i0)
+	r, err = db.Set(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
 	assert.Equal(i0, r)
@@ -129,7 +129,7 @@ func TestEmbed(t *testing.T) {
 
 	i0Old = proto.Clone(i0)
 	i0.Status = testpb.StatusUp
-	r, err = db.Put(ctx, i0)
+	r, err = db.Set(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
 	assert.Equal(i0, r)
@@ -183,7 +183,7 @@ func TestEmbedWatchWithFilter(t *testing.T) {
 		close(watches)
 	}()
 
-	r, err := db.Put(ctx, i0)
+	r, err := db.Set(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
 	assert.Equal(i0, r)
@@ -193,14 +193,14 @@ func TestEmbedWatchWithFilter(t *testing.T) {
 	equal(i0, e.New())
 
 	// some noise
-	r, err = db.Put(ctx, i1)
+	r, err = db.Set(ctx, i1)
 	require.NoError(err)
 	require.NotNil(r)
 	assert.Equal(i1, r)
 
 	i0Old = proto.Clone(i0)
 	i0.Status = testpb.StatusDown
-	r, err = db.Put(ctx, i0)
+	r, err = db.Set(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
 	assert.Equal(i0, r)
@@ -211,7 +211,7 @@ func TestEmbedWatchWithFilter(t *testing.T) {
 
 	i0Old = proto.Clone(i0)
 	i0.Status = testpb.StatusUp
-	r, err = db.Put(ctx, i0)
+	r, err = db.Set(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
 	assert.Equal(i0, r)
@@ -274,7 +274,7 @@ func TestBatchInsertAndQuery(t *testing.T) {
 		i := &testpb.Interface{
 			Name: n,
 		}
-		m, err := tx.Put(ctx, i, protodb.WithTTL(10*time.Minute))
+		m, err := tx.Set(ctx, i, protodb.WithTTL(10*time.Minute))
 		require.NoError(err)
 		i, ok := m.(*testpb.Interface)
 		require.True(ok)

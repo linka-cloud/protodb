@@ -33,15 +33,15 @@ var (
 	_ = anypb.Any{}
 )
 
-// Validate checks the field values on PutRequest with the rules defined in the
+// Validate checks the field values on SetRequest with the rules defined in the
 // proto definition for this message. If any rules are violated, an error is returned.
-func (m *PutRequest) Validate() error {
+func (m *SetRequest) Validate() error {
 	if m == nil {
 		return nil
 	}
 
 	if m.GetPayload() == nil {
-		return PutRequestValidationError{
+		return SetRequestValidationError{
 			field:  "Payload",
 			reason: "value is required",
 		}
@@ -53,7 +53,7 @@ func (m *PutRequest) Validate() error {
 
 	if v, ok := interface{}(m.GetTTL()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
-			return PutRequestValidationError{
+			return SetRequestValidationError{
 				field:  "Ttl",
 				reason: "embedded message failed validation",
 				cause:  err,
@@ -64,9 +64,9 @@ func (m *PutRequest) Validate() error {
 	return nil
 }
 
-// PutRequestValidationError is the validation error returned by
-// PutRequest.Validate if the designated constraints aren't met.
-type PutRequestValidationError struct {
+// SetRequestValidationError is the validation error returned by
+// SetRequest.Validate if the designated constraints aren't met.
+type SetRequestValidationError struct {
 	field  string
 	reason string
 	cause  error
@@ -74,22 +74,22 @@ type PutRequestValidationError struct {
 }
 
 // Field function returns field value.
-func (e PutRequestValidationError) Field() string { return e.field }
+func (e SetRequestValidationError) Field() string { return e.field }
 
 // Reason function returns reason value.
-func (e PutRequestValidationError) Reason() string { return e.reason }
+func (e SetRequestValidationError) Reason() string { return e.reason }
 
 // Cause function returns cause value.
-func (e PutRequestValidationError) Cause() error { return e.cause }
+func (e SetRequestValidationError) Cause() error { return e.cause }
 
 // Key function returns key value.
-func (e PutRequestValidationError) Key() bool { return e.key }
+func (e SetRequestValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
-func (e PutRequestValidationError) ErrorName() string { return "PutRequestValidationError" }
+func (e SetRequestValidationError) ErrorName() string { return "SetRequestValidationError" }
 
 // Error satisfies the builtin error interface
-func (e PutRequestValidationError) Error() string {
+func (e SetRequestValidationError) Error() string {
 	cause := ""
 	if e.cause != nil {
 		cause = fmt.Sprintf(" | caused by: %v", e.cause)
@@ -101,14 +101,14 @@ func (e PutRequestValidationError) Error() string {
 	}
 
 	return fmt.Sprintf(
-		"invalid %sPutRequest.%s: %s%s",
+		"invalid %sSetRequest.%s: %s%s",
 		key,
 		e.field,
 		e.reason,
 		cause)
 }
 
-var _ error = PutRequestValidationError{}
+var _ error = SetRequestValidationError{}
 
 var _ interface {
 	Field() string
@@ -116,19 +116,19 @@ var _ interface {
 	Key() bool
 	Cause() error
 	ErrorName() string
-} = PutRequestValidationError{}
+} = SetRequestValidationError{}
 
-// Validate checks the field values on PutResponse with the rules defined in
+// Validate checks the field values on SetResponse with the rules defined in
 // the proto definition for this message. If any rules are violated, an error
 // is returned.
-func (m *PutResponse) Validate() error {
+func (m *SetResponse) Validate() error {
 	if m == nil {
 		return nil
 	}
 
 	if v, ok := interface{}(m.GetResult()).(interface{ Validate() error }); ok {
 		if err := v.Validate(); err != nil {
-			return PutResponseValidationError{
+			return SetResponseValidationError{
 				field:  "Result",
 				reason: "embedded message failed validation",
 				cause:  err,
@@ -139,9 +139,9 @@ func (m *PutResponse) Validate() error {
 	return nil
 }
 
-// PutResponseValidationError is the validation error returned by
-// PutResponse.Validate if the designated constraints aren't met.
-type PutResponseValidationError struct {
+// SetResponseValidationError is the validation error returned by
+// SetResponse.Validate if the designated constraints aren't met.
+type SetResponseValidationError struct {
 	field  string
 	reason string
 	cause  error
@@ -149,22 +149,22 @@ type PutResponseValidationError struct {
 }
 
 // Field function returns field value.
-func (e PutResponseValidationError) Field() string { return e.field }
+func (e SetResponseValidationError) Field() string { return e.field }
 
 // Reason function returns reason value.
-func (e PutResponseValidationError) Reason() string { return e.reason }
+func (e SetResponseValidationError) Reason() string { return e.reason }
 
 // Cause function returns cause value.
-func (e PutResponseValidationError) Cause() error { return e.cause }
+func (e SetResponseValidationError) Cause() error { return e.cause }
 
 // Key function returns key value.
-func (e PutResponseValidationError) Key() bool { return e.key }
+func (e SetResponseValidationError) Key() bool { return e.key }
 
 // ErrorName returns error name.
-func (e PutResponseValidationError) ErrorName() string { return "PutResponseValidationError" }
+func (e SetResponseValidationError) ErrorName() string { return "SetResponseValidationError" }
 
 // Error satisfies the builtin error interface
-func (e PutResponseValidationError) Error() string {
+func (e SetResponseValidationError) Error() string {
 	cause := ""
 	if e.cause != nil {
 		cause = fmt.Sprintf(" | caused by: %v", e.cause)
@@ -176,14 +176,14 @@ func (e PutResponseValidationError) Error() string {
 	}
 
 	return fmt.Sprintf(
-		"invalid %sPutResponse.%s: %s%s",
+		"invalid %sSetResponse.%s: %s%s",
 		key,
 		e.field,
 		e.reason,
 		cause)
 }
 
-var _ error = PutResponseValidationError{}
+var _ error = SetResponseValidationError{}
 
 var _ interface {
 	Field() string
@@ -191,7 +191,7 @@ var _ interface {
 	Key() bool
 	Cause() error
 	ErrorName() string
-} = PutResponseValidationError{}
+} = SetResponseValidationError{}
 
 // Validate checks the field values on DeleteRequest with the rules defined in
 // the proto definition for this message. If any rules are violated, an error
@@ -545,12 +545,12 @@ func (m *TxRequest) Validate() error {
 			}
 		}
 
-	case *TxRequest_Put:
+	case *TxRequest_Set:
 
-		if v, ok := interface{}(m.GetPut()).(interface{ Validate() error }); ok {
+		if v, ok := interface{}(m.GetSet()).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return TxRequestValidationError{
-					field:  "Put",
+					field:  "Set",
 					reason: "embedded message failed validation",
 					cause:  err,
 				}
@@ -667,12 +667,12 @@ func (m *TxResponse) Validate() error {
 			}
 		}
 
-	case *TxResponse_Put:
+	case *TxResponse_Set:
 
-		if v, ok := interface{}(m.GetPut()).(interface{ Validate() error }); ok {
+		if v, ok := interface{}(m.GetSet()).(interface{ Validate() error }); ok {
 			if err := v.Validate(); err != nil {
 				return TxResponseValidationError{
-					field:  "Put",
+					field:  "Set",
 					reason: "embedded message failed validation",
 					cause:  err,
 				}

@@ -55,12 +55,12 @@ func (s *server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, 
 	return &pb.GetResponse{Results: a, Paging: i}, nil
 }
 
-func (s *server) Put(ctx context.Context, req *pb.PutRequest) (*pb.PutResponse, error) {
-	a, err := s.put(ctx, s.db, req)
+func (s *server) Set(ctx context.Context, req *pb.SetRequest) (*pb.SetResponse, error) {
+	a, err := s.set(ctx, s.db, req)
 	if err != nil {
 		return nil, err
 	}
-	return &pb.PutResponse{Result: a}, nil
+	return &pb.SetResponse{Result: a}, nil
 }
 
 func (s *server) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
@@ -96,12 +96,12 @@ func (s *server) Tx(stream pb.ProtoDB_TxServer) error {
 				Results: as,
 				Paging:  i,
 			}}}
-		case *pb.TxRequest_Put:
-			a, err := s.put(ctx, tx, r.Put)
+		case *pb.TxRequest_Set:
+			a, err := s.set(ctx, tx, r.Set)
 			if err != nil {
 				return err
 			}
-			res = &pb.TxResponse{Response: &pb.TxResponse_Put{Put: &pb.PutResponse{
+			res = &pb.TxResponse{Response: &pb.TxResponse_Set{Set: &pb.SetResponse{
 				Result: a,
 			}}}
 		case *pb.TxRequest_Delete:
@@ -175,12 +175,12 @@ func (s *server) get(ctx context.Context, r protodb.Reader, get *pb.GetRequest) 
 	return as, i, nil
 }
 
-func (s *server) put(ctx context.Context, w protodb.Writer, put *pb.PutRequest) (*anypb.Any, error) {
-	d, err := s.unmarshalToDynamic(put.Payload)
+func (s *server) set(ctx context.Context, w protodb.Writer, set *pb.SetRequest) (*anypb.Any, error) {
+	d, err := s.unmarshalToDynamic(set.Payload)
 	if err != nil {
 		return nil, err
 	}
-	m, err := w.Put(ctx, d, protodb.WithTTL(put.GetTTL().AsDuration()))
+	m, err := w.Set(ctx, d, protodb.WithTTL(set.GetTTL().AsDuration()))
 	if err != nil {
 		return nil, err
 	}
@@ -226,10 +226,10 @@ func (s *server) unmarshalToDynamic(a *anypb.Any) (*dynamicpb.Message, error) {
 	return d, nil
 }
 
-func getOpts(r *pb.GetRequest) (opts []protodb.QueryOption) {
+func getOpts(r *pb.GetRequest) (opts []protodb.GetOption) {
 	return append(opts, protodb.WithFilters(r.Filters...), protodb.WithPaging(r.Paging))
 }
 
-func watchOpts(r *pb.WatchRequest) (opts []protodb.QueryOption) {
+func watchOpts(r *pb.WatchRequest) (opts []protodb.GetOption) {
 	return append(opts, protodb.WithFilters(r.Filters...))
 }

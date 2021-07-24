@@ -25,7 +25,7 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
-func (m *PutRequest) MarshalVT() (dAtA []byte, err error) {
+func (m *SetRequest) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -38,12 +38,12 @@ func (m *PutRequest) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *PutRequest) MarshalToVT(dAtA []byte) (int, error) {
+func (m *SetRequest) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *PutRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *SetRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -102,7 +102,7 @@ func (m *PutRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *PutResponse) MarshalVT() (dAtA []byte, err error) {
+func (m *SetResponse) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
 	}
@@ -115,12 +115,12 @@ func (m *PutResponse) MarshalVT() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *PutResponse) MarshalToVT(dAtA []byte) (int, error) {
+func (m *SetResponse) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *PutResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *SetResponse) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m == nil {
 		return 0, nil
 	}
@@ -465,15 +465,15 @@ func (m *TxRequest_Get) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
-func (m *TxRequest_Put) MarshalToVT(dAtA []byte) (int, error) {
+func (m *TxRequest_Set) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *TxRequest_Put) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *TxRequest_Set) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.Put != nil {
-		size, err := m.Put.MarshalToSizedBufferVT(dAtA[:i])
+	if m.Set != nil {
+		size, err := m.Set.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -598,15 +598,15 @@ func (m *TxResponse_Get) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	}
 	return len(dAtA) - i, nil
 }
-func (m *TxResponse_Put) MarshalToVT(dAtA []byte) (int, error) {
+func (m *TxResponse_Set) MarshalToVT(dAtA []byte) (int, error) {
 	size := m.SizeVT()
 	return m.MarshalToSizedBufferVT(dAtA[:size])
 }
 
-func (m *TxResponse_Put) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+func (m *TxResponse_Set) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	i := len(dAtA)
-	if m.Put != nil {
-		size, err := m.Put.MarshalToSizedBufferVT(dAtA[:i])
+	if m.Set != nil {
+		size, err := m.Set.MarshalToSizedBufferVT(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -996,7 +996,7 @@ func encodeVarint(dAtA []byte, offset int, v uint64) int {
 	dAtA[offset] = uint8(v)
 	return base
 }
-func (m *PutRequest) SizeVT() (n int) {
+func (m *SetRequest) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1028,7 +1028,7 @@ func (m *PutRequest) SizeVT() (n int) {
 	return n
 }
 
-func (m *PutResponse) SizeVT() (n int) {
+func (m *SetResponse) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1177,14 +1177,14 @@ func (m *TxRequest_Get) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *TxRequest_Put) SizeVT() (n int) {
+func (m *TxRequest_Set) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.Put != nil {
-		l = m.Put.SizeVT()
+	if m.Set != nil {
+		l = m.Set.SizeVT()
 		n += 1 + l + sov(uint64(l))
 	}
 	return n
@@ -1246,14 +1246,14 @@ func (m *TxResponse_Get) SizeVT() (n int) {
 	}
 	return n
 }
-func (m *TxResponse_Put) SizeVT() (n int) {
+func (m *TxResponse_Set) SizeVT() (n int) {
 	if m == nil {
 		return 0
 	}
 	var l int
 	_ = l
-	if m.Put != nil {
-		l = m.Put.SizeVT()
+	if m.Set != nil {
+		l = m.Set.SizeVT()
 		n += 1 + l + sov(uint64(l))
 	}
 	return n
@@ -1420,7 +1420,7 @@ func sov(x uint64) (n int) {
 func soz(x uint64) (n int) {
 	return sov(uint64((x << 1) ^ uint64((int64(x) >> 63))))
 }
-func (m *PutRequest) UnmarshalVT(dAtA []byte) error {
+func (m *SetRequest) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1443,10 +1443,10 @@ func (m *PutRequest) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: PutRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: SetRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: PutRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: SetRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -1559,7 +1559,7 @@ func (m *PutRequest) UnmarshalVT(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *PutResponse) UnmarshalVT(dAtA []byte) error {
+func (m *SetResponse) UnmarshalVT(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1582,10 +1582,10 @@ func (m *PutResponse) UnmarshalVT(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: PutResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: SetResponse: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: PutResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: SetResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -2174,7 +2174,7 @@ func (m *TxRequest) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Put", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Set", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -2201,16 +2201,16 @@ func (m *TxRequest) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Request.(*TxRequest_Put); ok {
-				if err := oneof.Put.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Request.(*TxRequest_Set); ok {
+				if err := oneof.Set.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &PutRequest{}
+				v := &SetRequest{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Request = &TxRequest_Put{v}
+				m.Request = &TxRequest_Set{v}
 			}
 			iNdEx = postIndex
 		case 3:
@@ -2405,7 +2405,7 @@ func (m *TxResponse) UnmarshalVT(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Put", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Set", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -2432,16 +2432,16 @@ func (m *TxResponse) UnmarshalVT(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if oneof, ok := m.Response.(*TxResponse_Put); ok {
-				if err := oneof.Put.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
+			if oneof, ok := m.Response.(*TxResponse_Set); ok {
+				if err := oneof.Set.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
 			} else {
-				v := &PutResponse{}
+				v := &SetResponse{}
 				if err := v.UnmarshalVT(dAtA[iNdEx:postIndex]); err != nil {
 					return err
 				}
-				m.Response = &TxResponse_Put{v}
+				m.Response = &TxResponse_Set{v}
 			}
 			iNdEx = postIndex
 		case 3:

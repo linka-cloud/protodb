@@ -51,15 +51,15 @@ type Tx interface {
 }
 
 type Reader interface {
-	Get(ctx context.Context, m proto.Message, opts ...QueryOption) ([]proto.Message, *PagingInfo, error)
+	Get(ctx context.Context, m proto.Message, opts ...GetOption) ([]proto.Message, *PagingInfo, error)
 }
 
 type Watcher interface {
-	Watch(ctx context.Context, m proto.Message, opts ...QueryOption) (<-chan Event, error)
+	Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-chan Event, error)
 }
 
 type Writer interface {
-	Put(ctx context.Context, m proto.Message, opts ...WriteOption) (proto.Message, error)
+	Set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error)
 	Delete(ctx context.Context, m proto.Message) error
 }
 

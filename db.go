@@ -68,8 +68,8 @@ type db struct {
 	reg *preg.Files
 }
 
-func (db *db) Watch(ctx context.Context, m proto.Message, opts ...QueryOption) (<-chan Event, error) {
-	o := makeQueryOpts(opts...)
+func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-chan Event, error) {
+	o := makeGetOpts(opts...)
 
 	k := dataPrefix(m)
 	ch := make(chan Event)
@@ -158,7 +158,7 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...QueryOption) (
 	return ch, nil
 }
 
-func (db *db) Get(ctx context.Context, m proto.Message, opts ...QueryOption) ([]proto.Message, *PagingInfo, error) {
+func (db *db) Get(ctx context.Context, m proto.Message, opts ...GetOption) ([]proto.Message, *PagingInfo, error) {
 	tx, err := db.Tx(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -167,13 +167,13 @@ func (db *db) Get(ctx context.Context, m proto.Message, opts ...QueryOption) ([]
 	return tx.Get(ctx, m, opts...)
 }
 
-func (db *db) Put(ctx context.Context, m proto.Message, opts ...WriteOption) (proto.Message, error) {
+func (db *db) Set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error) {
 	tx, err := db.Tx(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Close()
-	m, err = tx.Put(ctx, m, opts...)
+	m, err = tx.Set(ctx, m, opts...)
 	if err != nil {
 		return nil, err
 	}
