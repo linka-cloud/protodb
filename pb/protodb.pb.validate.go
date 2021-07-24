@@ -51,6 +51,16 @@ func (m *PutRequest) Validate() error {
 
 	}
 
+	if v, ok := interface{}(m.GetTTL()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return PutRequestValidationError{
+				field:  "Ttl",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	return nil
 }
 

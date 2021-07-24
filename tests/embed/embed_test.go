@@ -274,7 +274,7 @@ func TestBatchInsertAndQuery(t *testing.T) {
 		i := &testpb.Interface{
 			Name: n,
 		}
-		m, err := tx.Put(ctx, i)
+		m, err := tx.Put(ctx, i, protodb.WithTTL(10*time.Minute))
 		require.NoError(err)
 		i, ok := m.(*testpb.Interface)
 		require.True(ok)

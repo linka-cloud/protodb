@@ -59,7 +59,7 @@ type Watcher interface {
 }
 
 type Writer interface {
-	Put(ctx context.Context, m proto.Message) (proto.Message, error)
+	Put(ctx context.Context, m proto.Message, opts ...WriteOption) (proto.Message, error)
 	Delete(ctx context.Context, m proto.Message) error
 }
 

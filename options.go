@@ -16,8 +16,10 @@ package protodb
 
 import (
 	"strings"
+	"time"
 
 	"github.com/dgraph-io/badger/v2"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
 var (
@@ -65,4 +67,62 @@ func (o options) build() badger.Options {
 
 var defaultOptions = options{
 	path: DefaultPath,
+}
+
+type QueryOption func(o *queryOpts)
+
+func WithPaging(paging *Paging) QueryOption {
+	return func(o *queryOpts) {
+		o.paging = paging
+	}
+}
+
+func WithFilters(filters ...*FieldFilter) QueryOption {
+	return func(o *queryOpts) {
+		o.filters = filters
+	}
+}
+
+func WithFieldMask(fieldMask *fieldmaskpb.FieldMask) QueryOption {
+	return func(o *queryOpts) {
+		o.fieldMask = fieldMask
+	}
+}
+
+type queryOpts struct {
+	paging    *Paging
+	filters   []*FieldFilter
+	fieldMask *fieldmaskpb.FieldMask
+}
+
+func makeQueryOpts(opts ...QueryOption) queryOpts {
+	o := queryOpts{}
+	for _, fn := range opts {
+		if fn != nil {
+			fn(&o)
+		}
+	}
+	return o
+}
+
+type WriteOption func(o *writeOpts)
+
+func WithTTL(d time.Duration) WriteOption {
+	return func(o *writeOpts) {
+		o.ttl = d
+	}
+}
+
+type writeOpts struct {
+	ttl time.Duration
+}
+
+func makeWriteOpts(opts ...WriteOption) writeOpts {
+	o := writeOpts{}
+	for _, fn := range opts {
+		if fn != nil {
+			fn(&o)
+		}
+	}
+	return o
 }

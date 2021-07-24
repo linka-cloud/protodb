@@ -180,7 +180,7 @@ func (s *server) put(ctx context.Context, w protodb.Writer, put *pb.PutRequest) 
 	if err != nil {
 		return nil, err
 	}
-	m, err := w.Put(ctx, d)
+	m, err := w.Put(ctx, d, protodb.WithTTL(put.GetTTL().AsDuration()))
 	if err != nil {
 		return nil, err
 	}

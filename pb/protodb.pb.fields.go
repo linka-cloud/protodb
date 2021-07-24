@@ -2,8 +2,10 @@ package pb
 
 var PutRequestFields = struct {
 	Payload string
+	Ttl     string
 }{
 	Payload: "payload",
+	Ttl:     "ttl",
 }
 
 var PutResponseFields = struct {

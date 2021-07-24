@@ -54,7 +54,7 @@ func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...QueryOption) (ou
 	if tx.closed() {
 		return nil, nil, ErrClosed
 	}
-	o := makeOpts(opts...)
+	o := makeQueryOpts(opts...)
 	prefix := dataPrefix(m)
 	it := tx.txn.NewIterator(badger.IteratorOptions{Prefix: prefix, PrefetchValues: false})
 	defer it.Close()
@@ -131,7 +131,7 @@ func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...QueryOption) (ou
 	return out, &PagingInfo{HasNext: hasNext, Token: tks}, nil
 }
 
-func (tx *tx) Put(ctx context.Context, m proto.Message) (proto.Message, error) {
+func (tx *tx) Put(ctx context.Context, m proto.Message, opts ...WriteOption) (proto.Message, error) {
 	if tx.closed() {
 		return nil, ErrClosed
 	}
@@ -141,12 +141,17 @@ func (tx *tx) Put(ctx context.Context, m proto.Message) (proto.Message, error) {
 	if tx.db.opts.applyDefaults {
 		defaults(m)
 	}
+	o := makeWriteOpts(opts...)
 	k := dataPrefix(m)
 	b, err := tx.db.marshal(m)
 	if err != nil {
 		return nil, err
 	}
-	if err := tx.txn.Set(k, b); err != nil {
+	e := badger.NewEntry(k, b)
+	if o.ttl != 0 {
+		e = e.WithTTL(o.ttl)
+	}
+	if err := tx.txn.SetEntry(e); err != nil {
 		return nil, err
 	}
 	if err := ctx.Err(); err != nil {

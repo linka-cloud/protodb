@@ -2,3 +2,4 @@
 .bin
 /test.*
 /tests/server/external_test.go
+/tests/embed/Test*

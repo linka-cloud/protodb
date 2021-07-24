@@ -69,7 +69,7 @@ type db struct {
 }
 
 func (db *db) Watch(ctx context.Context, m proto.Message, opts ...QueryOption) (<-chan Event, error) {
-	o := makeOpts(opts...)
+	o := makeQueryOpts(opts...)
 
 	k := dataPrefix(m)
 	ch := make(chan Event)
@@ -167,13 +167,13 @@ func (db *db) Get(ctx context.Context, m proto.Message, opts ...QueryOption) ([]
 	return tx.Get(ctx, m, opts...)
 }
 
-func (db *db) Put(ctx context.Context, m proto.Message) (proto.Message, error) {
+func (db *db) Put(ctx context.Context, m proto.Message, opts ...WriteOption) (proto.Message, error) {
 	tx, err := db.Tx(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Close()
-	m, err = tx.Put(ctx, m)
+	m, err = tx.Put(ctx, m, opts...)
 	if err != nil {
 		return nil, err
 	}
