@@ -58,14 +58,14 @@ func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...GetOption) (out 
 	prefix := dataPrefix(m)
 	it := tx.txn.NewIterator(badger.IteratorOptions{Prefix: prefix, PrefetchValues: false})
 	defer it.Close()
-	hasContinuationToken := o.paging.GetToken() != ""
+	hasContinuationToken := o.Paging.GetToken() != ""
 	inToken := &token.Token{}
-	if err := inToken.Decode(o.paging.GetToken()); err != nil {
+	if err := inToken.Decode(o.Paging.GetToken()); err != nil {
 		return nil, nil, err
 	}
-	hash, err := hash(NewFilter(o.filters...))
+	hash, err := hash(o.Filter)
 	if err != nil {
-		return nil, nil, fmt.Errorf("hash filters: %w", err)
+		return nil, nil, fmt.Errorf("hash filter: %w", err)
 	}
 	outToken := &token.Token{
 		Ts:          tx.txn.ReadTs(),
@@ -86,7 +86,7 @@ func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...GetOption) (out 
 		}
 		item := it.Item()
 		if item.Version() <= inToken.Ts &&
-			count < o.paging.GetOffset() &&
+			count < o.Paging.GetOffset() &&
 			bytes.Compare(item.Key(), inToken.GetLastPrefix()) <= 0 {
 			continue
 		}
@@ -95,8 +95,8 @@ func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...GetOption) (out 
 			if err := tx.db.unmarshal(val, v); err != nil {
 				return err
 			}
-			if len(o.filters) != 0 {
-				match, err = pf.MatchFilters(v, o.filters...)
+			if o.Filter != nil {
+				match, err = pf.MatchExpression(v, o.Filter)
 				if err != nil {
 					return err
 				}
@@ -108,12 +108,12 @@ func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...GetOption) (out 
 		}); err != nil {
 			return nil, nil, err
 		}
-		if max := o.paging.GetOffset() + o.paging.GetLimit(); max != 0 {
-			if count == max+1 || (hasContinuationToken && count == o.paging.GetLimit()+1) {
+		if max := o.Paging.GetOffset() + o.Paging.GetLimit(); max != 0 {
+			if count == max+1 || (hasContinuationToken && count == o.Paging.GetLimit()+1) {
 				hasNext = true
 				break
 			}
-			if !hasContinuationToken && count <= o.paging.GetOffset() {
+			if !hasContinuationToken && count <= o.Paging.GetOffset() {
 				continue
 			}
 		}
@@ -148,8 +148,8 @@ func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...SetOption) (prot
 		return nil, err
 	}
 	e := badger.NewEntry(k, b)
-	if o.ttl != 0 {
-		e = e.WithTTL(o.ttl)
+	if o.TTL != 0 {
+		e = e.WithTTL(o.TTL)
 	}
 	if err := tx.txn.SetEntry(e); err != nil {
 		return nil, err
@@ -204,10 +204,13 @@ func (tx *tx) close() {
 	tx.m.Unlock()
 }
 
-func hash(m interface{ MarshalVT() ([]byte, error) }) (string, error) {
-	b, err := m.MarshalVT()
-	if err != nil {
-		return "", err
+func hash(m interface{ MarshalVT() ([]byte, error) }) (hash string, err error) {
+	var b []byte
+	if m != nil {
+		b, err = m.MarshalVT()
+		if err != nil {
+			return "", err
+		}
 	}
 	sha := sha512.New()
 	sha.Write(b)

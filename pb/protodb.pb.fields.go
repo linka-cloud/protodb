@@ -24,13 +24,13 @@ var DeleteResponseFields = struct {
 }{}
 
 var GetRequestFields = struct {
-	Search  string
-	Filters string
-	Paging  string
+	Search string
+	Filter string
+	Paging string
 }{
-	Search:  "search",
-	Filters: "filters",
-	Paging:  "paging",
+	Search: "search",
+	Filter: "filter",
+	Paging: "paging",
 }
 
 var GetResponseFields = struct {
@@ -57,10 +57,18 @@ var TxResponseFields = struct {
 	Get    string
 	Set    string
 	Delete string
+	Commit string
 }{
 	Get:    "get",
 	Set:    "set",
 	Delete: "delete",
+	Commit: "commit",
+}
+
+var CommitResponseFields = struct {
+	Error string
+}{
+	Error: "error",
 }
 
 var PagingFields = struct {
@@ -82,11 +90,11 @@ var PagingInfoFields = struct {
 }
 
 var WatchRequestFields = struct {
-	Search  string
-	Filters string
+	Search string
+	Filter string
 }{
-	Search:  "search",
-	Filters: "filters",
+	Search: "search",
+	Filter: "filter",
 }
 
 var WatchEventFields = struct {

@@ -13,3 +13,318 @@
 // limitations under the License.
 
 package client
+
+import (
+	"context"
+	"fmt"
+	"io"
+
+	"go.linka.cloud/grpc/logger"
+	"go.uber.org/multierr"
+	"google.golang.org/grpc"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/descriptorpb"
+	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
+
+	"go.linka.cloud/protodb"
+	"go.linka.cloud/protodb/pb"
+)
+
+type Client interface {
+	protodb.Registerer
+	protodb.Reader
+	protodb.Writer
+	protodb.Watcher
+	protodb.TxProvider
+	io.Closer
+}
+
+func New(cc grpc.ClientConnInterface) (Client, error) {
+	return &client{c: pb.NewProtoDBClient(cc)}, nil
+}
+
+type client struct {
+	c pb.ProtoDBClient
+}
+
+func (c *client) RegisterProto(ctx context.Context, file *descriptorpb.FileDescriptorProto) error {
+	_, err := c.c.Register(ctx, &pb.RegisterRequest{File: file})
+	return err
+}
+
+func (c *client) Register(ctx context.Context, file protoreflect.FileDescriptor) error {
+	return fmt.Errorf("unsupported")
+}
+
+func (c *client) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOption) ([]proto.Message, *protodb.PagingInfo, error) {
+	a, err := anypb.New(m)
+	if err != nil {
+		return nil, nil, err
+	}
+	o := getOps(opts...)
+	res, err := c.c.Get(ctx, &pb.GetRequest{Search: a, Filter: o.Filter, Paging: o.Paging})
+	if err != nil {
+		return nil, nil, err
+	}
+	var msgs []proto.Message
+	for _, v := range res.Results {
+		msg, err := anypb.UnmarshalNew(v, proto.UnmarshalOptions{})
+		if err != nil {
+			return nil, nil, err
+		}
+		msgs = append(msgs, msg)
+	}
+	return msgs, res.Paging, nil
+}
+
+func (c *client) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOption) (proto.Message, error) {
+	a, err := anypb.New(m)
+	if err != nil {
+		return nil, err
+	}
+	o := setOps(opts...)
+	var ttl *durationpb.Duration
+	if o.TTL != 0 {
+		ttl = durationpb.New(o.TTL)
+	}
+	res, err := c.c.Set(ctx, &pb.SetRequest{Payload: a, TTL: ttl})
+	if err != nil {
+		return nil, err
+	}
+	msg, err := anypb.UnmarshalNew(res.Result, proto.UnmarshalOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return msg, nil
+}
+
+func (c *client) Delete(ctx context.Context, m proto.Message) error {
+	a, err := anypb.New(m)
+	if err != nil {
+		return err
+	}
+	_, err = c.c.Delete(ctx, &pb.DeleteRequest{Payload: a})
+	return err
+}
+
+func (c *client) Watch(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (<-chan protodb.Event, error) {
+	a, err := anypb.New(m)
+	if err != nil {
+		return nil, err
+	}
+	o := getOps(opts...)
+	w, err := c.c.Watch(ctx, &pb.WatchRequest{Search: a, Filter: o.Filter})
+	if err != nil {
+		return nil, err
+	}
+	ch := make(chan protodb.Event)
+	go func() {
+		defer close(ch)
+		defer w.CloseSend()
+		for {
+			e, err := w.Recv()
+			if err != nil {
+				logger.C(ctx).Errorf("watch %s: %v", m.ProtoReflect().Descriptor().FullName(), err)
+				return
+			}
+			ch <- newEvent(e, err)
+		}
+	}()
+	return ch, nil
+}
+
+func (c *client) Tx(ctx context.Context) (protodb.Tx, error) {
+	return c.newTx(ctx)
+}
+
+func (c *client) Close() error {
+	return nil
+}
+
+func (c *client) newTx(ctx context.Context) (protodb.Tx, error) {
+	txn, err := c.c.Tx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &tx{ctx: ctx, txn: txn}, nil
+}
+
+type tx struct {
+	ctx context.Context
+	txn pb.ProtoDB_TxClient
+}
+
+func (t *tx) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOption) ([]proto.Message, *protodb.PagingInfo, error) {
+	a, err := anypb.New(m)
+	if err != nil {
+		return nil, nil, err
+	}
+	o := getOps(opts...)
+	if err := t.txn.Send(&pb.TxRequest{
+		Request: &pb.TxRequest_Get{
+			Get: &pb.GetRequest{Search: a, Filter: o.Filter, Paging: o.Paging},
+		},
+	}); err != nil {
+		return nil, nil, err
+	}
+	res, err := t.txn.Recv()
+	if err != nil {
+		return nil, nil, err
+	}
+	if res.GetGet() == nil {
+		return nil, nil, fmt.Errorf("no response")
+	}
+	var msgs []proto.Message
+	for _, v := range res.GetGet().GetResults() {
+		msg, err := anypb.UnmarshalNew(v, proto.UnmarshalOptions{})
+		if err != nil {
+			return nil, nil, err
+		}
+		msgs = append(msgs, msg)
+	}
+	return msgs, res.GetGet().GetPaging(), nil
+}
+
+func (t *tx) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOption) (proto.Message, error) {
+	a, err := anypb.New(m)
+	if err != nil {
+		return nil, err
+	}
+	o := setOps(opts...)
+	var ttl *durationpb.Duration
+	if o.TTL != 0 {
+		ttl = durationpb.New(o.TTL)
+	}
+	if err := t.txn.Send(&pb.TxRequest{
+		Request: &pb.TxRequest_Set{
+			Set: &pb.SetRequest{Payload: a, TTL: ttl},
+		},
+	}); err != nil {
+		return nil, err
+	}
+	res, err := t.txn.Recv()
+	if err != nil {
+		return nil, err
+	}
+	if res.GetSet() == nil || res.GetSet().GetResult() == nil {
+		return nil, fmt.Errorf("no response")
+	}
+	msg, err := anypb.UnmarshalNew(res.GetSet().GetResult(), proto.UnmarshalOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return msg, nil
+}
+
+func (t *tx) Delete(ctx context.Context, m proto.Message) error {
+	a, err := anypb.New(m)
+	if err != nil {
+		return err
+	}
+	if err := t.txn.Send(&pb.TxRequest{
+		Request: &pb.TxRequest_Delete{
+			Delete: &pb.DeleteRequest{Payload: a},
+		},
+	}); err != nil {
+		return err
+	}
+	res, err := t.txn.Recv()
+	if err != nil {
+		return err
+	}
+	if res.GetDelete() == nil {
+		return fmt.Errorf("no response")
+	}
+	return nil
+}
+
+func (t *tx) Commit(ctx context.Context) error {
+	if err := t.txn.Send(&pb.TxRequest{Request: &pb.TxRequest_Commit{Commit: wrapperspb.Bool(true)}}); err != nil {
+		return err
+	}
+	res, err := t.txn.Recv()
+	if err != nil {
+		return err
+	}
+	if res.GetCommit() == nil {
+		return fmt.Errorf("no response")
+	}
+	if res.GetCommit().GetError() != nil {
+		return fmt.Errorf(res.GetCommit().GetError().GetValue())
+	}
+	return nil
+}
+
+func (t *tx) Close() {
+	if err := t.txn.CloseSend(); err != nil {
+		logger.From(t.ctx).Errorf("close: %w", err)
+	}
+}
+
+type event struct {
+	typ protodb.EventType
+	old proto.Message
+	new proto.Message
+	err error
+}
+
+func newEvent(e *pb.WatchEvent, err error) *event {
+	ev := &event{err: err}
+	switch e.Type {
+	case pb.WatchEventEnter:
+		ev.typ = protodb.EventTypeEnter
+	case pb.WatchEventUpdate:
+		ev.typ = protodb.EventTypeUpdate
+	case pb.WatchEventLeave:
+		ev.typ = protodb.EventTypeLeave
+	}
+	if e.Old != nil {
+		m, err := anypb.UnmarshalNew(e.Old, proto.UnmarshalOptions{})
+		if err != nil {
+			ev.err = multierr.Append(ev.err, fmt.Errorf("unmarshal old: %w", err))
+		}
+		ev.old = m
+	}
+	if e.New != nil {
+		m, err := anypb.UnmarshalNew(e.New, proto.UnmarshalOptions{})
+		if err != nil {
+			ev.err = multierr.Append(ev.err, fmt.Errorf("unmarshal new: %w", err))
+		}
+		ev.new = m
+	}
+	return ev
+}
+
+func (e *event) Type() protodb.EventType {
+	return e.typ
+}
+
+func (e *event) Old() proto.Message {
+	return e.old
+}
+
+func (e *event) New() proto.Message {
+	return e.new
+}
+
+func (e *event) Err() error {
+	return e.err
+}
+
+func getOps(opts ...protodb.GetOption) *protodb.GetOpts {
+	o := &protodb.GetOpts{}
+	for _, v := range opts {
+		v(o)
+	}
+	return o
+}
+func setOps(opts ...protodb.SetOption) *protodb.SetOpts {
+	o := &protodb.SetOpts{}
+	for _, v := range opts {
+		v(o)
+	}
+	return o
+}

@@ -352,19 +352,14 @@ func (m *GetRequest) Validate() error {
 
 	}
 
-	for idx, item := range m.GetFilters() {
-		_, _ = idx, item
-
-		if v, ok := interface{}(item).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return GetRequestValidationError{
-					field:  fmt.Sprintf("Filters[%v]", idx),
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
+	if v, ok := interface{}(m.GetFilter()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return GetRequestValidationError{
+				field:  "Filter",
+				reason: "embedded message failed validation",
+				cause:  err,
 			}
 		}
-
 	}
 
 	if v, ok := interface{}(m.GetPaging()).(interface{ Validate() error }); ok {
@@ -691,6 +686,18 @@ func (m *TxResponse) Validate() error {
 			}
 		}
 
+	case *TxResponse_Commit:
+
+		if v, ok := interface{}(m.GetCommit()).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return TxResponseValidationError{
+					field:  "Commit",
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
 	}
 
 	return nil
@@ -749,6 +756,81 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = TxResponseValidationError{}
+
+// Validate checks the field values on CommitResponse with the rules defined in
+// the proto definition for this message. If any rules are violated, an error
+// is returned.
+func (m *CommitResponse) Validate() error {
+	if m == nil {
+		return nil
+	}
+
+	if v, ok := interface{}(m.GetError()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return CommitResponseValidationError{
+				field:  "Error",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	return nil
+}
+
+// CommitResponseValidationError is the validation error returned by
+// CommitResponse.Validate if the designated constraints aren't met.
+type CommitResponseValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e CommitResponseValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e CommitResponseValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e CommitResponseValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e CommitResponseValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e CommitResponseValidationError) ErrorName() string { return "CommitResponseValidationError" }
+
+// Error satisfies the builtin error interface
+func (e CommitResponseValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sCommitResponse.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = CommitResponseValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = CommitResponseValidationError{}
 
 // Validate checks the field values on Paging with the rules defined in the
 // proto definition for this message. If any rules are violated, an error is returned.
@@ -907,19 +989,14 @@ func (m *WatchRequest) Validate() error {
 
 	}
 
-	for idx, item := range m.GetFilters() {
-		_, _ = idx, item
-
-		if v, ok := interface{}(item).(interface{ Validate() error }); ok {
-			if err := v.Validate(); err != nil {
-				return WatchRequestValidationError{
-					field:  fmt.Sprintf("Filters[%v]", idx),
-					reason: "embedded message failed validation",
-					cause:  err,
-				}
+	if v, ok := interface{}(m.GetFilter()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return WatchRequestValidationError{
+				field:  "Filter",
+				reason: "embedded message failed validation",
+				cause:  err,
 			}
 		}
-
 	}
 
 	return nil

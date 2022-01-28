@@ -64,7 +64,7 @@ message DeleteResponse {}
 
 message GetRequest {
   google.protobuf.Any search = 1 [(validate.rules).any = {required: true}];
-  repeated linka.cloud.protofilters.FieldFilter filters = 2;
+  linka.cloud.protofilters.Expression filter = 2;
   Paging paging = 3;
 }
 
@@ -88,7 +88,12 @@ message TxResponse {
     GetResponse get = 1;
     SetResponse set = 2;
     DeleteResponse delete = 3;
+    CommitResponse commit = 4;
   }
+}
+
+message CommitResponse {
+  google.protobuf.StringValue error = 1;
 }
 
 message Paging {
@@ -105,7 +110,7 @@ message PagingInfo {
 
 message WatchRequest {
   google.protobuf.Any search = 1 [(validate.rules).any = {required: true}];
-  repeated linka.cloud.protofilters.FieldFilter filters = 2;
+  linka.cloud.protofilters.Expression filter = 2;
 }
 
 message WatchEvent {

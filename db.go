@@ -108,7 +108,7 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 						return err
 					}
 				}
-				if len(o.filters) == 0 {
+				if o.Filter == nil || o.Filter.Condition == nil {
 					if new == nil {
 						typ = pb.WatchEventLeave
 					} else if old != nil {
@@ -121,14 +121,14 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 				}
 				var was bool
 				if old != nil {
-					was, err = pf.MatchFilters(old, o.filters...)
+					was, err = pf.MatchExpression(old, o.Filter)
 					if err != nil {
 						return err
 					}
 				}
 				var is bool
 				if new != nil {
-					is, err = pf.MatchFilters(new, o.filters...)
+					is, err = pf.MatchExpression(new, o.Filter)
 					if err != nil {
 						return err
 					}

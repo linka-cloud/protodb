@@ -23,6 +23,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
 	"google.golang.org/protobuf/types/known/anypb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"go.linka.cloud/protodb"
 	"go.linka.cloud/protodb/pb"
@@ -113,10 +114,13 @@ func (s *server) Tx(stream pb.ProtoDB_TxServer) error {
 			if !r.Commit.GetValue() {
 				continue
 			}
-			if err := tx.Commit(ctx); err != nil {
+			err := tx.Commit(ctx)
+			cr := &pb.CommitResponse{}
+			if err != nil {
+				cr.Error = wrapperspb.String(err.Error())
 				return err
 			}
-			return nil
+			res = &pb.TxResponse{Response: &pb.TxResponse_Commit{Commit: cr}}
 		}
 		if err := stream.Send(res); err != nil {
 			return err
@@ -227,9 +231,9 @@ func (s *server) unmarshalToDynamic(a *anypb.Any) (*dynamicpb.Message, error) {
 }
 
 func getOpts(r *pb.GetRequest) (opts []protodb.GetOption) {
-	return append(opts, protodb.WithFilters(r.Filters...), protodb.WithPaging(r.Paging))
+	return append(opts, protodb.WithFilter(r.Filter), protodb.WithPaging(r.Paging))
 }
 
 func watchOpts(r *pb.WatchRequest) (opts []protodb.GetOption) {
-	return append(opts, protodb.WithFilters(r.Filters...))
+	return append(opts, protodb.WithFilter(r.Filter))
 }

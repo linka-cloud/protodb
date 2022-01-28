@@ -69,34 +69,34 @@ var defaultOptions = options{
 	path: DefaultPath,
 }
 
-type GetOption func(o *getOpts)
+type GetOption func(o *GetOpts)
 
 func WithPaging(paging *Paging) GetOption {
-	return func(o *getOpts) {
-		o.paging = paging
+	return func(o *GetOpts) {
+		o.Paging = paging
 	}
 }
 
-func WithFilters(filters ...*FieldFilter) GetOption {
-	return func(o *getOpts) {
-		o.filters = filters
+func WithFilter(filter *FilterExpr) GetOption {
+	return func(o *GetOpts) {
+		o.Filter = filter
 	}
 }
 
 func WithFieldMask(fieldMask *fieldmaskpb.FieldMask) GetOption {
-	return func(o *getOpts) {
-		o.fieldMask = fieldMask
+	return func(o *GetOpts) {
+		o.FieldMask = fieldMask
 	}
 }
 
-type getOpts struct {
-	paging    *Paging
-	filters   []*FieldFilter
-	fieldMask *fieldmaskpb.FieldMask
+type GetOpts struct {
+	Paging    *Paging
+	Filter    *FilterExpr
+	FieldMask *fieldmaskpb.FieldMask
 }
 
-func makeGetOpts(opts ...GetOption) getOpts {
-	o := getOpts{}
+func makeGetOpts(opts ...GetOption) GetOpts {
+	o := GetOpts{}
 	for _, fn := range opts {
 		if fn != nil {
 			fn(&o)
@@ -105,20 +105,20 @@ func makeGetOpts(opts ...GetOption) getOpts {
 	return o
 }
 
-type SetOption func(o *setOpts)
+type SetOption func(o *SetOpts)
 
 func WithTTL(d time.Duration) SetOption {
-	return func(o *setOpts) {
-		o.ttl = d
+	return func(o *SetOpts) {
+		o.TTL = d
 	}
 }
 
-type setOpts struct {
-	ttl time.Duration
+type SetOpts struct {
+	TTL time.Duration
 }
 
-func makeSetOpts(opts ...SetOption) setOpts {
-	o := setOpts{}
+func makeSetOpts(opts ...SetOption) SetOpts {
+	o := SetOpts{}
 	for _, fn := range opts {
 		if fn != nil {
 			fn(&o)

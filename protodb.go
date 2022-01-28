@@ -28,15 +28,18 @@ import (
 )
 
 type (
-	Paging       = pb.Paging
-	PagingInfo   = pb.PagingInfo
-	Filter       = filters.Filter
-	FieldFilter  = filters.FieldFilter
-	FieldsFilter = filters.FieldsFilter
+	Paging     = pb.Paging
+	PagingInfo = pb.PagingInfo
+	FilterExpr = filters.Expression
+)
+
+var (
+	Where = filters.Where
 )
 
 type DB interface {
 	Registerer
+	Resolverer
 	Reader
 	Writer
 	Watcher
@@ -75,6 +78,9 @@ type Committer interface {
 type Registerer interface {
 	RegisterProto(ctx context.Context, file *descriptorpb.FileDescriptorProto) error
 	Register(ctx context.Context, file protoreflect.FileDescriptor) error
+}
+
+type Resolverer interface {
 	Resolver() protodesc.Resolver
 }
 
@@ -92,7 +98,3 @@ type Event interface {
 	New() proto.Message
 	Err() error
 }
-
-var (
-	NewFilter = filters.New
-)

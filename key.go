@@ -16,12 +16,42 @@ package protodb
 
 import (
 	"fmt"
+	"strings"
 
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/dynamicpb"
 )
 
 func keyFor(m proto.Message) (string, error) {
 	switch i := interface{}(m).(type) {
+	case *dynamicpb.Message:
+		var k string
+		i.Range(func(descriptor protoreflect.FieldDescriptor, value protoreflect.Value) bool {
+			switch strings.ToLower(string(descriptor.FullName().Name())) {
+			case "id":
+				if id := value.String(); id != "" {
+					k = id
+					return false
+				}
+				if id := value.Int(); id != 0 {
+					k = fmt.Sprintf("%d", id)
+					return false
+				}
+			case "key":
+				if key := value.String(); key != "" {
+					k = key
+					return false
+				}
+			case "name":
+				if n := value.String(); n != "" {
+					k = n
+					return false
+				}
+			}
+			return true
+		})
+		return k, nil
 	case interface{ Key() string }:
 		return i.Key(), nil
 	case interface{ ID() string }:

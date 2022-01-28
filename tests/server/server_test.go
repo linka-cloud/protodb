@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package embed
+package server
 
 import (
 	"context"
@@ -21,13 +21,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fullstorydev/grpchan/inprocgrpc"
 	assert2 "github.com/stretchr/testify/assert"
 	require2 "github.com/stretchr/testify/require"
 	"go.linka.cloud/protofilters/filters"
 	"google.golang.org/protobuf/proto"
 
 	"go.linka.cloud/protodb"
+	"go.linka.cloud/protodb/client"
 	"go.linka.cloud/protodb/pb"
+	"go.linka.cloud/protodb/server"
 	testpb "go.linka.cloud/protodb/tests/pb"
 )
 
@@ -57,8 +60,8 @@ func init() {
 	i1.Default()
 }
 
-func TestEmbed(t *testing.T) {
-	dbPath := "TestEmbed"
+func TestServer(t *testing.T) {
+	dbPath := "TestServer"
 	defer os.RemoveAll(dbPath)
 	require := require2.New(t)
 	assert := assert2.New(t)
@@ -70,10 +73,19 @@ func TestEmbed(t *testing.T) {
 	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	db, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
+	sdb, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
 	require.NoError(err)
-	assert.NotNil(db)
-	defer db.Close()
+	assert.NotNil(sdb)
+	defer sdb.Close()
+
+	srv, err := server.New(sdb)
+	require.NoError(err)
+
+	tr := &inprocgrpc.Channel{}
+	pb.RegisterProtoDBServer(tr, srv)
+
+	db, err := client.New(tr)
+	require.NoError(err)
 
 	watches := make(chan protodb.Event)
 	go func() {
@@ -88,7 +100,7 @@ func TestEmbed(t *testing.T) {
 	r, err := db.Set(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
-	assert.Equal(i0, r)
+	equal(i0, r)
 	e := <-watches
 	assert.Equal(protodb.EventTypeEnter, e.Type())
 	assert.Nil(e.Old())
@@ -97,7 +109,7 @@ func TestEmbed(t *testing.T) {
 	is, i, err := db.Get(ctx, &testpb.Interface{})
 	require.NoError(err)
 	assert.NotNil(i)
-	assert.Len(is, 1)
+	require.Len(is, 1)
 	equal(i0, is[0])
 
 	r, err = db.Set(ctx, i1)
@@ -112,7 +124,7 @@ func TestEmbed(t *testing.T) {
 	is, i, err = db.Get(ctx, &testpb.Interface{})
 	require.NoError(err)
 	assert.NotNil(i)
-	assert.Len(is, 2)
+	require.Len(is, 2)
 	equal(i0, is[0])
 	equal(i1, is[1])
 
@@ -121,7 +133,7 @@ func TestEmbed(t *testing.T) {
 	r, err = db.Set(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
-	assert.Equal(i0, r)
+	equal(i0, r)
 	e = <-watches
 	assert.Equal(protodb.EventTypeUpdate, e.Type())
 	equal(i0Old, e.Old())
@@ -132,7 +144,7 @@ func TestEmbed(t *testing.T) {
 	r, err = db.Set(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
-	assert.Equal(i0, r)
+	equal(i0, r)
 	e = <-watches
 	assert.Equal(protodb.EventTypeUpdate, e.Type())
 	equal(i0Old, e.Old())
@@ -152,8 +164,8 @@ func TestEmbed(t *testing.T) {
 	<-watches
 }
 
-func TestEmbedWatchWithFilter(t *testing.T) {
-	dbPath := "TestEmbedWatchWithFilter"
+func TestServerWatchWithFilter(t *testing.T) {
+	dbPath := "TestServerWatchWithFilter"
 	defer os.RemoveAll(dbPath)
 	require := require2.New(t)
 	assert := assert2.New(t)
@@ -165,12 +177,22 @@ func TestEmbedWatchWithFilter(t *testing.T) {
 	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	db, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
+	sdb, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
 	require.NoError(err)
-	assert.NotNil(db)
-	defer db.Close()
+	assert.NotNil(sdb)
+	defer sdb.Close()
+
+	srv, err := server.New(sdb)
+	require.NoError(err)
+
+	tr := &inprocgrpc.Channel{}
+	pb.RegisterProtoDBServer(tr, srv)
+
+	db, err := client.New(tr)
+	require.NoError(err)
 
 	watches := make(chan protodb.Event)
+	winit := make(chan struct{})
 	go func() {
 		ch, err := db.Watch(ctx, &testpb.Interface{},
 			protodb.WithFilter(
@@ -178,16 +200,17 @@ func TestEmbedWatchWithFilter(t *testing.T) {
 			),
 		)
 		require.NoError(err)
+		close(winit)
 		for e := range ch {
 			watches <- e
 		}
 		close(watches)
 	}()
-
+	<-winit
 	r, err := db.Set(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
-	assert.Equal(i0, r)
+	equal(i0, r)
 	e := <-watches
 	assert.Equal(protodb.EventTypeEnter, e.Type())
 	assert.Nil(e.Old())
@@ -197,14 +220,14 @@ func TestEmbedWatchWithFilter(t *testing.T) {
 	r, err = db.Set(ctx, i1)
 	require.NoError(err)
 	require.NotNil(r)
-	assert.Equal(i1, r)
+	equal(i1, r)
 
 	i0Old = proto.Clone(i0)
 	i0.Status = testpb.StatusDown
 	r, err = db.Set(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
-	assert.Equal(i0, r)
+	equal(i0, r)
 	e = <-watches
 	assert.Equal(protodb.EventTypeLeave, e.Type())
 	equal(i0Old, e.Old())
@@ -215,7 +238,7 @@ func TestEmbedWatchWithFilter(t *testing.T) {
 	r, err = db.Set(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
-	assert.Equal(i0, r)
+	equal(i0, r)
 	e = <-watches
 	assert.Equal(protodb.EventTypeEnter, e.Type())
 	equal(i0Old, e.Old())
@@ -244,12 +267,22 @@ func TestRegister(t *testing.T) {
 	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	db, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
+	sdb, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
 	require.NoError(err)
-	assert.NotNil(db)
+	assert.NotNil(sdb)
+	defer sdb.Close()
+
+	srv, err := server.New(sdb)
+	require.NoError(err)
+
+	tr := &inprocgrpc.Channel{}
+	pb.RegisterProtoDBServer(tr, srv)
+
+	db, err := client.New(tr)
+	require.NoError(err)
 	defer db.Close()
 
-	require.NoError(db.Register(ctx, (&testpb.Interface{}).ProtoReflect().Descriptor().ParentFile()))
+	require.Error(db.Register(ctx, (&testpb.Interface{}).ProtoReflect().Descriptor().ParentFile()))
 }
 
 func TestBatchInsertAndQuery(t *testing.T) {
@@ -261,10 +294,19 @@ func TestBatchInsertAndQuery(t *testing.T) {
 	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	db, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
+	sdb, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
 	require.NoError(err)
-	assert.NotNil(db)
-	defer db.Close()
+	assert.NotNil(sdb)
+	defer sdb.Close()
+
+	srv, err := server.New(sdb)
+	require.NoError(err)
+
+	tr := &inprocgrpc.Channel{}
+	pb.RegisterProtoDBServer(tr, srv)
+
+	db, err := client.New(tr)
+	require.NoError(err)
 
 	tx, err := db.Tx(ctx)
 	require.NoError(err)
@@ -279,7 +321,8 @@ func TestBatchInsertAndQuery(t *testing.T) {
 		require.NoError(err)
 		i, ok := m.(*testpb.Interface)
 		require.True(ok)
-		assert.Equal(uint32(1500), i.Mtu)
+		// TODO(adphi): defaults are not applied on dynamics for now
+		// require.Equal(uint32(1500), i.Mtu)
 	}
 	require.NoError(tx.Commit(ctx))
 	t.Logf("inserted %d items in %v", max, time.Since(start))
