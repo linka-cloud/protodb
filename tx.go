@@ -55,7 +55,7 @@ func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...GetOption) (out 
 		return nil, nil, ErrClosed
 	}
 	o := makeGetOpts(opts...)
-	prefix := dataPrefix(m)
+	prefix, _ := dataPrefix(m)
 	it := tx.txn.NewIterator(badger.IteratorOptions{Prefix: prefix, PrefetchValues: false})
 	defer it.Close()
 	hasContinuationToken := o.Paging.GetToken() != ""
@@ -142,7 +142,10 @@ func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...SetOption) (prot
 		applyDefaults(m)
 	}
 	o := makeSetOpts(opts...)
-	k := dataPrefix(m)
+	k, err := dataPrefix(m)
+	if err != nil {
+		return nil, err
+	}
 	b, err := tx.db.marshal(m)
 	if err != nil {
 		return nil, err
@@ -169,7 +172,11 @@ func (tx *tx) Delete(ctx context.Context, m proto.Message) error {
 		return errors.New("empty message")
 	}
 	// TODO(adphi): should we check / read for key first ?
-	if err := tx.txn.Delete(dataPrefix(m)); err != nil {
+	k, err := dataPrefix(m)
+	if err != nil {
+		return err
+	}
+	if err := tx.txn.Delete(k); err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {

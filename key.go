@@ -51,25 +51,45 @@ func keyFor(m proto.Message) (string, error) {
 			}
 			return true
 		})
-		return k, nil
+		if k != "" {
+			return k, nil
+		}
 	case interface{ Key() string }:
-		return i.Key(), nil
+		if k := i.Key(); k != "" {
+			return k, nil
+		}
 	case interface{ ID() string }:
-		return i.ID(), nil
+		if k := i.ID(); k != "" {
+			return k, nil
+		}
 	case interface{ Id() string }:
-		return i.Id(), nil
+		if k := i.Id(); k != "" {
+			return k, nil
+		}
 	case interface{ ID() int64 }:
-		return fmt.Sprintf("%d", i.ID()), nil
+		if k := fmt.Sprintf("%d", i.ID()); k != "" {
+			return k, nil
+		}
 	case interface{ Id() int64 }:
-		return fmt.Sprintf("%d", i.Id()), nil
+		if k := fmt.Sprintf("%d", i.Id()); k != "" {
+			return k, nil
+		}
 	case interface{ ID() int32 }:
-		return fmt.Sprintf("%d", i.ID()), nil
+		if k := fmt.Sprintf("%d", i.ID()); k != "" {
+			return k, nil
+		}
 	case interface{ Id() int32 }:
-		return fmt.Sprintf("%d", i.Id()), nil
+		if k := fmt.Sprintf("%d", i.Id()); k != "" {
+			return k, nil
+		}
 	case interface{ Name() string }:
-		return i.Name(), nil
+		if k := i.Name(); k != "" {
+			return k, nil
+		}
 	case interface{ GetName() string }:
-		return i.GetName(), nil
+		if k := i.GetName(); k != "" {
+			return k, nil
+		}
 	}
 	return "", fmt.Errorf("key / id not found in %s", m.ProtoReflect().Type().Descriptor().FullName())
 }

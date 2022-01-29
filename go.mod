@@ -24,4 +24,5 @@ require (
 require (
 	github.com/dgraph-io/ristretto v0.1.0 // indirect
 	github.com/golang/snappy v0.0.3 // indirect
+	github.com/sirupsen/logrus v1.8.1
 )

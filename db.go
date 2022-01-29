@@ -23,6 +23,7 @@ import (
 	"sync"
 
 	"github.com/dgraph-io/badger/v2"
+	"go.linka.cloud/grpc/logger"
 	"go.linka.cloud/protoc-gen-defaults/defaults"
 	pf "go.linka.cloud/protofilters"
 	"google.golang.org/protobuf/proto"
@@ -44,7 +45,7 @@ func Open(ctx context.Context, opts ...Option) (DB, error) {
 	for _, v := range opts {
 		v(&o)
 	}
-	bdb, err := badger.Open(o.build().WithNumVersionsToKeep(2))
+	bdb, err := badger.Open(o.build().WithNumVersionsToKeep(2).WithLogger(logger.C(ctx).WithField("service", "protodb")))
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +73,7 @@ type db struct {
 func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-chan Event, error) {
 	o := makeGetOpts(opts...)
 
-	k := dataPrefix(m)
+	k, _ := dataPrefix(m)
 	ch := make(chan Event)
 	go func() {
 		defer close(ch)
