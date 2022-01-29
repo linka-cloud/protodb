@@ -12,7 +12,7 @@ require (
 	github.com/planetscale/vtprotobuf v0.2.0
 	github.com/stretchr/testify v1.7.0
 	go.linka.cloud/grpc v0.2.2-0.20211213110810-e578d62a29ba
-	go.linka.cloud/protoc-gen-defaults v0.1.0
+	go.linka.cloud/protoc-gen-defaults v0.4.0
 	go.linka.cloud/protoc-gen-go-fields v0.1.1
 	go.linka.cloud/protofilters v0.3.2
 	go.uber.org/multierr v1.7.0

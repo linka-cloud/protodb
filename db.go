@@ -23,6 +23,7 @@ import (
 	"sync"
 
 	"github.com/dgraph-io/badger/v2"
+	"go.linka.cloud/protoc-gen-defaults/defaults"
 	pf "go.linka.cloud/protofilters"
 	"google.golang.org/protobuf/proto"
 	pdesc "google.golang.org/protobuf/reflect/protodesc"
@@ -353,10 +354,11 @@ func (db *db) recoverRegister(file *descriptorpb.FileDescriptorProto) error {
 	})
 }
 
-func defaults(m proto.Message) {
-	// TODO(adphi): apply protoc-gen-defaults annotations with protoreflect
+func applyDefaults(m proto.Message) {
 	if v, ok := m.(interface{ Default() }); ok {
 		v.Default()
+	} else {
+		defaults.Apply(m)
 	}
 }
 

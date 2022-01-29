@@ -139,7 +139,7 @@ func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...SetOption) (prot
 		return nil, errors.New("empty message")
 	}
 	if tx.db.opts.applyDefaults {
-		defaults(m)
+		applyDefaults(m)
 	}
 	o := makeSetOpts(opts...)
 	k := dataPrefix(m)

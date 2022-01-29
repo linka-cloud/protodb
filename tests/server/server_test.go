@@ -323,8 +323,7 @@ func TestBatchInsertAndQuery(t *testing.T) {
 		require.NoError(err)
 		i, ok := m.(*testpb.Interface)
 		require.True(ok)
-		// TODO(adphi): defaults are not applied on dynamics for now
-		// require.Equal(uint32(1500), i.Mtu)
+		require.Equal(uint32(1500), i.Mtu)
 	}
 	require.NoError(tx.Commit(ctx))
 	t.Logf("inserted %d items in %v", max, time.Since(start))
