@@ -45,7 +45,8 @@ func Open(ctx context.Context, opts ...Option) (DB, error) {
 	for _, v := range opts {
 		v(&o)
 	}
-	bdb, err := badger.Open(o.build().WithNumVersionsToKeep(2).WithLogger(logger.C(ctx).WithField("service", "protodb")))
+	bopts := o.build().WithNumVersionsToKeep(2).WithLogger(logger.C(ctx).WithField("service", "protodb"))
+	bdb, err := badger.Open(bopts)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +56,7 @@ func Open(ctx context.Context, opts ...Option) (DB, error) {
 	}
 	reg := preg.GlobalFiles
 
-	db := &db{bdb: bdb, opts: o, reg: reg}
+	db := &db{bdb: bdb, opts: o, reg: reg, bopts: bopts}
 	if err := db.load(); err != nil {
 		return nil, err
 	}
@@ -63,8 +64,9 @@ func Open(ctx context.Context, opts ...Option) (DB, error) {
 }
 
 type db struct {
-	bdb  *badger.DB
-	opts options
+	bdb   *badger.DB
+	opts  options
+	bopts badger.Options
 
 	mu  sync.RWMutex
 	reg *preg.Files

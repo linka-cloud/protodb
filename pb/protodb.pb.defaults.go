@@ -55,6 +55,18 @@ func (x *TxResponse) Default() {
 func (x *CommitResponse) Default() {
 }
 
+func (x *CountRequest) Default() {
+}
+
+func (x *CountResponse) Default() {
+}
+
+func (x *SizeRequest) Default() {
+}
+
+func (x *SizeResponse) Default() {
+}
+
 func (x *Paging) Default() {
 }
 

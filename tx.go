@@ -46,6 +46,9 @@ type tx struct {
 
 	applyDefaults bool
 
+	count int64
+	size  int64
+
 	m    sync.RWMutex
 	done bool
 }
@@ -151,6 +154,9 @@ func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...SetOption) (prot
 		return nil, err
 	}
 	e := badger.NewEntry(k, b)
+	if err := tx.checkSize(e); err != nil {
+		return nil, err
+	}
 	if o.TTL != 0 {
 		e = e.WithTTL(o.TTL)
 	}
@@ -176,6 +182,9 @@ func (tx *tx) Delete(ctx context.Context, m proto.Message) error {
 	if err != nil {
 		return err
 	}
+	if err := tx.checkSize(badger.NewEntry(k, nil)); err != nil {
+		return err
+	}
 	if err := tx.txn.Delete(k); err != nil {
 		return err
 	}
@@ -184,6 +193,18 @@ func (tx *tx) Delete(ctx context.Context, m proto.Message) error {
 		return err
 	}
 	return nil
+}
+
+func (tx *tx) Count() (int64, error) {
+	tx.m.RLock()
+	defer tx.m.RUnlock()
+	return tx.count, nil
+}
+
+func (tx *tx) Size() (int64, error) {
+	tx.m.RLock()
+	defer tx.m.RUnlock()
+	return tx.size, nil
 }
 
 func (tx *tx) Commit(ctx context.Context) error {
@@ -211,6 +232,18 @@ func (tx *tx) close() {
 	tx.m.Unlock()
 }
 
+func (tx *tx) checkSize(e *badger.Entry) error {
+	tx.m.Lock()
+	defer tx.m.Unlock()
+	count := tx.count + 1
+	size := tx.size + int64(estimateSize(e, tx.db.bopts.ValueThreshold))
+	if count >= tx.db.bdb.MaxBatchCount() || size >= tx.db.bdb.MaxBatchSize() {
+		return badger.ErrTxnTooBig
+	}
+	tx.count, tx.size = count, size
+	return nil
+}
+
 func hash(m interface{ MarshalVT() ([]byte, error) }) (hash string, err error) {
 	var b []byte
 	if m != nil {
@@ -223,4 +256,11 @@ func hash(m interface{ MarshalVT() ([]byte, error) }) (hash string, err error) {
 	sha.Write(b)
 	h := sha.Sum(nil)
 	return base64.StdEncoding.EncodeToString(h), nil
+}
+
+func estimateSize(e *badger.Entry, threshold int) int {
+	if len(e.Value) < threshold {
+		return len(e.Key) + len(e.Value) + 2 // Meta, UserMeta
+	}
+	return len(e.Key) + 12 + 2 // 12 for ValuePointer, 2 for metas.
 }

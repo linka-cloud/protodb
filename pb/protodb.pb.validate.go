@@ -576,6 +576,30 @@ func (m *TxRequest) Validate() error {
 			}
 		}
 
+	case *TxRequest_Count:
+
+		if v, ok := interface{}(m.GetCount()).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return TxRequestValidationError{
+					field:  "Count",
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	case *TxRequest_Size:
+
+		if v, ok := interface{}(m.GetSize()).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return TxRequestValidationError{
+					field:  "Size",
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
 	default:
 		return TxRequestValidationError{
 			field:  "Request",
@@ -692,6 +716,30 @@ func (m *TxResponse) Validate() error {
 			if err := v.Validate(); err != nil {
 				return TxResponseValidationError{
 					field:  "Commit",
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	case *TxResponse_Count:
+
+		if v, ok := interface{}(m.GetCount()).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return TxResponseValidationError{
+					field:  "Count",
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	case *TxResponse_Size:
+
+		if v, ok := interface{}(m.GetSize()).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return TxResponseValidationError{
+					field:  "Size",
 					reason: "embedded message failed validation",
 					cause:  err,
 				}
@@ -831,6 +879,270 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = CommitResponseValidationError{}
+
+// Validate checks the field values on CountRequest with the rules defined in
+// the proto definition for this message. If any rules are violated, an error
+// is returned.
+func (m *CountRequest) Validate() error {
+	if m == nil {
+		return nil
+	}
+
+	return nil
+}
+
+// CountRequestValidationError is the validation error returned by
+// CountRequest.Validate if the designated constraints aren't met.
+type CountRequestValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e CountRequestValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e CountRequestValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e CountRequestValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e CountRequestValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e CountRequestValidationError) ErrorName() string { return "CountRequestValidationError" }
+
+// Error satisfies the builtin error interface
+func (e CountRequestValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sCountRequest.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = CountRequestValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = CountRequestValidationError{}
+
+// Validate checks the field values on CountResponse with the rules defined in
+// the proto definition for this message. If any rules are violated, an error
+// is returned.
+func (m *CountResponse) Validate() error {
+	if m == nil {
+		return nil
+	}
+
+	// no validation rules for Count
+
+	return nil
+}
+
+// CountResponseValidationError is the validation error returned by
+// CountResponse.Validate if the designated constraints aren't met.
+type CountResponseValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e CountResponseValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e CountResponseValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e CountResponseValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e CountResponseValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e CountResponseValidationError) ErrorName() string { return "CountResponseValidationError" }
+
+// Error satisfies the builtin error interface
+func (e CountResponseValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sCountResponse.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = CountResponseValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = CountResponseValidationError{}
+
+// Validate checks the field values on SizeRequest with the rules defined in
+// the proto definition for this message. If any rules are violated, an error
+// is returned.
+func (m *SizeRequest) Validate() error {
+	if m == nil {
+		return nil
+	}
+
+	return nil
+}
+
+// SizeRequestValidationError is the validation error returned by
+// SizeRequest.Validate if the designated constraints aren't met.
+type SizeRequestValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e SizeRequestValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e SizeRequestValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e SizeRequestValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e SizeRequestValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e SizeRequestValidationError) ErrorName() string { return "SizeRequestValidationError" }
+
+// Error satisfies the builtin error interface
+func (e SizeRequestValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sSizeRequest.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = SizeRequestValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = SizeRequestValidationError{}
+
+// Validate checks the field values on SizeResponse with the rules defined in
+// the proto definition for this message. If any rules are violated, an error
+// is returned.
+func (m *SizeResponse) Validate() error {
+	if m == nil {
+		return nil
+	}
+
+	// no validation rules for Size
+
+	return nil
+}
+
+// SizeResponseValidationError is the validation error returned by
+// SizeResponse.Validate if the designated constraints aren't met.
+type SizeResponseValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e SizeResponseValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e SizeResponseValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e SizeResponseValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e SizeResponseValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e SizeResponseValidationError) ErrorName() string { return "SizeResponseValidationError" }
+
+// Error satisfies the builtin error interface
+func (e SizeResponseValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sSizeResponse.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = SizeResponseValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = SizeResponseValidationError{}
 
 // Validate checks the field values on Paging with the rules defined in the
 // proto definition for this message. If any rules are violated, an error is returned.

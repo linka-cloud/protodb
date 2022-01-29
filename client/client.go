@@ -260,6 +260,34 @@ func (t *tx) Commit(ctx context.Context) error {
 	return nil
 }
 
+func (t *tx) Size() (int64, error) {
+	if err := t.txn.Send(&pb.TxRequest{Request: &pb.TxRequest_Size{Size: &pb.SizeRequest{}}}); err != nil {
+		return 0, err
+	}
+	res, err := t.txn.Recv()
+	if err != nil {
+		return 0, err
+	}
+	if res.GetSize() == nil {
+		return 0, fmt.Errorf("no response")
+	}
+	return res.GetSize().GetSize(), nil
+}
+
+func (t *tx) Count() (int64, error) {
+	if err := t.txn.Send(&pb.TxRequest{Request: &pb.TxRequest_Count{Count: &pb.CountRequest{}}}); err != nil {
+		return 0, err
+	}
+	res, err := t.txn.Recv()
+	if err != nil {
+		return 0, err
+	}
+	if res.GetCount() == nil {
+		return 0, fmt.Errorf("no response")
+	}
+	return res.GetCount().GetCount(), nil
+}
+
 func (t *tx) Close() {
 	if err := t.txn.CloseSend(); err != nil {
 		logger.From(t.ctx).Errorf("close: %w", err)

@@ -80,6 +80,8 @@ message TxRequest {
     SetRequest set = 2;
     DeleteRequest delete = 3;
     google.protobuf.BoolValue commit = 4;
+    CountRequest count = 5;
+    SizeRequest size = 6;
   }
 }
 
@@ -89,11 +91,25 @@ message TxResponse {
     SetResponse set = 2;
     DeleteResponse delete = 3;
     CommitResponse commit = 4;
+    CountResponse count = 5;
+    SizeResponse size = 6;
   }
 }
 
 message CommitResponse {
   google.protobuf.StringValue error = 1;
+}
+
+message CountRequest {}
+
+message CountResponse {
+  int64 count = 1;
+}
+
+message SizeRequest {}
+
+message SizeResponse {
+  int64 size = 1;
 }
 
 message Paging {

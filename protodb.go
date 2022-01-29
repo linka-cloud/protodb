@@ -51,6 +51,7 @@ type Tx interface {
 	Reader
 	Writer
 	Committer
+	Sizer
 }
 
 type Reader interface {
@@ -73,6 +74,11 @@ type TxProvider interface {
 type Committer interface {
 	Commit(ctx context.Context) error
 	Close()
+}
+
+type Sizer interface {
+	Count() (int64, error)
+	Size() (int64, error)
 }
 
 type Registerer interface {
