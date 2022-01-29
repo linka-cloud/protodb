@@ -87,16 +87,18 @@ func TestServer(t *testing.T) {
 	db, err := client.New(tr)
 	require.NoError(err)
 
+	winit := make(chan struct{})
 	watches := make(chan protodb.Event)
 	go func() {
 		ch, err := db.Watch(ctx, &testpb.Interface{})
 		require.NoError(err)
+		close(winit)
 		for e := range ch {
 			watches <- e
 		}
 		close(watches)
 	}()
-
+	<-winit
 	r, err := db.Set(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
@@ -282,7 +284,7 @@ func TestRegister(t *testing.T) {
 	require.NoError(err)
 	defer db.Close()
 
-	require.Error(db.Register(ctx, (&testpb.Interface{}).ProtoReflect().Descriptor().ParentFile()))
+	require.NoError(db.Register(ctx, (&testpb.Interface{}).ProtoReflect().Descriptor().ParentFile()))
 }
 
 func TestBatchInsertAndQuery(t *testing.T) {

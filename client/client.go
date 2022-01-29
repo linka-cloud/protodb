@@ -23,6 +23,7 @@ import (
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/known/anypb"
@@ -56,7 +57,8 @@ func (c *client) RegisterProto(ctx context.Context, file *descriptorpb.FileDescr
 }
 
 func (c *client) Register(ctx context.Context, file protoreflect.FileDescriptor) error {
-	return fmt.Errorf("unsupported")
+	_, err := c.c.Register(ctx, &pb.RegisterRequest{File: protodesc.ToFileDescriptorProto(file)})
+	return err
 }
 
 func (c *client) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOption) ([]proto.Message, *protodb.PagingInfo, error) {
