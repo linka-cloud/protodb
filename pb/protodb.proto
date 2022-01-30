@@ -32,6 +32,7 @@ import "google/protobuf/descriptor.proto";
 import "google/protobuf/wrappers.proto";
 import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";
+import "google/protobuf/field_mask.proto";
 
 option (go.lint).all = true;
 
@@ -50,6 +51,7 @@ service ProtoDB {
 message SetRequest {
   google.protobuf.Any payload = 1 [(validate.rules).any = {required: true}];
   google.protobuf.Duration ttl = 2;
+  google.protobuf.FieldMask field_mask = 3;
 }
 
 message SetResponse {
@@ -66,6 +68,7 @@ message GetRequest {
   google.protobuf.Any search = 1 [(validate.rules).any = {required: true}];
   linka.cloud.protofilters.Expression filter = 2;
   Paging paging = 3;
+  google.protobuf.FieldMask field_mask = 4;
 }
 
 message GetResponse {

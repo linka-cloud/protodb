@@ -83,7 +83,13 @@ func WithFilter(filter *FilterExpr) GetOption {
 	}
 }
 
-func WithFieldMask(fieldMask *fieldmaskpb.FieldMask) GetOption {
+func WithReadFieldMaskPaths(paths ...string) GetOption {
+	return func(o *GetOpts) {
+		o.FieldMask = &fieldmaskpb.FieldMask{Paths: paths}
+	}
+}
+
+func WithReadFieldMask(fieldMask *fieldmaskpb.FieldMask) GetOption {
 	return func(o *GetOpts) {
 		o.FieldMask = fieldMask
 	}
@@ -113,8 +119,21 @@ func WithTTL(d time.Duration) SetOption {
 	}
 }
 
+func WithWriteFieldMaskPaths(paths ...string) SetOption {
+	return func(o *SetOpts) {
+		o.FieldMask = &fieldmaskpb.FieldMask{Paths: paths}
+	}
+}
+
+func WithWriteFieldMask(fieldMask *fieldmaskpb.FieldMask) SetOption {
+	return func(o *SetOpts) {
+		o.FieldMask = fieldMask
+	}
+}
+
 type SetOpts struct {
-	TTL time.Duration
+	TTL       time.Duration
+	FieldMask *fieldmaskpb.FieldMask
 }
 
 func makeSetOpts(opts ...SetOption) SetOpts {

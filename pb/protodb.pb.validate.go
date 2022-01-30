@@ -61,6 +61,16 @@ func (m *SetRequest) Validate() error {
 		}
 	}
 
+	if v, ok := interface{}(m.GetFieldMask()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return SetRequestValidationError{
+				field:  "FieldMask",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -366,6 +376,16 @@ func (m *GetRequest) Validate() error {
 		if err := v.Validate(); err != nil {
 			return GetRequestValidationError{
 				field:  "Paging",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if v, ok := interface{}(m.GetFieldMask()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return GetRequestValidationError{
+				field:  "FieldMask",
 				reason: "embedded message failed validation",
 				cause:  err,
 			}

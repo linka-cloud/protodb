@@ -305,3 +305,47 @@ func TestBatchInsertAndQuery(t *testing.T) {
 		}
 	}
 }
+
+func TestFieldMask(t *testing.T) {
+	dbPath := "TestFieldMask"
+	defer os.RemoveAll(dbPath)
+	require := require2.New(t)
+	assert := assert2.New(t)
+
+	equal := func(e, g proto.Message) {
+		if !assert.True(proto.Equal(e, g)) {
+			assert.Equal(e, g)
+		}
+	}
+
+	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	db, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
+	require.NoError(err)
+	assert.NotNil(db)
+	defer db.Close()
+
+	_, err = db.Set(ctx, i0)
+	require.NoError(err)
+
+	i := &testpb.Interface{
+		Status: testpb.StatusDown,
+		Mtu:    1400,
+		Name:   "eth0",
+	}
+
+	n := proto.Clone(i0).(*testpb.Interface)
+	n.Status = testpb.StatusDown
+	n.Mtu = 1400
+
+	u, err := db.Set(ctx, i, protodb.WithWriteFieldMaskPaths(testpb.InterfaceFields.Status, testpb.InterfaceFields.Mtu))
+	require.NoError(err)
+
+	equal(n, u)
+
+	ms, _, err := db.Get(ctx, u, protodb.WithReadFieldMaskPaths(testpb.InterfaceFields.Name))
+	require.NoError(err)
+	require.Len(ms, 1)
+	equal(ms[0], &testpb.Interface{Name: "eth0"})
+}

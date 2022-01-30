@@ -125,6 +125,11 @@ func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...GetOption) (out 
 		}
 		outToken.LastPrefix = make([]byte, len(item.Key()))
 		copy(outToken.LastPrefix, item.Key())
+		if o.FieldMask != nil {
+			if err := FilterFieldMask(v, o.FieldMask); err != nil {
+				return nil, nil, err
+			}
+		}
 		out = append(out, v)
 	}
 	tks, err := outToken.Encode()
@@ -148,6 +153,22 @@ func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...SetOption) (prot
 	k, err := dataPrefix(m)
 	if err != nil {
 		return nil, err
+	}
+	if o.FieldMask != nil {
+		item, err := tx.txn.Get(k)
+		if err != nil {
+			return nil, err
+		}
+		old := m.ProtoReflect().New().Interface()
+		if err := item.Value(func(val []byte) error {
+			return tx.db.unmarshal(val, old)
+		}); err != nil {
+			return nil, err
+		}
+		if err := ApplyFieldMask(m, old, o.FieldMask); err != nil {
+			return nil, err
+		}
+		m = old
 	}
 	b, err := tx.db.marshal(m)
 	if err != nil {

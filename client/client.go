@@ -67,7 +67,7 @@ func (c *client) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOp
 		return nil, nil, err
 	}
 	o := getOps(opts...)
-	res, err := c.c.Get(ctx, &pb.GetRequest{Search: a, Filter: o.Filter, Paging: o.Paging})
+	res, err := c.c.Get(ctx, &pb.GetRequest{Search: a, Filter: o.Filter, Paging: o.Paging, FieldMask: o.FieldMask})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -92,7 +92,7 @@ func (c *client) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOp
 	if o.TTL != 0 {
 		ttl = durationpb.New(o.TTL)
 	}
-	res, err := c.c.Set(ctx, &pb.SetRequest{Payload: a, TTL: ttl})
+	res, err := c.c.Set(ctx, &pb.SetRequest{Payload: a, TTL: ttl, FieldMask: o.FieldMask})
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +167,7 @@ func (t *tx) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOption
 	o := getOps(opts...)
 	if err := t.txn.Send(&pb.TxRequest{
 		Request: &pb.TxRequest_Get{
-			Get: &pb.GetRequest{Search: a, Filter: o.Filter, Paging: o.Paging},
+			Get: &pb.GetRequest{Search: a, Filter: o.Filter, Paging: o.Paging, FieldMask: o.FieldMask},
 		},
 	}); err != nil {
 		return nil, nil, err
@@ -202,7 +202,7 @@ func (t *tx) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOption
 	}
 	if err := t.txn.Send(&pb.TxRequest{
 		Request: &pb.TxRequest_Set{
-			Set: &pb.SetRequest{Payload: a, TTL: ttl},
+			Set: &pb.SetRequest{Payload: a, TTL: ttl, FieldMask: o.FieldMask},
 		},
 	}); err != nil {
 		return nil, err

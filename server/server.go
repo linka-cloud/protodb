@@ -184,7 +184,7 @@ func (s *server) set(ctx context.Context, w protodb.Writer, set *pb.SetRequest) 
 	if err != nil {
 		return nil, err
 	}
-	m, err := w.Set(ctx, d, protodb.WithTTL(set.GetTTL().AsDuration()))
+	m, err := w.Set(ctx, d, setOpts(set)...)
 	if err != nil {
 		return nil, err
 	}
@@ -231,7 +231,11 @@ func (s *server) unmarshalToDynamic(a *anypb.Any) (*dynamicpb.Message, error) {
 }
 
 func getOpts(r *pb.GetRequest) (opts []protodb.GetOption) {
-	return append(opts, protodb.WithFilter(r.Filter), protodb.WithPaging(r.Paging))
+	return append(opts, protodb.WithFilter(r.Filter), protodb.WithPaging(r.Paging), protodb.WithReadFieldMask(r.FieldMask))
+}
+
+func setOpts(r *pb.SetRequest) (opts []protodb.SetOption) {
+	return append(opts, protodb.WithTTL(r.TTL.AsDuration()), protodb.WithWriteFieldMask(r.FieldMask))
 }
 
 func watchOpts(r *pb.WatchRequest) (opts []protodb.GetOption) {

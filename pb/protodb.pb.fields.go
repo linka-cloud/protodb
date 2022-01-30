@@ -1,11 +1,13 @@
 package pb
 
 var SetRequestFields = struct {
-	Payload string
-	Ttl     string
+	Payload   string
+	Ttl       string
+	FieldMask string
 }{
-	Payload: "payload",
-	Ttl:     "ttl",
+	Payload:   "payload",
+	Ttl:       "ttl",
+	FieldMask: "field_mask",
 }
 
 var SetResponseFields = struct {
@@ -24,13 +26,15 @@ var DeleteResponseFields = struct {
 }{}
 
 var GetRequestFields = struct {
-	Search string
-	Filter string
-	Paging string
+	Search    string
+	Filter    string
+	Paging    string
+	FieldMask string
 }{
-	Search: "search",
-	Filter: "filter",
-	Paging: "paging",
+	Search:    "search",
+	Filter:    "filter",
+	Paging:    "paging",
+	FieldMask: "field_mask",
 }
 
 var GetResponseFields = struct {
