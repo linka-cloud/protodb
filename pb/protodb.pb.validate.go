@@ -1613,3 +1613,71 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = RegisterResponseValidationError{}
+
+// Validate checks the field values on KV with the rules defined in the proto
+// definition for this message. If any rules are violated, an error is returned.
+func (m *KV) Validate() error {
+	if m == nil {
+		return nil
+	}
+
+	// no validation rules for Key
+
+	// no validation rules for Value
+
+	return nil
+}
+
+// KVValidationError is the validation error returned by KV.Validate if the
+// designated constraints aren't met.
+type KVValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e KVValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e KVValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e KVValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e KVValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e KVValidationError) ErrorName() string { return "KVValidationError" }
+
+// Error satisfies the builtin error interface
+func (e KVValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sKV.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = KVValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = KVValidationError{}

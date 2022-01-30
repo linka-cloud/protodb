@@ -145,3 +145,11 @@ var RegisterRequestFields = struct {
 
 var RegisterResponseFields = struct {
 }{}
+
+var KVFields = struct {
+	Key   string
+	Value string
+}{
+	Key:   "key",
+	Value: "value",
+}

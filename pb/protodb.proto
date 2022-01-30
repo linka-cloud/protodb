@@ -148,3 +148,8 @@ message RegisterRequest {
 }
 
 message RegisterResponse {}
+
+message KV {
+  string key = 1;
+  bytes value = 2;
+}

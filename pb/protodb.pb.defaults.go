@@ -84,3 +84,6 @@ func (x *RegisterRequest) Default() {
 
 func (x *RegisterResponse) Default() {
 }
+
+func (x *KV) Default() {
+}

@@ -35,7 +35,8 @@ var (
 )
 
 func newTx(ctx context.Context, db *db) (Tx, error) {
-	return &tx{ctx: ctx, txn: db.bdb.NewTransaction(true), db: db}, nil
+	end := metrics.Tx.Start()
+	return &tx{ctx: ctx, txn: db.bdb.NewTransaction(true), db: db, end: end}, nil
 }
 
 type tx struct {
@@ -48,12 +49,23 @@ type tx struct {
 
 	count int64
 	size  int64
+	end   func()
 
 	m    sync.RWMutex
 	done bool
 }
 
 func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...GetOption) (out []proto.Message, info *PagingInfo, err error) {
+	end := metrics.Tx.Get.Start()
+	defer end()
+	out, info, err = tx.get(ctx, m, opts...)
+	if err != nil {
+		metrics.Tx.Get.ErrorsCounter.Inc()
+	}
+	return
+}
+
+func (tx *tx) get(ctx context.Context, m proto.Message, opts ...GetOption) (out []proto.Message, info *PagingInfo, err error) {
 	if tx.closed() {
 		return nil, nil, ErrClosed
 	}
@@ -140,6 +152,15 @@ func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...GetOption) (out 
 }
 
 func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error) {
+	end := metrics.Tx.Set.Start()
+	defer end()
+	m, err := tx.set(ctx, m, opts...)
+	if err != nil {
+		metrics.Tx.Set.ErrorsCounter.Inc()
+	}
+	return m, err
+}
+func (tx *tx) set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error) {
 	if tx.closed() {
 		return nil, ErrClosed
 	}
@@ -192,6 +213,16 @@ func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...SetOption) (prot
 }
 
 func (tx *tx) Delete(ctx context.Context, m proto.Message) error {
+	end := metrics.Tx.Delete.Start()
+	defer end()
+	if err := tx.delete(ctx, m); err != nil {
+		metrics.Tx.Delete.ErrorsCounter.Inc()
+		return err
+	}
+	return nil
+}
+
+func (tx *tx) delete(ctx context.Context, m proto.Message) error {
 	if tx.closed() {
 		return ErrClosed
 	}
@@ -233,7 +264,11 @@ func (tx *tx) Commit(ctx context.Context) error {
 		return ErrClosed
 	}
 	defer tx.close()
-	return tx.txn.Commit()
+	if err := tx.txn.Commit(); err != nil {
+		metrics.Tx.ErrorsCounter.Inc()
+		return err
+	}
+	return nil
 }
 
 func (tx *tx) Close() {
@@ -248,7 +283,13 @@ func (tx *tx) closed() bool {
 }
 
 func (tx *tx) close() {
+	if tx.closed() {
+		return
+	}
 	tx.m.Lock()
+	tx.end()
+	metrics.Tx.OpCountHist.Observe(float64(tx.count))
+	metrics.Tx.SizeHist.Observe(float64(tx.size))
 	tx.done = true
 	tx.m.Unlock()
 }

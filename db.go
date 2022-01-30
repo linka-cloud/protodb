@@ -163,43 +163,67 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 }
 
 func (db *db) Get(ctx context.Context, m proto.Message, opts ...GetOption) ([]proto.Message, *PagingInfo, error) {
+	end := metrics.Get.Start()
+	defer end()
 	tx, err := db.Tx(ctx)
 	if err != nil {
+		metrics.Get.ErrorsCounter.Inc()
 		return nil, nil, err
 	}
 	defer tx.Close()
-	return tx.Get(ctx, m, opts...)
+	msgs, paging, err := tx.Get(ctx, m, opts...)
+	if err != nil {
+		metrics.Get.ErrorsCounter.Inc()
+	}
+	return msgs, paging, err
 }
 
 func (db *db) Set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error) {
+	end := metrics.Set.Start()
+	defer end()
 	tx, err := db.Tx(ctx)
 	if err != nil {
+		metrics.Set.ErrorsCounter.Inc()
 		return nil, err
 	}
 	defer tx.Close()
 	m, err = tx.Set(ctx, m, opts...)
 	if err != nil {
+		metrics.Set.ErrorsCounter.Inc()
 		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
+		metrics.Set.ErrorsCounter.Inc()
 		return nil, err
 	}
-	return m, tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		metrics.Set.ErrorsCounter.Inc()
+		return nil, err
+	}
+	return m, nil
 }
 
 func (db *db) Delete(ctx context.Context, m proto.Message) error {
+	end := metrics.Delete.Start()
+	defer end()
 	tx, err := db.Tx(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Close()
 	if err := tx.Delete(ctx, m); err != nil {
+		metrics.Delete.ErrorsCounter.Inc()
 		return err
 	}
 	if err := ctx.Err(); err != nil {
+		metrics.Delete.ErrorsCounter.Inc()
 		return err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		metrics.Delete.ErrorsCounter.Inc()
+		return err
+	}
+	return nil
 }
 
 func (db *db) Tx(ctx context.Context) (Tx, error) {
