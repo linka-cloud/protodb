@@ -73,11 +73,13 @@ type db struct {
 }
 
 func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-chan Event, error) {
+	end := metrics.Watch.Start()
 	o := makeGetOpts(opts...)
 
 	k, _ := dataPrefix(m)
 	ch := make(chan Event)
 	go func() {
+		defer end()
 		defer close(ch)
 		err := db.bdb.Subscribe(ctx, func(kv *badger.KVList) error {
 			for _, v := range kv.Kv {
@@ -92,6 +94,9 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 						item := it.Item()
 						if item.Version() == v.Version {
 							continue
+						}
+						if item.IsDeletedOrExpired() {
+							return nil
 						}
 						return item.Value(func(val []byte) error {
 							o := m.ProtoReflect().New().Interface()
@@ -157,6 +162,9 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 			}
 			return nil
 		}, k)
+		if err != nil {
+			metrics.Watch.ErrorsCounter.Inc()
+		}
 		ch <- event{err: err}
 	}()
 	return ch, nil
@@ -291,6 +299,58 @@ func (db *db) Resolver() pdesc.Resolver {
 	return db.reg
 }
 
+func (db *db) Descriptors(_ context.Context) ([]*descriptorpb.DescriptorProto, error) {
+	m := make(map[string]*descriptorpb.FileDescriptorProto)
+	if err := db.bdb.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.IteratorOptions{Prefix: []byte(descriptors)})
+		defer it.Close()
+		for it.Rewind(); it.Valid(); it.Next() {
+			if err := it.Item().Value(func(val []byte) error {
+				fdp := &descriptorpb.FileDescriptorProto{}
+				if err := db.unmarshal(val, fdp); err != nil {
+					return err
+				}
+				m[fdp.GetName()] = fdp
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	var out []*descriptorpb.DescriptorProto
+	for _, v := range m {
+		out = append(out, v.MessageType...)
+	}
+	return out, nil
+}
+
+func (db *db) FileDescriptors(_ context.Context) ([]*descriptorpb.FileDescriptorProto, error) {
+	var out []*descriptorpb.FileDescriptorProto
+	if err := db.bdb.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.IteratorOptions{Prefix: []byte(descriptors)})
+		defer it.Close()
+		for it.Rewind(); it.Valid(); it.Next() {
+			if err := it.Item().Value(func(val []byte) error {
+				fdp := &descriptorpb.FileDescriptorProto{}
+				if err := db.unmarshal(val, fdp); err != nil {
+					return err
+				}
+				out = append(out, fdp)
+				return nil
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (db *db) registerFileDescriptorProto(file *descriptorpb.FileDescriptorProto) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
@@ -322,6 +382,15 @@ func (db *db) load() error {
 	})
 	for _, v := range fdps {
 		if err := db.registerFileDescriptorProto(v); err != nil {
+			return err
+		}
+		if err := db.bdb.Update(func(txn *badger.Txn) error {
+			b, err := db.marshal(v)
+			if err != nil {
+				return err
+			}
+			return txn.Set(descriptorPrefix(v), b)
+		}); err != nil {
 			return err
 		}
 	}

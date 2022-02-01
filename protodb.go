@@ -84,6 +84,8 @@ type Sizer interface {
 type Registerer interface {
 	RegisterProto(ctx context.Context, file *descriptorpb.FileDescriptorProto) error
 	Register(ctx context.Context, file protoreflect.FileDescriptor) error
+	Descriptors(ctx context.Context) ([]*descriptorpb.DescriptorProto, error)
+	FileDescriptors(ctx context.Context) ([]*descriptorpb.FileDescriptorProto, error)
 }
 
 type Resolverer interface {

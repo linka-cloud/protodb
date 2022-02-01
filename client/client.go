@@ -61,6 +61,22 @@ func (c *client) Register(ctx context.Context, file protoreflect.FileDescriptor)
 	return err
 }
 
+func (c *client) Descriptors(ctx context.Context) ([]*descriptorpb.DescriptorProto, error) {
+	res, err := c.c.Descriptors(ctx, &pb.DescriptorsRequest{})
+	if err != nil {
+		return nil, err
+	}
+	return res.Results, nil
+}
+
+func (c *client) FileDescriptors(ctx context.Context) ([]*descriptorpb.FileDescriptorProto, error) {
+	res, err := c.c.FileDescriptors(ctx, &pb.FileDescriptorsRequest{})
+	if err != nil {
+		return nil, err
+	}
+	return res.Results, nil
+}
+
 func (c *client) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOption) ([]proto.Message, *protodb.PagingInfo, error) {
 	a, err := anypb.New(m)
 	if err != nil {
@@ -302,15 +318,7 @@ type event struct {
 }
 
 func newEvent(e *pb.WatchEvent, err error) *event {
-	ev := &event{err: err}
-	switch e.Type {
-	case pb.WatchEventEnter:
-		ev.typ = protodb.EventTypeEnter
-	case pb.WatchEventUpdate:
-		ev.typ = protodb.EventTypeUpdate
-	case pb.WatchEventLeave:
-		ev.typ = protodb.EventTypeLeave
-	}
+	ev := &event{typ: e.Type, err: err}
 	if e.Old != nil {
 		m, err := anypb.UnmarshalNew(e.Old, proto.UnmarshalOptions{})
 		if err != nil {

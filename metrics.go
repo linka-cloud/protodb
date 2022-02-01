@@ -45,6 +45,7 @@ var (
 		Get:    newOpMetrics("gets"),
 		Set:    newOpMetrics("sets"),
 		Delete: newOpMetrics("deletes"),
+		Watch:  newOpMetrics("watches"),
 		Tx: TxMetrics{
 			OpMetrics: newOpMetrics("tx"),
 			SizeHist: promauto.NewHistogram(prometheus.HistogramOpts{
@@ -70,8 +71,8 @@ type Metrics struct {
 	Get    OpMetrics
 	Set    OpMetrics
 	Delete OpMetrics
+	Watch  OpMetrics
 	Tx     TxMetrics
-	// TODO(adphi): Watch inflight / sent
 }
 
 func newOpMetrics(op string) OpMetrics {

@@ -48,6 +48,22 @@ func (s *server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.Reg
 	return &pb.RegisterResponse{}, nil
 }
 
+func (s *server) Descriptors(ctx context.Context, req *pb.DescriptorsRequest) (*pb.DescriptorsResponse, error) {
+	des, err := s.db.Descriptors(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.DescriptorsResponse{Results: des}, nil
+}
+
+func (s *server) FileDescriptors(ctx context.Context, req *pb.FileDescriptorsRequest) (*pb.FileDescriptorsResponse, error) {
+	des, err := s.db.FileDescriptors(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.FileDescriptorsResponse{Results: des}, nil
+}
+
 func (s *server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
 	a, i, err := s.get(ctx, s.db, req)
 	if err != nil {

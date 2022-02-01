@@ -25,6 +25,8 @@ type ProtoDBClient interface {
 	Tx(ctx context.Context, opts ...grpc.CallOption) (ProtoDB_TxClient, error)
 	Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (ProtoDB_WatchClient, error)
 	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*RegisterResponse, error)
+	Descriptors(ctx context.Context, in *DescriptorsRequest, opts ...grpc.CallOption) (*DescriptorsResponse, error)
+	FileDescriptors(ctx context.Context, in *FileDescriptorsRequest, opts ...grpc.CallOption) (*FileDescriptorsResponse, error)
 }
 
 type protoDBClient struct {
@@ -134,6 +136,24 @@ func (c *protoDBClient) Register(ctx context.Context, in *RegisterRequest, opts 
 	return out, nil
 }
 
+func (c *protoDBClient) Descriptors(ctx context.Context, in *DescriptorsRequest, opts ...grpc.CallOption) (*DescriptorsResponse, error) {
+	out := new(DescriptorsResponse)
+	err := c.cc.Invoke(ctx, "/linka.cloud.protodb.ProtoDB/Descriptors", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *protoDBClient) FileDescriptors(ctx context.Context, in *FileDescriptorsRequest, opts ...grpc.CallOption) (*FileDescriptorsResponse, error) {
+	out := new(FileDescriptorsResponse)
+	err := c.cc.Invoke(ctx, "/linka.cloud.protodb.ProtoDB/FileDescriptors", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ProtoDBServer is the server API for ProtoDB service.
 // All implementations must embed UnimplementedProtoDBServer
 // for forward compatibility
@@ -144,6 +164,8 @@ type ProtoDBServer interface {
 	Tx(ProtoDB_TxServer) error
 	Watch(*WatchRequest, ProtoDB_WatchServer) error
 	Register(context.Context, *RegisterRequest) (*RegisterResponse, error)
+	Descriptors(context.Context, *DescriptorsRequest) (*DescriptorsResponse, error)
+	FileDescriptors(context.Context, *FileDescriptorsRequest) (*FileDescriptorsResponse, error)
 	mustEmbedUnimplementedProtoDBServer()
 }
 
@@ -168,6 +190,12 @@ func (UnimplementedProtoDBServer) Watch(*WatchRequest, ProtoDB_WatchServer) erro
 }
 func (UnimplementedProtoDBServer) Register(context.Context, *RegisterRequest) (*RegisterResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Register not implemented")
+}
+func (UnimplementedProtoDBServer) Descriptors(context.Context, *DescriptorsRequest) (*DescriptorsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Descriptors not implemented")
+}
+func (UnimplementedProtoDBServer) FileDescriptors(context.Context, *FileDescriptorsRequest) (*FileDescriptorsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FileDescriptors not implemented")
 }
 func (UnimplementedProtoDBServer) mustEmbedUnimplementedProtoDBServer() {}
 
@@ -301,6 +329,42 @@ func _ProtoDB_Register_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProtoDB_Descriptors_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DescriptorsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProtoDBServer).Descriptors(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/linka.cloud.protodb.ProtoDB/Descriptors",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProtoDBServer).Descriptors(ctx, req.(*DescriptorsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProtoDB_FileDescriptors_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FileDescriptorsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProtoDBServer).FileDescriptors(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/linka.cloud.protodb.ProtoDB/FileDescriptors",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProtoDBServer).FileDescriptors(ctx, req.(*FileDescriptorsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ProtoDB_ServiceDesc is the grpc.ServiceDesc for ProtoDB service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -323,6 +387,14 @@ var ProtoDB_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Register",
 			Handler:    _ProtoDB_Register_Handler,
+		},
+		{
+			MethodName: "Descriptors",
+			Handler:    _ProtoDB_Descriptors_Handler,
+		},
+		{
+			MethodName: "FileDescriptors",
+			Handler:    _ProtoDB_FileDescriptors_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

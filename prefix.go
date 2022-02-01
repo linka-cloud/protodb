@@ -36,5 +36,5 @@ func dataPrefix(m proto.Message) ([]byte, error) {
 }
 
 func descriptorPrefix(d *descriptorpb.FileDescriptorProto) []byte {
-	return []byte(fmt.Sprintf("%s/%s", descriptors, d.GetName()))
+	return []byte(fmt.Sprintf("%s/%s/%s", descriptors, d.GetPackage(), d.GetName()))
 }

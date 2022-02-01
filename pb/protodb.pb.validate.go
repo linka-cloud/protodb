@@ -1614,6 +1614,304 @@ var _ interface {
 	ErrorName() string
 } = RegisterResponseValidationError{}
 
+// Validate checks the field values on DescriptorsRequest with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, an error is returned.
+func (m *DescriptorsRequest) Validate() error {
+	if m == nil {
+		return nil
+	}
+
+	return nil
+}
+
+// DescriptorsRequestValidationError is the validation error returned by
+// DescriptorsRequest.Validate if the designated constraints aren't met.
+type DescriptorsRequestValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e DescriptorsRequestValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e DescriptorsRequestValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e DescriptorsRequestValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e DescriptorsRequestValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e DescriptorsRequestValidationError) ErrorName() string {
+	return "DescriptorsRequestValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e DescriptorsRequestValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sDescriptorsRequest.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = DescriptorsRequestValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = DescriptorsRequestValidationError{}
+
+// Validate checks the field values on DescriptorsResponse with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, an error is returned.
+func (m *DescriptorsResponse) Validate() error {
+	if m == nil {
+		return nil
+	}
+
+	for idx, item := range m.GetResults() {
+		_, _ = idx, item
+
+		if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return DescriptorsResponseValidationError{
+					field:  fmt.Sprintf("Results[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	return nil
+}
+
+// DescriptorsResponseValidationError is the validation error returned by
+// DescriptorsResponse.Validate if the designated constraints aren't met.
+type DescriptorsResponseValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e DescriptorsResponseValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e DescriptorsResponseValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e DescriptorsResponseValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e DescriptorsResponseValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e DescriptorsResponseValidationError) ErrorName() string {
+	return "DescriptorsResponseValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e DescriptorsResponseValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sDescriptorsResponse.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = DescriptorsResponseValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = DescriptorsResponseValidationError{}
+
+// Validate checks the field values on FileDescriptorsRequest with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, an error is returned.
+func (m *FileDescriptorsRequest) Validate() error {
+	if m == nil {
+		return nil
+	}
+
+	return nil
+}
+
+// FileDescriptorsRequestValidationError is the validation error returned by
+// FileDescriptorsRequest.Validate if the designated constraints aren't met.
+type FileDescriptorsRequestValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e FileDescriptorsRequestValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e FileDescriptorsRequestValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e FileDescriptorsRequestValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e FileDescriptorsRequestValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e FileDescriptorsRequestValidationError) ErrorName() string {
+	return "FileDescriptorsRequestValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e FileDescriptorsRequestValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sFileDescriptorsRequest.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = FileDescriptorsRequestValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = FileDescriptorsRequestValidationError{}
+
+// Validate checks the field values on FileDescriptorsResponse with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, an error is returned.
+func (m *FileDescriptorsResponse) Validate() error {
+	if m == nil {
+		return nil
+	}
+
+	for idx, item := range m.GetResults() {
+		_, _ = idx, item
+
+		if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return FileDescriptorsResponseValidationError{
+					field:  fmt.Sprintf("Results[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	return nil
+}
+
+// FileDescriptorsResponseValidationError is the validation error returned by
+// FileDescriptorsResponse.Validate if the designated constraints aren't met.
+type FileDescriptorsResponseValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e FileDescriptorsResponseValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e FileDescriptorsResponseValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e FileDescriptorsResponseValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e FileDescriptorsResponseValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e FileDescriptorsResponseValidationError) ErrorName() string {
+	return "FileDescriptorsResponseValidationError"
+}
+
+// Error satisfies the builtin error interface
+func (e FileDescriptorsResponseValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sFileDescriptorsResponse.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = FileDescriptorsResponseValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = FileDescriptorsResponseValidationError{}
+
 // Validate checks the field values on KV with the rules defined in the proto
 // definition for this message. If any rules are violated, an error is returned.
 func (m *KV) Validate() error {

@@ -146,6 +146,24 @@ var RegisterRequestFields = struct {
 var RegisterResponseFields = struct {
 }{}
 
+var DescriptorsRequestFields = struct {
+}{}
+
+var DescriptorsResponseFields = struct {
+	Results string
+}{
+	Results: "results",
+}
+
+var FileDescriptorsRequestFields = struct {
+}{}
+
+var FileDescriptorsResponseFields = struct {
+	Results string
+}{
+	Results: "results",
+}
+
 var KVFields = struct {
 	Key   string
 	Value string

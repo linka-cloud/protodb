@@ -85,5 +85,17 @@ func (x *RegisterRequest) Default() {
 func (x *RegisterResponse) Default() {
 }
 
+func (x *DescriptorsRequest) Default() {
+}
+
+func (x *DescriptorsResponse) Default() {
+}
+
+func (x *FileDescriptorsRequest) Default() {
+}
+
+func (x *FileDescriptorsResponse) Default() {
+}
+
 func (x *KV) Default() {
 }

@@ -24,6 +24,7 @@ require (
 require (
 	github.com/dgraph-io/ristretto v0.1.0 // indirect
 	github.com/golang/snappy v0.0.3 // indirect
+	github.com/jhump/protoreflect v1.10.2-0.20220118170122-d02a936ebfc6 // indirect
 	github.com/mennanov/fmutils v0.1.1
 	github.com/prometheus/client_golang v1.11.0
 	github.com/spf13/cobra v1.1.3

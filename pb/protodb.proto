@@ -45,6 +45,8 @@ service ProtoDB {
   rpc Watch(WatchRequest) returns (stream WatchEvent);
 
   rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Descriptors(DescriptorsRequest) returns (DescriptorsResponse);
+  rpc FileDescriptors(FileDescriptorsRequest) returns (FileDescriptorsResponse);
 }
 
 
@@ -134,9 +136,10 @@ message WatchRequest {
 
 message WatchEvent {
   enum Type {
-    ENTER = 0;
-    LEAVE = 1;
-    UPDATE = 2;
+    UNKNOWN = 0;
+    ENTER = 1;
+    LEAVE = 2;
+    UPDATE = 3;
   }
   Type type = 1;
   google.protobuf.Any old = 2;
@@ -148,6 +151,19 @@ message RegisterRequest {
 }
 
 message RegisterResponse {}
+
+message DescriptorsRequest {}
+
+message DescriptorsResponse {
+  repeated google.protobuf.DescriptorProto results = 1;
+}
+
+message FileDescriptorsRequest {}
+
+message FileDescriptorsResponse {
+  repeated google.protobuf.FileDescriptorProto results = 1;
+}
+
 
 message KV {
   string key = 1;
