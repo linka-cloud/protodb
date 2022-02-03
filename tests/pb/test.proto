@@ -14,7 +14,7 @@
 
 syntax = "proto3";
 
-package linka.cloud.protodb.testpb;
+package linka.cloud.protodbtestpb;
 
 option go_package = "go.linka.cloud/protodb/tests/pb;testpb";
 
@@ -24,10 +24,13 @@ import "validate/validate.proto";
 
 import "google/protobuf/wrappers.proto";
 
+import "protodb/protodb.proto";
+
 option (go.lint).all = true;
 
 
 message Interface {
+  option (protodb.enabled) = true;
   string name = 1;
   google.protobuf.StringValue mac = 2 [(validate.rules).string = {pattern: "^([0-9A-F]{2}[:-]){5}([0-9A-F]{2})$"}];
   enum Status {

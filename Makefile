@@ -34,11 +34,18 @@ export GOBIN=$(PWD)/.bin
 
 export PATH := $(GOBIN):$(PATH)
 
-bin:
+protoc-gen-protodb:
+	@protoc -I$(PROTO_BASE_PATH) \
+		-I $(shell go list -m -f {{.Dir}} google.golang.org/protobuf) \
+		--go_out=$(PROTO_OPTS):. protodb/protodb.proto
+	@go install ./cmd/protoc-gen-protodb
+
+bin: protoc-gen-protodb
 	@go install github.com/golang/protobuf/protoc-gen-go
 	@go install google.golang.org/grpc/cmd/protoc-gen-go-grpc
 	@go install go.linka.cloud/protoc-gen-defaults
 	@go install go.linka.cloud/protoc-gen-go-fields
+	@go install go.linka.cloud/protodb/cmd/protoc-gen-protodb
 	@go install github.com/envoyproxy/protoc-gen-validate
 	@go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway
 	@go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2
@@ -61,6 +68,7 @@ gen-proto: bin
     		--go-patch_out=plugin=go-grpc,$(PROTO_OPTS):. \
     		--go-patch_out=plugin=defaults,$(PROTO_OPTS):. \
     		--go-patch_out=plugin=go-fields,$(PROTO_OPTS):. \
+    		--go-patch_out=plugin=protodb,$(PROTO_OPTS):. \
     		--go-patch_out=plugin=go-vtproto,features=marshal+unmarshal+size,$(PROTO_OPTS):. \
     		--go-patch_out=plugin=validate,lang=go,$(PROTO_OPTS):. {} \;
 

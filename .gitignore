@@ -4,9 +4,8 @@
 /tests/server/external_test.go
 /tests/embed/Test*
 /tests/generics
-/cmd/
+/cmd/protodb*
 protodbd
-protodb
 docker-compose.yml
 Dockerfile
 prom.yml
