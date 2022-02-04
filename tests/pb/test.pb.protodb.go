@@ -92,7 +92,7 @@ func (s *_InterfaceDB) Watch(ctx context.Context, m *Interface, opts ...protodb.
 			if n := e.New(); n != nil {
 				v, ok := n.(*Interface)
 				if !ok {
-					ev.err = multierr.Append(ev.err, fmt.Errorf("unexpected type for new: %T", n))
+					ev.err = multierr.Append(ev.err, fmt.Errorf("unexpected type for new Interface: %T", n))
 				} else {
 					ev.new = v
 				}
@@ -100,7 +100,7 @@ func (s *_InterfaceDB) Watch(ctx context.Context, m *Interface, opts ...protodb.
 			if o := e.Old(); o != nil {
 				v, ok := o.(*Interface)
 				if !ok {
-					ev.err = multierr.Append(ev.err, fmt.Errorf("unexpected type for new: %T", o))
+					ev.err = multierr.Append(ev.err, fmt.Errorf("unexpected type for old Interface: %T", o))
 				} else {
 					ev.old = v
 				}

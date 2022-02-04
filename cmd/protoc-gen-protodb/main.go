@@ -184,7 +184,7 @@ func (s *_{{ name . }}DB) Watch(ctx context.Context, m *{{ name . }}, opts ...pr
 			if n := e.New(); n != nil {
 				v, ok := n.(*{{ name . }})
 				if ! ok {
-					ev.err = multierr.Append(ev.err, fmt.Errorf("unexpected type for new: %T", n))
+					ev.err = multierr.Append(ev.err, fmt.Errorf("unexpected type for new {{ name . }}: %T", n))
 				} else {
 					ev.new = v
 				}
@@ -192,7 +192,7 @@ func (s *_{{ name . }}DB) Watch(ctx context.Context, m *{{ name . }}, opts ...pr
 			if o := e.Old(); o != nil {
 				v, ok := o.(*{{ name . }})
 				if ! ok {
-					ev.err = multierr.Append(ev.err, fmt.Errorf("unexpected type for new: %T", o))
+					ev.err = multierr.Append(ev.err, fmt.Errorf("unexpected type for old {{ name . }}: %T", o))
 				} else {
 					ev.old = v
 				}
