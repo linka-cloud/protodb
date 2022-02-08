@@ -97,5 +97,11 @@ func (x *FileDescriptorsRequest) Default() {
 func (x *FileDescriptorsResponse) Default() {
 }
 
+func (x *MessageDiff) Default() {
+}
+
+func (x *FieldDiff) Default() {
+}
+
 func (x *KV) Default() {
 }

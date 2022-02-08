@@ -164,6 +164,20 @@ var FileDescriptorsResponseFields = struct {
 	Results: "results",
 }
 
+var MessageDiffFields = struct {
+	Fields string
+}{
+	Fields: "fields",
+}
+
+var FieldDiffFields = struct {
+	From string
+	To   string
+}{
+	From: "from",
+	To:   "to",
+}
+
 var KVFields = struct {
 	Key   string
 	Value string

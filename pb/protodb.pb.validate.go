@@ -1912,6 +1912,172 @@ var _ interface {
 	ErrorName() string
 } = FileDescriptorsResponseValidationError{}
 
+// Validate checks the field values on MessageDiff with the rules defined in
+// the proto definition for this message. If any rules are violated, an error
+// is returned.
+func (m *MessageDiff) Validate() error {
+	if m == nil {
+		return nil
+	}
+
+	for key, val := range m.GetFields() {
+		_ = val
+
+		// no validation rules for Fields[key]
+
+		if v, ok := interface{}(val).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return MessageDiffValidationError{
+					field:  fmt.Sprintf("Fields[%v]", key),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	return nil
+}
+
+// MessageDiffValidationError is the validation error returned by
+// MessageDiff.Validate if the designated constraints aren't met.
+type MessageDiffValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e MessageDiffValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e MessageDiffValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e MessageDiffValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e MessageDiffValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e MessageDiffValidationError) ErrorName() string { return "MessageDiffValidationError" }
+
+// Error satisfies the builtin error interface
+func (e MessageDiffValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sMessageDiff.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = MessageDiffValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = MessageDiffValidationError{}
+
+// Validate checks the field values on FieldDiff with the rules defined in the
+// proto definition for this message. If any rules are violated, an error is returned.
+func (m *FieldDiff) Validate() error {
+	if m == nil {
+		return nil
+	}
+
+	if v, ok := interface{}(m.GetFrom()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return FieldDiffValidationError{
+				field:  "From",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if v, ok := interface{}(m.GetTo()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return FieldDiffValidationError{
+				field:  "To",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	return nil
+}
+
+// FieldDiffValidationError is the validation error returned by
+// FieldDiff.Validate if the designated constraints aren't met.
+type FieldDiffValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e FieldDiffValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e FieldDiffValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e FieldDiffValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e FieldDiffValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e FieldDiffValidationError) ErrorName() string { return "FieldDiffValidationError" }
+
+// Error satisfies the builtin error interface
+func (e FieldDiffValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sFieldDiff.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = FieldDiffValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = FieldDiffValidationError{}
+
 // Validate checks the field values on KV with the rules defined in the proto
 // definition for this message. If any rules are violated, an error is returned.
 func (m *KV) Validate() error {
