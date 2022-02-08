@@ -196,17 +196,17 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...SetOption) (prot
 		return nil, err
 	}
 	e := badger.NewEntry(k, b)
-	if err := tx.checkSize(e); err != nil {
-		return nil, err
-	}
 	if o.TTL != 0 {
 		e = e.WithTTL(o.TTL)
 	}
-	if err := tx.txn.SetEntry(e); err != nil {
+	if err := tx.checkSize(e); err != nil {
 		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
 		tx.close()
+		return nil, err
+	}
+	if err := tx.txn.SetEntry(e); err != nil {
 		return nil, err
 	}
 	return m, nil
@@ -237,11 +237,11 @@ func (tx *tx) delete(ctx context.Context, m proto.Message) error {
 	if err := tx.checkSize(badger.NewEntry(k, nil)); err != nil {
 		return err
 	}
-	if err := tx.txn.Delete(k); err != nil {
-		return err
-	}
 	if err := ctx.Err(); err != nil {
 		tx.close()
+		return err
+	}
+	if err := tx.txn.Delete(k); err != nil {
 		return err
 	}
 	return nil
