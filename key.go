@@ -67,18 +67,58 @@ func keyFor(m proto.Message) (string, error) {
 			return k, nil
 		}
 	case interface{ ID() int64 }:
+		if i.ID() == 0 {
+			break
+		}
 		if k := fmt.Sprintf("%d", i.ID()); k != "" {
 			return k, nil
 		}
 	case interface{ Id() int64 }:
+		if i.Id() == 0 {
+			break
+		}
 		if k := fmt.Sprintf("%d", i.Id()); k != "" {
 			return k, nil
 		}
 	case interface{ ID() int32 }:
+		if i.ID() == 0 {
+			break
+		}
 		if k := fmt.Sprintf("%d", i.ID()); k != "" {
 			return k, nil
 		}
 	case interface{ Id() int32 }:
+		if i.Id() == 0 {
+			break
+		}
+		if k := fmt.Sprintf("%d", i.Id()); k != "" {
+			return k, nil
+		}
+	case interface{ ID() uint32 }:
+		if i.ID() == 0 {
+			break
+		}
+		if k := fmt.Sprintf("%d", i.ID()); k != "" {
+			return k, nil
+		}
+	case interface{ Id() uint32 }:
+		if i.Id() == 0 {
+			break
+		}
+		if k := fmt.Sprintf("%d", i.Id()); k != "" {
+			return k, nil
+		}
+	case interface{ ID() uint64 }:
+		if i.ID() == 0 {
+			break
+		}
+		if k := fmt.Sprintf("%d", i.ID()); k != "" {
+			return k, nil
+		}
+	case interface{ Id() uint64 }:
+		if i.Id() == 0 {
+			break
+		}
 		if k := fmt.Sprintf("%d", i.Id()); k != "" {
 			return k, nil
 		}
