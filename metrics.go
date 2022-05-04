@@ -101,6 +101,16 @@ func newOpMetrics(op string) OpMetrics {
 	}
 }
 
+type MetricsEnd interface {
+	End()
+}
+
+type endFn func()
+
+func (f endFn) End() {
+	f()
+}
+
 type OpMetrics struct {
 	OpsCounter    prometheus.Counter
 	ErrorsCounter prometheus.Counter
@@ -108,15 +118,15 @@ type OpMetrics struct {
 	Inflight      prometheus.Gauge
 }
 
-func (m *OpMetrics) Start() (end func()) {
+func (m *OpMetrics) Start() MetricsEnd {
 	m.OpsCounter.Inc()
 	m.Inflight.Inc()
 	start := time.Now()
-	return func() {
+	return endFn(func() {
 		duration := time.Since(start)
 		m.Inflight.Dec()
 		m.DurationHist.Observe(duration.Seconds())
-	}
+	})
 }
 
 type TxMetrics struct {

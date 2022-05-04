@@ -79,7 +79,7 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 	k, _ := dataPrefix(m)
 	ch := make(chan Event)
 	go func() {
-		defer end()
+		defer end.End()
 		defer close(ch)
 		err := db.bdb.Subscribe(ctx, func(kv *badger.KVList) error {
 			for _, v := range kv.Kv {
@@ -171,8 +171,7 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 }
 
 func (db *db) Get(ctx context.Context, m proto.Message, opts ...GetOption) ([]proto.Message, *PagingInfo, error) {
-	end := metrics.Get.Start()
-	defer end()
+	defer metrics.Get.Start().End()
 	tx, err := db.Tx(ctx)
 	if err != nil {
 		metrics.Get.ErrorsCounter.Inc()
@@ -187,8 +186,7 @@ func (db *db) Get(ctx context.Context, m proto.Message, opts ...GetOption) ([]pr
 }
 
 func (db *db) Set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error) {
-	end := metrics.Set.Start()
-	defer end()
+	defer metrics.Set.Start().End()
 	tx, err := db.Tx(ctx)
 	if err != nil {
 		metrics.Set.ErrorsCounter.Inc()
@@ -212,8 +210,7 @@ func (db *db) Set(ctx context.Context, m proto.Message, opts ...SetOption) (prot
 }
 
 func (db *db) Delete(ctx context.Context, m proto.Message) error {
-	end := metrics.Delete.Start()
-	defer end()
+	defer metrics.Delete.Start().End()
 	tx, err := db.Tx(ctx)
 	if err != nil {
 		return err

@@ -36,7 +36,7 @@ var (
 
 func newTx(ctx context.Context, db *db) (Tx, error) {
 	end := metrics.Tx.Start()
-	return &tx{ctx: ctx, txn: db.bdb.NewTransaction(true), db: db, end: end}, nil
+	return &tx{ctx: ctx, txn: db.bdb.NewTransaction(true), db: db, me: end}, nil
 }
 
 type tx struct {
@@ -49,15 +49,14 @@ type tx struct {
 
 	count int64
 	size  int64
-	end   func()
+	me    MetricsEnd
 
 	m    sync.RWMutex
 	done bool
 }
 
 func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...GetOption) (out []proto.Message, info *PagingInfo, err error) {
-	end := metrics.Tx.Get.Start()
-	defer end()
+	defer metrics.Tx.Get.Start().End()
 	out, info, err = tx.get(ctx, m, opts...)
 	if err != nil {
 		metrics.Tx.Get.ErrorsCounter.Inc()
@@ -152,8 +151,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...GetOption) (out 
 }
 
 func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error) {
-	end := metrics.Tx.Set.Start()
-	defer end()
+	defer metrics.Tx.Set.Start().End()
 	m, err := tx.set(ctx, m, opts...)
 	if err != nil {
 		metrics.Tx.Set.ErrorsCounter.Inc()
@@ -213,8 +211,7 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...SetOption) (prot
 }
 
 func (tx *tx) Delete(ctx context.Context, m proto.Message) error {
-	end := metrics.Tx.Delete.Start()
-	defer end()
+	defer metrics.Tx.Delete.Start().End()
 	if err := tx.delete(ctx, m); err != nil {
 		metrics.Tx.Delete.ErrorsCounter.Inc()
 		return err
@@ -287,7 +284,7 @@ func (tx *tx) close() {
 		return
 	}
 	tx.m.Lock()
-	tx.end()
+	tx.me.End()
 	metrics.Tx.OpCountHist.Observe(float64(tx.count))
 	metrics.Tx.SizeHist.Observe(float64(tx.size))
 	tx.done = true
