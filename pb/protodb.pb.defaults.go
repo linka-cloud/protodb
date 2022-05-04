@@ -102,6 +102,3 @@ func (x *MessageDiff) Default() {
 
 func (x *FieldDiff) Default() {
 }
-
-func (x *KV) Default() {
-}

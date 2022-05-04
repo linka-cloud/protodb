@@ -25,4 +25,6 @@ import (
 	_ "google.golang.org/protobuf/types/known/structpb"
 	_ "google.golang.org/protobuf/types/known/timestamppb"
 	_ "google.golang.org/protobuf/types/known/wrapperspb"
+
+	_ "go.linka.cloud/protodb/protodb"
 )

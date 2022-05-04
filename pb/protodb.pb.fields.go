@@ -177,11 +177,3 @@ var FieldDiffFields = struct {
 	From: "from",
 	To:   "to",
 }
-
-var KVFields = struct {
-	Key   string
-	Value string
-}{
-	Key:   "key",
-	Value: "value",
-}

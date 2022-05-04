@@ -6,6 +6,7 @@
 /tests/generics
 /cmd/protodb*
 protodbd
+protodbctl
 docker-compose.yml
 Dockerfile
 prom.yml

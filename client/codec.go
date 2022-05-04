@@ -15,11 +15,11 @@
 package client
 
 import (
-	"github.com/planetscale/vtprotobuf/codec/grpc"
+	"go.linka.cloud/grpc/codec"
 	"google.golang.org/grpc/encoding"
 	_ "google.golang.org/grpc/encoding/proto"
 )
 
 func init() {
-	encoding.RegisterCodec(grpc.Codec{})
+	encoding.RegisterCodec(codec.Codec{})
 }

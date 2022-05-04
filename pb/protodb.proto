@@ -173,8 +173,3 @@ message FieldDiff {
   google.protobuf.Value from = 1;
   google.protobuf.Value to = 2;
 }
-
-message KV {
-  string key = 1;
-  bytes value = 2;
-}
