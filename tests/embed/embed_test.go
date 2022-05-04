@@ -349,3 +349,41 @@ func TestFieldMask(t *testing.T) {
 	require.Len(ms, 1)
 	equal(ms[0], &testpb.Interface{Name: "eth0"})
 }
+
+func TestMessageWithKeyOption(t *testing.T) {
+	dbPath := "TestMessageWithKeyOption"
+	defer os.RemoveAll(dbPath)
+	require := require2.New(t)
+	assert := assert2.New(t)
+
+	equal := func(e, g proto.Message) {
+		if !assert.True(proto.Equal(e, g)) {
+			assert.Equal(e, g)
+		}
+	}
+
+	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	db, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
+	require.NoError(err)
+	assert.NotNil(db)
+	defer db.Close()
+
+	m := &testpb.MessageWithKeyOption{KeyField: 42}
+	m2, err := db.Set(ctx, m)
+	require.NoError(err)
+	equal(m, m2)
+
+	_, err = db.Set(ctx, &testpb.MessageWithKeyOption{KeyField: 10})
+	require.NoError(err)
+
+	ms, _, err := db.Get(ctx, &testpb.MessageWithKeyOption{})
+	require.NoError(err)
+	assert.Len(ms, 2)
+
+	ms, _, err = db.Get(ctx, &testpb.MessageWithKeyOption{KeyField: 42})
+	require.NoError(err)
+	require.Len(ms, 1)
+	equal(m, ms[0])
+}

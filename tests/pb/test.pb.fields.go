@@ -1,5 +1,11 @@
 package testpb
 
+var MessageWithKeyOptionFields = struct {
+	KeyField string
+}{
+	KeyField: "key_field",
+}
+
 var InterfaceFields = struct {
 	Name      string
 	Mac       string

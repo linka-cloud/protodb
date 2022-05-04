@@ -28,6 +28,9 @@ var (
 	_ *wrapperspb.BoolValue
 )
 
+func (x *MessageWithKeyOption) Default() {
+}
+
 func (x *Interface) Default() {
 	if x.Status == 0 {
 		x.Status = 1

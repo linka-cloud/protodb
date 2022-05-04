@@ -20,6 +20,7 @@ import (
 
 	pgs "github.com/lyft/protoc-gen-star"
 	pgsgo "github.com/lyft/protoc-gen-star/lang/go"
+	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/pluginpb"
 
 	"go.linka.cloud/protodb/protodb"
@@ -83,6 +84,21 @@ func (p *mod) Execute(targets map[string]pgs.File, _ map[string]pgs.Package) []p
 			}
 			if !ok || !enabled {
 				continue
+			}
+			var keyField string
+			for _, f := range m.Fields() {
+				var k bool
+				f.Extension(protodb.E_Key, &k)
+				if !k {
+					continue
+				}
+				if keyField != "" {
+					p.Failf("%s: %s: key already defined for message: %s", m.Name(), f.Name(), keyField)
+				}
+				keyField = f.Name().String()
+				if f.Type().IsMap() || f.Type().IsRepeated() || f.InOneOf() || f.Descriptor().GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
+					p.Failf("%s: %s: only non repeated and not oneof scalar types are supported as key, got %T", m.Name(), f.Name(), f.Type())
+				}
 			}
 			msgs = append(msgs, m)
 		}

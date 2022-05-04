@@ -28,6 +28,11 @@ import "protodb/protodb.proto";
 
 option (go.lint).all = true;
 
+message MessageWithKeyOption {
+  option (protodb.enabled) = true;
+  uint32 key_field = 1 [(protodb.key) = true];
+}
+
 
 message Interface {
   option (protodb.enabled) = true;

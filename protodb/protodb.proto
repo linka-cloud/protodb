@@ -23,3 +23,7 @@ import "google/protobuf/descriptor.proto";
 extend google.protobuf.MessageOptions {
   optional bool enabled = 1181;
 }
+
+extend google.protobuf.FieldOptions {
+  optional bool key = 1191;
+}

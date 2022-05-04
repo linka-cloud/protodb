@@ -20,31 +20,69 @@ import (
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/dynamicpb"
+
+	"go.linka.cloud/protodb/protodb"
 )
 
+func keyFromOpts(m proto.Message) (string, bool) {
+	var kf protoreflect.FieldDescriptor
+	fields := m.ProtoReflect().Type().Descriptor().Fields()
+	for i := 0; i < fields.Len(); i++ {
+		f := fields.Get(i)
+		o, ok := f.Options().(*descriptorpb.FieldOptions)
+		if !ok {
+			continue
+		}
+		v := proto.GetExtension(o, protodb.E_Key)
+		if v == nil {
+			continue
+		}
+		b := v.(bool)
+		if b {
+			kf = f
+			break
+		}
+	}
+	if kf == nil {
+		return "", false
+	}
+	v := m.ProtoReflect().Get(kf)
+	if !v.IsValid() {
+		return "", true
+	}
+	if k := v.String(); k != "" && k != "0" {
+		return k, true
+	}
+	return "", true
+}
+
 func keyFor(m proto.Message) (string, error) {
+	if k, ok := keyFromOpts(m); ok {
+		if k != "" {
+			return k, nil
+		}
+		return "", fmt.Errorf("key / id not found in %s", m.ProtoReflect().Type().Descriptor().FullName())
+
+	}
 	switch i := interface{}(m).(type) {
 	case *dynamicpb.Message:
 		var k string
 		i.Range(func(descriptor protoreflect.FieldDescriptor, value protoreflect.Value) bool {
 			switch strings.ToLower(string(descriptor.FullName().Name())) {
 			case "id":
-				if id := value.String(); id != "" {
+				if id := value.String(); id != "" && id != "0" {
 					k = id
 					return false
 				}
-				if id := value.Int(); id != 0 {
-					k = fmt.Sprintf("%d", id)
-					return false
-				}
 			case "key":
-				if key := value.String(); key != "" {
+				if key := value.String(); key != "" && key != "0" {
 					k = key
 					return false
 				}
 			case "name":
-				if n := value.String(); n != "" {
+				if n := value.String(); n != "" && n != "0" {
 					k = n
 					return false
 				}

@@ -27,6 +27,203 @@ import (
 )
 
 var (
+	_ MessageWithKeyOptionStore = (*_MessageWithKeyOptionDB)(nil)
+	_ MessageWithKeyOptionTx    = (*_MessageWithKeyOptionTx)(nil)
+)
+
+type MessageWithKeyOptionStore interface {
+	MessageWithKeyOptionReader
+	MessageWithKeyOptionWriter
+	MessageWithKeyOptionWatcher
+	MessageWithKeyOptionTxProvider
+
+	Register(ctx context.Context) error
+}
+
+type MessageWithKeyOptionTx interface {
+	MessageWithKeyOptionReader
+	MessageWithKeyOptionWriter
+	protodb.Committer
+	protodb.Sizer
+}
+
+type MessageWithKeyOptionReader interface {
+	Get(ctx context.Context, m *MessageWithKeyOption, opts ...protodb.GetOption) ([]*MessageWithKeyOption, *protodb.PagingInfo, error)
+}
+
+type MessageWithKeyOptionWatcher interface {
+	Watch(ctx context.Context, m *MessageWithKeyOption, opts ...protodb.GetOption) (<-chan MessageWithKeyOptionEvent, error)
+}
+
+type MessageWithKeyOptionWriter interface {
+	Set(ctx context.Context, m *MessageWithKeyOption, opts ...protodb.SetOption) (*MessageWithKeyOption, error)
+	Delete(ctx context.Context, m *MessageWithKeyOption) error
+}
+
+type MessageWithKeyOptionTxProvider interface {
+	Tx(ctx context.Context) (MessageWithKeyOptionTx, error)
+}
+
+type MessageWithKeyOptionEvent interface {
+	Type() protodb.EventType
+	Old() *MessageWithKeyOption
+	New() *MessageWithKeyOption
+	Err() error
+}
+
+func NewMessageWithKeyOptionStore(db pdbc.Client) MessageWithKeyOptionStore {
+	return &_MessageWithKeyOptionDB{db: db}
+}
+
+type _MessageWithKeyOptionDB struct {
+	db pdbc.Client
+}
+
+func (s *_MessageWithKeyOptionDB) Register(ctx context.Context) error {
+	return s.db.Register(ctx, (&MessageWithKeyOption{}).ProtoReflect().Descriptor().ParentFile())
+}
+
+func (s *_MessageWithKeyOptionDB) Get(ctx context.Context, m *MessageWithKeyOption, opts ...protodb.GetOption) ([]*MessageWithKeyOption, *protodb.PagingInfo, error) {
+	return getMessageWithKeyOption(ctx, s.db, m, opts...)
+}
+
+func (s *_MessageWithKeyOptionDB) Set(ctx context.Context, m *MessageWithKeyOption, opts ...protodb.SetOption) (*MessageWithKeyOption, error) {
+	return setMessageWithKeyOption(ctx, s.db, m, opts...)
+}
+
+func (s *_MessageWithKeyOptionDB) Delete(ctx context.Context, m *MessageWithKeyOption) error {
+	return deleteMessageWithKeyOption(ctx, s.db, m)
+}
+
+func (s *_MessageWithKeyOptionDB) Watch(ctx context.Context, m *MessageWithKeyOption, opts ...protodb.GetOption) (<-chan MessageWithKeyOptionEvent, error) {
+	out := make(chan MessageWithKeyOptionEvent)
+	ch, err := s.db.Watch(ctx, m, opts...)
+	if err != nil {
+		return nil, err
+	}
+	go func() {
+		defer close(out)
+		for e := range ch {
+			ev := &_MessageWithKeyOptionEvent{typ: e.Type(), err: e.Err()}
+			if n := e.New(); n != nil {
+				v, ok := n.(*MessageWithKeyOption)
+				if !ok {
+					ev.err = multierr.Append(ev.err, fmt.Errorf("unexpected type for new MessageWithKeyOption: %T", n))
+				} else {
+					ev.new = v
+				}
+			}
+			if o := e.Old(); o != nil {
+				v, ok := o.(*MessageWithKeyOption)
+				if !ok {
+					ev.err = multierr.Append(ev.err, fmt.Errorf("unexpected type for old MessageWithKeyOption: %T", o))
+				} else {
+					ev.old = v
+				}
+			}
+			out <- ev
+		}
+	}()
+	return out, nil
+}
+
+func (s *_MessageWithKeyOptionDB) Tx(ctx context.Context) (MessageWithKeyOptionTx, error) {
+	txn, err := s.db.Tx(ctx)
+	return &_MessageWithKeyOptionTx{txn: txn}, err
+}
+
+func getMessageWithKeyOption(ctx context.Context, r protodb.Reader, m *MessageWithKeyOption, opts ...protodb.GetOption) ([]*MessageWithKeyOption, *protodb.PagingInfo, error) {
+	ms, i, err := r.Get(ctx, m, opts...)
+	if err != nil {
+		return nil, nil, err
+	}
+	var out []*MessageWithKeyOption
+	for _, v := range ms {
+		vv, ok := v.(*MessageWithKeyOption)
+		if !ok {
+			return nil, nil, fmt.Errorf("unexpected type for MessageWithKeyOption: %T", v)
+		}
+		out = append(out, vv)
+	}
+	return out, i, nil
+}
+
+func setMessageWithKeyOption(ctx context.Context, w protodb.Writer, m *MessageWithKeyOption, opts ...protodb.SetOption) (*MessageWithKeyOption, error) {
+	v, err := w.Set(ctx, m, opts...)
+	if err != nil {
+		return nil, err
+	}
+	vv, ok := v.(*MessageWithKeyOption)
+	if !ok {
+		return nil, fmt.Errorf("unexpected type for MessageWithKeyOption: %T", v)
+	}
+	return vv, nil
+}
+
+func deleteMessageWithKeyOption(ctx context.Context, w protodb.Writer, m *MessageWithKeyOption) error {
+	return w.Delete(ctx, m)
+}
+
+func NewMessageWithKeyOptionTx(tx protodb.Tx) MessageWithKeyOptionTx {
+	return &_MessageWithKeyOptionTx{txn: tx}
+}
+
+type _MessageWithKeyOptionTx struct {
+	txn protodb.Tx
+}
+
+func (s *_MessageWithKeyOptionTx) Get(ctx context.Context, m *MessageWithKeyOption, opts ...protodb.GetOption) ([]*MessageWithKeyOption, *protodb.PagingInfo, error) {
+	return getMessageWithKeyOption(ctx, s.txn, m, opts...)
+}
+
+func (s *_MessageWithKeyOptionTx) Set(ctx context.Context, m *MessageWithKeyOption, opts ...protodb.SetOption) (*MessageWithKeyOption, error) {
+	return setMessageWithKeyOption(ctx, s.txn, m, opts...)
+}
+
+func (s *_MessageWithKeyOptionTx) Delete(ctx context.Context, m *MessageWithKeyOption) error {
+	return deleteMessageWithKeyOption(ctx, s.txn, m)
+}
+
+func (s *_MessageWithKeyOptionTx) Commit(ctx context.Context) error {
+	return s.txn.Commit(ctx)
+}
+
+func (s *_MessageWithKeyOptionTx) Close() {
+	s.txn.Close()
+}
+
+func (s *_MessageWithKeyOptionTx) Count() (int64, error) {
+	return s.txn.Count()
+}
+
+func (s *_MessageWithKeyOptionTx) Size() (int64, error) {
+	return s.txn.Size()
+}
+
+type _MessageWithKeyOptionEvent struct {
+	typ protodb.EventType
+	old *MessageWithKeyOption
+	new *MessageWithKeyOption
+	err error
+}
+
+func (e *_MessageWithKeyOptionEvent) Type() protodb.EventType {
+	return e.typ
+}
+
+func (e *_MessageWithKeyOptionEvent) Old() *MessageWithKeyOption {
+	return e.old
+}
+
+func (e *_MessageWithKeyOptionEvent) New() *MessageWithKeyOption {
+	return e.new
+}
+
+func (e *_MessageWithKeyOptionEvent) Err() error {
+	return e.err
+}
+
+var (
 	_ InterfaceStore = (*_InterfaceDB)(nil)
 	_ InterfaceTx    = (*_InterfaceTx)(nil)
 )
