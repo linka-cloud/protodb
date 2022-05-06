@@ -50,6 +50,7 @@ func ApplyFieldMaskPaths(src, dst proto.Message, path ...string) error {
 		return err
 	}
 	fmutils.Filter(src, fm.Paths)
+	fmutils.Prune(dst, fm.Paths)
 	proto.Merge(dst, src)
 	return nil
 }
