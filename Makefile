@@ -34,8 +34,11 @@ export GOBIN=$(PWD)/.bin
 
 export PATH := $(GOBIN):$(PATH)
 
-protoc-gen-protodb:
-	@protoc -I$(PROTO_BASE_PATH) \
+download-deps:
+	@go mod download
+
+protoc-gen-protodb: download-deps
+	protoc -I$(PROTO_BASE_PATH) \
 		-I $(shell go list -m -f {{.Dir}} google.golang.org/protobuf) \
 		--go_out=$(PROTO_OPTS):. protodb/protodb.proto
 	@go install ./cmd/protoc-gen-protodb
@@ -81,3 +84,11 @@ lint:
 tests: proto
 	@go test -v ./...
 
+check-fmt:
+	@[ "$(gofmt -l $(find . -name '*.go') 2>&1)" = "" ]
+
+vet:
+	@go list ./...|grep -v scratch|GOOS=linux xargs go vet
+
+build:
+	@CGO_ENABLED=0 go build -v ./cmd/...

@@ -1,0 +1,86 @@
+name: Tests and Build
+
+on:
+  push:
+    branches: [ "*" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ main ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        # fetching all tags is required for the Makefile to compute the right version
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.17
+
+    - name: Install Protoc
+      uses: arduino/setup-protoc@v1
+
+    - name: Configure git for private modules
+      env:
+        TOKEN: ${{ secrets.REPOSITORIES_ACCESS_TOKEN }}
+        USER: ${{ secrets.REPOSITORIES_ACCESS_USER }}
+      run: git config --global url."https://${USER}:${TOKEN}@github.com".insteadOf "https://github.com"
+
+    - name: Share cache with other actions
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Generate Protobuf
+      run: make proto
+
+    - name: Ensure all files were well formatted
+      run: make check-fmt
+
+    - name: Build
+      run: make build
+
+  tests:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        # fetching all tags is required for the Makefile to compute the right version
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: 1.17
+
+    - name: Install Protoc
+      uses: arduino/setup-protoc@v1
+
+    - name: Configure git for private modules
+      env:
+        TOKEN: ${{ secrets.REPOSITORIES_ACCESS_TOKEN }}
+        USER: ${{ secrets.REPOSITORIES_ACCESS_USER }}
+      run: git config --global url."https://${USER}:${TOKEN}@github.com".insteadOf "https://github.com"
+
+    - name: Share cache with other actions
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Run tests
+      run: make tests
