@@ -41,12 +41,11 @@ protoc-gen-protodb: bin
 	@go install ./cmd/protoc-gen-protodb
 
 bin:
-	@go get golang.org/x/tools/cmd/goimports
+	@go install golang.org/x/tools/cmd/goimports
 	@go install github.com/golang/protobuf/protoc-gen-go
 	@go install google.golang.org/grpc/cmd/protoc-gen-go-grpc
 	@go install go.linka.cloud/protoc-gen-defaults
 	@go install go.linka.cloud/protoc-gen-go-fields
-	@go install go.linka.cloud/protodb/cmd/protoc-gen-protodb
 	@go install github.com/envoyproxy/protoc-gen-validate
 	@go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway
 	@go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2

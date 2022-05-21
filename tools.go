@@ -27,5 +27,6 @@ import (
 	_ "go.linka.cloud/protoc-gen-defaults"
 	_ "go.linka.cloud/protoc-gen-go-fields"
 	_ "go.linka.cloud/protofilters"
+	_ "golang.org/x/tools/cmd/goimports"
 	_ "google.golang.org/grpc/cmd/protoc-gen-go-grpc"
 )
