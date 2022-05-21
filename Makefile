@@ -34,16 +34,13 @@ export GOBIN=$(PWD)/.bin
 
 export PATH := $(GOBIN):$(PATH)
 
-download-deps:
-	@go mod download
-
-protoc-gen-protodb: download-deps
-	protoc -I$(PROTO_BASE_PATH) \
+protoc-gen-protodb: bin
+	@protoc -I$(PROTO_BASE_PATH) \
 		-I $(shell go list -m -f {{.Dir}} google.golang.org/protobuf) \
 		--go_out=$(PROTO_OPTS):. protodb/protodb.proto
 	@go install ./cmd/protoc-gen-protodb
 
-bin: protoc-gen-protodb
+bin:
 	@go install github.com/golang/protobuf/protoc-gen-go
 	@go install google.golang.org/grpc/cmd/protoc-gen-go-grpc
 	@go install go.linka.cloud/protoc-gen-defaults
@@ -64,7 +61,7 @@ proto: gen-proto lint
 
 
 .PHONY: gen-proto
-gen-proto: bin
+gen-proto: protoc-gen-protodb
 	@find $(PROTO_BASE_PATH) -name '*.proto' -type f -exec \
     	protoc $(INCLUDE_PROTO_PATH) \
     		--go-patch_out=plugin=go,$(PROTO_OPTS):. \
