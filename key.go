@@ -27,6 +27,10 @@ import (
 )
 
 func keyFromOpts(m proto.Message) (string, bool) {
+	sk := proto.GetExtension(m.ProtoReflect().Descriptor().Options(), protodb.E_StaticKey)
+	if sk != nil && sk.(string) != "" {
+		return sk.(string), true
+	}
 	var kf protoreflect.FieldDescriptor
 	fields := m.ProtoReflect().Type().Descriptor().Fields()
 	for i := 0; i < fields.Len(); i++ {

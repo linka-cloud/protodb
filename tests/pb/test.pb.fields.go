@@ -6,6 +6,12 @@ var MessageWithKeyOptionFields = struct {
 	KeyField: "key_field",
 }
 
+var MessageWithStaticKeyFields = struct {
+	Name string
+}{
+	Name: "name",
+}
+
 var InterfaceFields = struct {
 	Name      string
 	Mac       string

@@ -33,6 +33,10 @@ message MessageWithKeyOption {
   uint32 key_field = 1 [(protodb.key) = true];
 }
 
+message MessageWithStaticKey {
+  option (protodb.static_key) = "static_key";
+  string name = 1;
+}
 
 message Interface {
   option (protodb.enabled) = true;

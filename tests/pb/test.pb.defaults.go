@@ -31,6 +31,9 @@ var (
 func (x *MessageWithKeyOption) Default() {
 }
 
+func (x *MessageWithStaticKey) Default() {
+}
+
 func (x *Interface) Default() {
 	if x.Status == 0 {
 		x.Status = 1

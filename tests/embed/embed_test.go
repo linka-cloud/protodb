@@ -387,3 +387,45 @@ func TestMessageWithKeyOption(t *testing.T) {
 	require.Len(ms, 1)
 	equal(m, ms[0])
 }
+
+func TestStaticKey(t *testing.T) {
+	dbPath := "TestStaticKey"
+	defer os.RemoveAll(dbPath)
+	require := require2.New(t)
+	assert := assert2.New(t)
+
+	equal := func(e, g proto.Message) {
+		if !assert.True(proto.Equal(e, g)) {
+			assert.Equal(e, g)
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	db, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
+	require.NoError(err)
+	assert.NotNil(db)
+	defer db.Close()
+
+	m := &testpb.MessageWithStaticKey{
+		Name: "static message",
+	}
+	_, err = db.Set(ctx, m)
+	require.NoError(err)
+
+	ms, _, err := db.Get(ctx, &testpb.MessageWithStaticKey{})
+	require.NoError(err)
+	require.Len(ms, 1)
+	equal(m, ms[0])
+
+	m.Name = "other"
+
+	_, err = db.Set(ctx, m)
+	require.NoError(err)
+
+	ms, _, err = db.Get(ctx, &testpb.MessageWithStaticKey{Name: "whatever"})
+	require.NoError(err)
+	require.Len(ms, 1)
+	equal(m, ms[0])
+}
