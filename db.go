@@ -70,6 +70,9 @@ type db struct {
 
 	mu  sync.RWMutex
 	reg *preg.Files
+
+	cmu   sync.RWMutex
+	close bool
 }
 
 func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-chan Event, error) {
@@ -236,7 +239,16 @@ func (db *db) Tx(ctx context.Context) (Tx, error) {
 }
 
 func (db *db) Close() error {
+	db.cmu.Lock()
+	db.close = true
+	db.cmu.Unlock()
 	return db.bdb.Close()
+}
+
+func (db *db) closed() bool {
+	db.cmu.RLock()
+	defer db.cmu.RUnlock()
+	return db.close
 }
 
 func (db *db) unmarshal(b []byte, m proto.Message) error {

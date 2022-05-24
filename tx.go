@@ -35,6 +35,9 @@ var (
 )
 
 func newTx(ctx context.Context, db *db) (Tx, error) {
+	if db.closed() {
+		return nil, badger.ErrDBClosed
+	}
 	end := metrics.Tx.Start()
 	return &tx{ctx: ctx, txn: db.bdb.NewTransaction(true), db: db, me: end}, nil
 }
@@ -276,7 +279,7 @@ func (tx *tx) Close() {
 func (tx *tx) closed() bool {
 	tx.m.RLock()
 	defer tx.m.RUnlock()
-	return tx.done
+	return tx.done || tx.db.closed()
 }
 
 func (tx *tx) close() {
