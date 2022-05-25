@@ -26,6 +26,13 @@ var (
 	DefaultPath = "./data"
 )
 
+type Logger interface {
+	Errorf(string, ...interface{})
+	Warningf(string, ...interface{})
+	Infof(string, ...interface{})
+	Debugf(string, ...interface{})
+}
+
 type Option func(o *options)
 
 func WithPath(path string) Option {
@@ -49,6 +56,24 @@ func WithInMemory(b bool) Option {
 	}
 }
 
+func WithSync(b bool) Option {
+	return func(o *options) {
+		o.sync = b
+	}
+}
+
+func WithLogger(l Logger) Option {
+	return func(o *options) {
+		o.logger = l
+	}
+}
+
+func WithNumVersionsToKeep(n int) Option {
+	return func(o *options) {
+		o.numVersions = n
+	}
+}
+
 func WithApplyDefaults(b bool) Option {
 	return func(o *options) {
 		o.applyDefaults = b
@@ -59,14 +84,26 @@ type options struct {
 	path          string
 	inMemory      bool
 	applyDefaults bool
+	sync          bool
+	logger        Logger
+	numVersions   int
 }
 
 func (o options) build() badger.Options {
-	return badger.DefaultOptions(o.path).WithInMemory(o.inMemory)
+	opts := badger.DefaultOptions(o.path).
+		WithInMemory(o.inMemory).
+		WithNumVersionsToKeep(o.numVersions).
+		WithLogger(o.logger).
+		WithSyncWrites(o.sync)
+	if opts.InMemory {
+		opts.WithCompactL0OnClose(false)
+	}
+	return opts
 }
 
 var defaultOptions = options{
-	path: DefaultPath,
+	path:        DefaultPath,
+	numVersions: 2,
 }
 
 type GetOption func(o *GetOpts)

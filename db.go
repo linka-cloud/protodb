@@ -45,7 +45,10 @@ func Open(ctx context.Context, opts ...Option) (DB, error) {
 	for _, v := range opts {
 		v(&o)
 	}
-	bopts := o.build().WithNumVersionsToKeep(2).WithLogger(logger.C(ctx).WithField("service", "protodb"))
+	if o.logger == nil {
+		o.logger = logger.C(ctx).WithField("service", "protodb")
+	}
+	bopts := o.build()
 	bdb, err := badger.Open(bopts)
 	if err != nil {
 		return nil, err
