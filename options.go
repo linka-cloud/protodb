@@ -90,15 +90,11 @@ type options struct {
 }
 
 func (o options) build() badger.Options {
-	opts := badger.DefaultOptions(o.path).
+	return badger.DefaultOptions(o.path).
 		WithInMemory(o.inMemory).
 		WithNumVersionsToKeep(o.numVersions).
 		WithLogger(o.logger).
 		WithSyncWrites(o.sync)
-	if opts.InMemory {
-		opts.WithCompactL0OnClose(false)
-	}
-	return opts
 }
 
 var defaultOptions = options{
