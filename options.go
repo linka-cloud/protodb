@@ -110,7 +110,7 @@ func WithPaging(paging *Paging) GetOption {
 	}
 }
 
-func WithFilter(filter *FilterExpr) GetOption {
+func WithFilter(filter Filter) GetOption {
 	return func(o *GetOpts) {
 		o.Filter = filter
 	}
@@ -130,7 +130,7 @@ func WithReadFieldMask(fieldMask *fieldmaskpb.FieldMask) GetOption {
 
 type GetOpts struct {
 	Paging    *Paging
-	Filter    *FilterExpr
+	Filter    Filter
 	FieldMask *fieldmaskpb.FieldMask
 }
 

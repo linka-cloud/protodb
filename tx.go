@@ -113,7 +113,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...GetOption) (out 
 				return err
 			}
 			if o.Filter != nil {
-				match, err = pf.MatchExpression(v, o.Filter)
+				match, err = pf.Match(v, o.Filter)
 				if err != nil {
 					return err
 				}
@@ -306,10 +306,10 @@ func (tx *tx) checkSize(e *badger.Entry) error {
 	return nil
 }
 
-func hash(m interface{ MarshalVT() ([]byte, error) }) (hash string, err error) {
+func hash(f Filter) (hash string, err error) {
 	var b []byte
-	if m != nil {
-		b, err = m.MarshalVT()
+	if f != nil {
+		b, err = f.Expr().MarshalVT()
 		if err != nil {
 			return "", err
 		}

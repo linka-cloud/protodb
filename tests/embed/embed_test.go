@@ -162,8 +162,8 @@ func TestEmbedWatchWithFilter(t *testing.T) {
 			assert.Equal(e, g)
 		}
 	}
-	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	db, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
 	require.NoError(err)
@@ -174,7 +174,7 @@ func TestEmbedWatchWithFilter(t *testing.T) {
 	go func() {
 		ch, err := db.Watch(ctx, &testpb.Interface{},
 			protodb.WithFilter(
-				filters.Where(testpb.InterfaceFields.Status, filters.NumberEquals(float64(testpb.StatusUp))).Expr(),
+				filters.NumberField(testpb.InterfaceFields.Status).Equals(float64(testpb.StatusUp)),
 			),
 		)
 		require.NoError(err)

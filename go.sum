@@ -714,6 +714,8 @@ go.linka.cloud/protoc-gen-go-fields v0.1.1/go.mod h1:vmhCT0cWAwV/VgWyURgkpPlo2o4
 go.linka.cloud/protofilters v0.2.2/go.mod h1:OkvYP0WKwgzvAu/708OUeIvGJInikWaaalW5PhZZczE=
 go.linka.cloud/protofilters v0.3.2 h1:2vUKs2oppW1mqXBGExYOWh/S7lCUJi7eVkjVAGNB/K8=
 go.linka.cloud/protofilters v0.3.2/go.mod h1:OkvYP0WKwgzvAu/708OUeIvGJInikWaaalW5PhZZczE=
+go.linka.cloud/protofilters v0.4.0 h1:VvGMB52uE6x9IbnSC9jpiYcvmCU0CbOx2y+4DiZjgrU=
+go.linka.cloud/protofilters v0.4.0/go.mod h1:OkvYP0WKwgzvAu/708OUeIvGJInikWaaalW5PhZZczE=
 go.opencensus.io v0.20.1/go.mod h1:6WKK9ahsWS3RSO+PY9ZHZUfv2irvY6gN279GOPZjmmk=
 go.opencensus.io v0.20.2/go.mod h1:6WKK9ahsWS3RSO+PY9ZHZUfv2irvY6gN279GOPZjmmk=
 go.opencensus.io v0.21.0/go.mod h1:mSImk1erAIZhrmZN+AvHh14ztQfjbGwt4TtuofqLduU=

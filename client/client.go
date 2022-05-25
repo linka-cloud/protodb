@@ -20,6 +20,7 @@ import (
 	"io"
 
 	"go.linka.cloud/grpc/logger"
+	"go.linka.cloud/protofilters/filters"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
@@ -83,7 +84,11 @@ func (c *client) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOp
 		return nil, nil, err
 	}
 	o := getOps(opts...)
-	res, err := c.c.Get(ctx, &pb.GetRequest{Search: a, Filter: o.Filter, Paging: o.Paging, FieldMask: o.FieldMask})
+	var f *filters.Expression
+	if o.Filter != nil {
+		f = o.Filter.Expr()
+	}
+	res, err := c.c.Get(ctx, &pb.GetRequest{Search: a, Filter: f, Paging: o.Paging, FieldMask: o.FieldMask})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -134,7 +139,11 @@ func (c *client) Watch(ctx context.Context, m proto.Message, opts ...protodb.Get
 		return nil, err
 	}
 	o := getOps(opts...)
-	w, err := c.c.Watch(ctx, &pb.WatchRequest{Search: a, Filter: o.Filter})
+	var f *filters.Expression
+	if o.Filter != nil {
+		f = o.Filter.Expr()
+	}
+	w, err := c.c.Watch(ctx, &pb.WatchRequest{Search: a, Filter: f})
 	if err != nil {
 		return nil, err
 	}
@@ -181,9 +190,13 @@ func (t *tx) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOption
 		return nil, nil, err
 	}
 	o := getOps(opts...)
+	var f *filters.Expression
+	if o.Filter != nil {
+		f = o.Filter.Expr()
+	}
 	if err := t.txn.Send(&pb.TxRequest{
 		Request: &pb.TxRequest_Get{
-			Get: &pb.GetRequest{Search: a, Filter: o.Filter, Paging: o.Paging, FieldMask: o.FieldMask},
+			Get: &pb.GetRequest{Search: a, Filter: f, Paging: o.Paging, FieldMask: o.FieldMask},
 		},
 	}); err != nil {
 		return nil, nil, err

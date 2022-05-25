@@ -79,7 +79,7 @@ lint:
 
 .PHONY: tests
 tests: proto
-	@go test -v ./...
+	@go list ./... | xargs go test -count=1 -v
 
 check-fmt:
 	@[ "$(gofmt -l $(find . -name '*.go') 2>&1)" = "" ]

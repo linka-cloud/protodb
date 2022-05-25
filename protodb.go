@@ -31,6 +31,7 @@ type (
 	Paging     = pb.Paging
 	PagingInfo = pb.PagingInfo
 	FilterExpr = filters.Expression
+	Filter     = filters.FieldFilterer
 )
 
 var (
