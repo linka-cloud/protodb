@@ -80,13 +80,27 @@ func WithApplyDefaults(b bool) Option {
 	}
 }
 
+func WithIgnoreProtoRegisterErrors(b bool) Option {
+	return func(o *options) {
+		o.ignoreProtoRegisterErrors = true
+	}
+}
+
+func WithProtoRegisterErrHandler(fn func(err error) error) Option {
+	return func(o *options) {
+		o.registerErrHandler = fn
+	}
+}
+
 type options struct {
-	path          string
-	inMemory      bool
-	applyDefaults bool
-	sync          bool
-	logger        Logger
-	numVersions   int
+	path                      string
+	inMemory                  bool
+	applyDefaults             bool
+	sync                      bool
+	logger                    Logger
+	numVersions               int
+	ignoreProtoRegisterErrors bool
+	registerErrHandler        func(err error) error
 }
 
 func (o options) build() badger.Options {
