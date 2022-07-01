@@ -370,29 +370,30 @@ func (db *db) registerFileDescriptorProto(file *descriptorpb.FileDescriptorProto
 			ok, err = isAlreadyRegistered(e)
 			if ok {
 				err = db.recoverRegister(file)
-				if db.opts.ignoreProtoRegisterErrors {
-					err = nil
-				}
-				if db.opts.registerErrHandler != nil {
-					err = db.opts.registerErrHandler(err)
-				}
+			}
+			if err != nil {
+				err = db.handleRegisterErr(err)
 			}
 		}
 	}()
 	fd, err := pdesc.NewFile(file, db.reg)
 	if err != nil {
-		return err
+		return db.handleRegisterErr(err)
 	}
 	if err := db.reg.RegisterFile(fd); err != nil {
-		if db.opts.ignoreProtoRegisterErrors {
-			return nil
-		}
-		if db.opts.registerErrHandler != nil {
-			return db.opts.registerErrHandler(err)
-		}
-		return err
+		return db.handleRegisterErr(err)
 	}
 	return nil
+}
+
+func (db *db) handleRegisterErr(err error) error {
+	if db.opts.ignoreProtoRegisterErrors {
+		return nil
+	}
+	if db.opts.registerErrHandler != nil {
+		return db.opts.registerErrHandler(err)
+	}
+	return err
 }
 
 func (db *db) load() error {
