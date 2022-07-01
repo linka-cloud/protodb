@@ -76,15 +76,17 @@ func TestEmbed(t *testing.T) {
 	defer db.Close()
 
 	watches := make(chan protodb.Event)
+	winit := make(chan struct{})
 	go func() {
 		ch, err := db.Watch(ctx, &testpb.Interface{})
 		require.NoError(err)
+		close(winit)
 		for e := range ch {
 			watches <- e
 		}
 		close(watches)
 	}()
-
+	<-winit
 	r, err := db.Set(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
@@ -170,6 +172,7 @@ func TestEmbedWatchWithFilter(t *testing.T) {
 	defer db.Close()
 
 	watches := make(chan protodb.Event)
+	winit := make(chan struct{})
 	go func() {
 		ch, err := db.Watch(ctx, &testpb.Interface{},
 			protodb.WithFilter(
@@ -177,12 +180,13 @@ func TestEmbedWatchWithFilter(t *testing.T) {
 			),
 		)
 		require.NoError(err)
+		close(winit)
 		for e := range ch {
 			watches <- e
 		}
 		close(watches)
 	}()
-
+	<-winit
 	r, err := db.Set(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
