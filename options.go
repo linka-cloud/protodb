@@ -56,12 +56,6 @@ func WithInMemory(b bool) Option {
 	}
 }
 
-func WithSync(b bool) Option {
-	return func(o *options) {
-		o.sync = b
-	}
-}
-
 func WithLogger(l Logger) Option {
 	return func(o *options) {
 		o.logger = l
@@ -96,7 +90,6 @@ type options struct {
 	path                      string
 	inMemory                  bool
 	applyDefaults             bool
-	sync                      bool
 	logger                    Logger
 	numVersions               int
 	ignoreProtoRegisterErrors bool
@@ -107,8 +100,7 @@ func (o options) build() badger.Options {
 	return badger.DefaultOptions(o.path).
 		WithInMemory(o.inMemory).
 		WithNumVersionsToKeep(o.numVersions).
-		WithLogger(o.logger).
-		WithSyncWrites(o.sync)
+		WithLogger(o.logger)
 }
 
 var defaultOptions = options{
