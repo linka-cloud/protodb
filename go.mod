@@ -15,7 +15,7 @@ require (
 	go.linka.cloud/grpc v0.3.7-0.20220317142231-884d59e280e3
 	go.linka.cloud/protoc-gen-defaults v0.4.0
 	go.linka.cloud/protoc-gen-go-fields v0.1.1
-	go.linka.cloud/protofilters v0.4.0
+	go.linka.cloud/protofilters v0.5.0
 	go.uber.org/multierr v1.7.0
 	google.golang.org/grpc v1.45.0
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.1.0
