@@ -148,13 +148,16 @@ type {{ name . }}Store interface {
 	{{ name . }}TxProvider
 
 	Register(ctx context.Context) error
+
+	Raw() pdbc.Client
 }
 
 type {{ name . }}Tx interface {
-	{{ name . }}Reader
-	{{ name . }}Writer
 	protodb.Committer
 	protodb.Sizer
+	{{ name . }}Reader
+	{{ name . }}Writer
+	Raw() protodb.Tx
 }
 
 type {{ name . }}Reader interface {
@@ -187,6 +190,10 @@ func New{{ name . }}Store(db pdbc.Client) {{ name . }}Store {
 
 type _{{ name . }}DB struct {
 	db pdbc.Client
+}
+
+func (s *_{{ name . }}DB) Raw() pdbc.Client {
+	return s.db
 }
 
 func (s *_{{ name . }}DB) Register(ctx context.Context) error {
@@ -280,6 +287,10 @@ func New{{ name . }}Tx(tx protodb.Tx) {{ name . }}Tx {
 
 type _{{ name . }}Tx struct {
 	txn protodb.Tx
+}
+
+func (s *_{{ name . }}Tx) Raw() protodb.Tx {
+	return s.txn
 }
 
 func (s *_{{ name . }}Tx) Get(ctx context.Context, m *{{ name . }}, opts ...protodb.GetOption) ([]*{{ name . }}, *protodb.PagingInfo, error) {

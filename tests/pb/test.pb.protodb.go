@@ -38,13 +38,16 @@ type MessageWithKeyOptionStore interface {
 	MessageWithKeyOptionTxProvider
 
 	Register(ctx context.Context) error
+
+	Raw() pdbc.Client
 }
 
 type MessageWithKeyOptionTx interface {
-	MessageWithKeyOptionReader
-	MessageWithKeyOptionWriter
 	protodb.Committer
 	protodb.Sizer
+	MessageWithKeyOptionReader
+	MessageWithKeyOptionWriter
+	Raw() protodb.Tx
 }
 
 type MessageWithKeyOptionReader interface {
@@ -77,6 +80,10 @@ func NewMessageWithKeyOptionStore(db pdbc.Client) MessageWithKeyOptionStore {
 
 type _MessageWithKeyOptionDB struct {
 	db pdbc.Client
+}
+
+func (s *_MessageWithKeyOptionDB) Raw() pdbc.Client {
+	return s.db
 }
 
 func (s *_MessageWithKeyOptionDB) Register(ctx context.Context) error {
@@ -172,6 +179,10 @@ type _MessageWithKeyOptionTx struct {
 	txn protodb.Tx
 }
 
+func (s *_MessageWithKeyOptionTx) Raw() protodb.Tx {
+	return s.txn
+}
+
 func (s *_MessageWithKeyOptionTx) Get(ctx context.Context, m *MessageWithKeyOption, opts ...protodb.GetOption) ([]*MessageWithKeyOption, *protodb.PagingInfo, error) {
 	return getMessageWithKeyOption(ctx, s.txn, m, opts...)
 }
@@ -235,13 +246,16 @@ type InterfaceStore interface {
 	InterfaceTxProvider
 
 	Register(ctx context.Context) error
+
+	Raw() pdbc.Client
 }
 
 type InterfaceTx interface {
-	InterfaceReader
-	InterfaceWriter
 	protodb.Committer
 	protodb.Sizer
+	InterfaceReader
+	InterfaceWriter
+	Raw() protodb.Tx
 }
 
 type InterfaceReader interface {
@@ -274,6 +288,10 @@ func NewInterfaceStore(db pdbc.Client) InterfaceStore {
 
 type _InterfaceDB struct {
 	db pdbc.Client
+}
+
+func (s *_InterfaceDB) Raw() pdbc.Client {
+	return s.db
 }
 
 func (s *_InterfaceDB) Register(ctx context.Context) error {
@@ -367,6 +385,10 @@ func NewInterfaceTx(tx protodb.Tx) InterfaceTx {
 
 type _InterfaceTx struct {
 	txn protodb.Tx
+}
+
+func (s *_InterfaceTx) Raw() protodb.Tx {
+	return s.txn
 }
 
 func (s *_InterfaceTx) Get(ctx context.Context, m *Interface, opts ...protodb.GetOption) ([]*Interface, *protodb.PagingInfo, error) {
