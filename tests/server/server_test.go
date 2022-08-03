@@ -166,6 +166,107 @@ func TestServer(t *testing.T) {
 	<-watches
 }
 
+func TestServerBatchWatch(t *testing.T) {
+	dbPath := "TestServerBatchWatch"
+	defer os.RemoveAll(dbPath)
+	require := require2.New(t)
+	assert := assert2.New(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	db, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
+	require.NoError(err)
+	assert.NotNil(db)
+	defer db.Close()
+
+	watches := make(chan protodb.Event)
+	winit := make(chan struct{})
+	go func() {
+		ch, err := db.Watch(ctx, &testpb.KV{})
+		require.NoError(err)
+		close(winit)
+		for e := range ch {
+			watches <- e
+		}
+		t.Logf("watcher closed")
+		close(watches)
+	}()
+	<-winit
+	tx, err := db.Tx(ctx)
+	require.NoError(err)
+	count := 100_000
+	logCount := 1000
+	t.Logf("creating %d records", count)
+	for i := 0; i < count; i++ {
+		if i%logCount == 0 {
+			t.Logf("creating: %d/%d", i, count)
+		}
+		_, err = tx.Set(ctx, &testpb.KV{Key: fmt.Sprintf("%d", i), Value: fmt.Sprintf("%d", i)})
+		require.NoError(err)
+	}
+	require.NoError(tx.Commit(ctx))
+	t.Logf("retriveing %d events", count)
+	for i := 0; i < count; i++ {
+		if i%logCount == 0 {
+			t.Logf("retrieve create events: %d/%d", i, count)
+		}
+		select {
+		case e := <-watches:
+			assert.Equal(protodb.EventTypeEnter, e.Type())
+			assert.Nil(e.Old())
+			require.NotNil(e.New())
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
+	}
+	t.Logf("updating %d records", count)
+	tx, err = db.Tx(ctx)
+	require.NoError(err)
+	for i := 0; i < count; i++ {
+		if i%logCount == 0 {
+			t.Logf("updating: %d/%d", i, count)
+		}
+		_, err = tx.Set(ctx, &testpb.KV{Key: fmt.Sprintf("%d", i), Value: fmt.Sprintf("%dx", i)})
+		require.NoError(err)
+	}
+	require.NoError(tx.Commit(ctx))
+	for i := 0; i < count; i++ {
+		if i%logCount == 0 {
+			t.Logf("retrieve update events: %d/%d", i, count)
+		}
+		select {
+		case e := <-watches:
+			assert.Equal(protodb.EventTypeUpdate, e.Type())
+			assert.NotNil(e.Old())
+			require.NotNil(e.New())
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
+	}
+	t.Logf("deleting %d records", count)
+	tx, err = db.Tx(ctx)
+	require.NoError(err)
+	for i := 0; i < count; i++ {
+		if i%logCount == 0 {
+			t.Logf("deleting: %d/%d", i, count)
+		}
+		require.NoError(tx.Delete(ctx, &testpb.KV{Key: fmt.Sprintf("%d", i)}))
+	}
+	require.NoError(tx.Commit(ctx))
+	for i := 0; i < count; i++ {
+		if i%logCount == 0 {
+			t.Logf("retrieve delete events: %d/%d", i, count)
+		}
+		select {
+		case e := <-watches:
+			assert.Equal(protodb.EventTypeLeave, e.Type())
+			require.NotNil(e.Old())
+			assert.Nil(e.New())
+		case <-ctx.Done():
+			t.Fatal("timeout")
+		}
+	}
+}
+
 func TestServerWatchWithFilter(t *testing.T) {
 	dbPath := "TestServerWatchWithFilter"
 	defer os.RemoveAll(dbPath)

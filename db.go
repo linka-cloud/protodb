@@ -132,7 +132,7 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 						typ = pb.WatchEventEnter
 					}
 					ch <- event{typ: typ, old: old, new: new}
-					return nil
+					continue
 				}
 				var was bool
 				if old != nil {

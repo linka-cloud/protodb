@@ -59,3 +59,8 @@ message IPAddress {
     string ipv6 = 4 [(go.field).name = "IPV6", (validate.rules).string.ipv6 = true];
   }
 }
+
+message KV {
+  string key = 1;
+  string value = 2;
+}

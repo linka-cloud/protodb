@@ -33,3 +33,11 @@ var IPAddressFields = struct {
 	Ipv4: "ipv4",
 	Ipv6: "ipv6",
 }
+
+var KVFields = struct {
+	Key   string
+	Value string
+}{
+	Key:   "key",
+	Value: "value",
+}

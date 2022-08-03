@@ -343,6 +343,61 @@ func (*IPAddress_IPV4) isIPAddress_Address() {}
 
 func (*IPAddress_IPV6) isIPAddress_Address() {}
 
+type KV struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Key   string `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Value string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+}
+
+func (x *KV) Reset() {
+	*x = KV{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_tests_pb_test_proto_msgTypes[4]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *KV) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*KV) ProtoMessage() {}
+
+func (x *KV) ProtoReflect() protoreflect.Message {
+	mi := &file_tests_pb_test_proto_msgTypes[4]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use KV.ProtoReflect.Descriptor instead.
+func (*KV) Descriptor() ([]byte, []int) {
+	return file_tests_pb_test_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *KV) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *KV) GetValue() string {
+	if x != nil {
+		return x.Value
+	}
+	return ""
+}
+
 var File_tests_pb_test_proto protoreflect.FileDescriptor
 
 var file_tests_pb_test_proto_rawDesc = []byte{
@@ -397,11 +452,14 @@ var file_tests_pb_test_proto_rawDesc = []byte{
 	0x52, 0x04, 0x69, 0x70, 0x76, 0x34, 0x12, 0x28, 0x0a, 0x04, 0x69, 0x70, 0x76, 0x36, 0x18, 0x04,
 	0x20, 0x01, 0x28, 0x09, 0x42, 0x12, 0xca, 0xb5, 0x03, 0x06, 0x0a, 0x04, 0x49, 0x50, 0x56, 0x36,
 	0xfa, 0x42, 0x05, 0x72, 0x03, 0x80, 0x01, 0x01, 0x48, 0x00, 0x52, 0x04, 0x69, 0x70, 0x76, 0x36,
-	0x42, 0x09, 0x0a, 0x07, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x42, 0x2e, 0x5a, 0x26, 0x67,
-	0x6f, 0x2e, 0x6c, 0x69, 0x6e, 0x6b, 0x61, 0x2e, 0x63, 0x6c, 0x6f, 0x75, 0x64, 0x2f, 0x70, 0x72,
-	0x6f, 0x74, 0x6f, 0x64, 0x62, 0x2f, 0x74, 0x65, 0x73, 0x74, 0x73, 0x2f, 0x70, 0x62, 0x3b, 0x74,
-	0x65, 0x73, 0x74, 0x70, 0x62, 0xca, 0xb5, 0x03, 0x02, 0x08, 0x01, 0x62, 0x06, 0x70, 0x72, 0x6f,
-	0x74, 0x6f, 0x33,
+	0x42, 0x09, 0x0a, 0x07, 0x41, 0x64, 0x64, 0x72, 0x65, 0x73, 0x73, 0x22, 0x2c, 0x0a, 0x02, 0x4b,
+	0x56, 0x12, 0x10, 0x0a, 0x03, 0x6b, 0x65, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x03,
+	0x6b, 0x65, 0x79, 0x12, 0x14, 0x0a, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x18, 0x02, 0x20, 0x01,
+	0x28, 0x09, 0x52, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65, 0x42, 0x2e, 0x5a, 0x26, 0x67, 0x6f, 0x2e,
+	0x6c, 0x69, 0x6e, 0x6b, 0x61, 0x2e, 0x63, 0x6c, 0x6f, 0x75, 0x64, 0x2f, 0x70, 0x72, 0x6f, 0x74,
+	0x6f, 0x64, 0x62, 0x2f, 0x74, 0x65, 0x73, 0x74, 0x73, 0x2f, 0x70, 0x62, 0x3b, 0x74, 0x65, 0x73,
+	0x74, 0x70, 0x62, 0xca, 0xb5, 0x03, 0x02, 0x08, 0x01, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f,
+	0x33,
 }
 
 var (
@@ -417,17 +475,18 @@ func file_tests_pb_test_proto_rawDescGZIP() []byte {
 }
 
 var file_tests_pb_test_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_tests_pb_test_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_tests_pb_test_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_tests_pb_test_proto_goTypes = []interface{}{
 	(InterfaceStatus)(0),           // 0: linka.cloud.protodbtestpb.Interface.Status
 	(*MessageWithKeyOption)(nil),   // 1: linka.cloud.protodbtestpb.MessageWithKeyOption
 	(*MessageWithStaticKey)(nil),   // 2: linka.cloud.protodbtestpb.MessageWithStaticKey
 	(*Interface)(nil),              // 3: linka.cloud.protodbtestpb.Interface
 	(*IPAddress)(nil),              // 4: linka.cloud.protodbtestpb.IPAddress
-	(*wrapperspb.StringValue)(nil), // 5: google.protobuf.StringValue
+	(*KV)(nil),                     // 5: linka.cloud.protodbtestpb.KV
+	(*wrapperspb.StringValue)(nil), // 6: google.protobuf.StringValue
 }
 var file_tests_pb_test_proto_depIdxs = []int32{
-	5, // 0: linka.cloud.protodbtestpb.Interface.mac:type_name -> google.protobuf.StringValue
+	6, // 0: linka.cloud.protodbtestpb.Interface.mac:type_name -> google.protobuf.StringValue
 	0, // 1: linka.cloud.protodbtestpb.Interface.status:type_name -> linka.cloud.protodbtestpb.Interface.Status
 	4, // 2: linka.cloud.protodbtestpb.Interface.addresses:type_name -> linka.cloud.protodbtestpb.IPAddress
 	3, // [3:3] is the sub-list for method output_type
@@ -491,6 +550,18 @@ func file_tests_pb_test_proto_init() {
 				return nil
 			}
 		}
+		file_tests_pb_test_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*KV); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
 	}
 	file_tests_pb_test_proto_msgTypes[3].OneofWrappers = []interface{}{
 		(*IPAddress_IPV4)(nil),
@@ -502,7 +573,7 @@ func file_tests_pb_test_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_tests_pb_test_proto_rawDesc,
 			NumEnums:      1,
-			NumMessages:   4,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

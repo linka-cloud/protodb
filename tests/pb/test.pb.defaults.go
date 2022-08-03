@@ -45,3 +45,6 @@ func (x *Interface) Default() {
 
 func (x *IPAddress) Default() {
 }
+
+func (x *KV) Default() {
+}
