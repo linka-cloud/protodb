@@ -83,12 +83,15 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 	o := makeGetOpts(opts...)
 
 	k, _ := dataPrefix(m)
-	ch := make(chan Event)
+	ch := make(chan Event, 1)
 	go func() {
 		defer end.End()
 		defer close(ch)
 		err := db.bdb.Subscribe(ctx, func(kv *badger.KVList) error {
 			for _, v := range kv.Kv {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
 				var err error
 				var typ EventType
 				var new proto.Message
@@ -131,8 +134,12 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 					} else {
 						typ = pb.WatchEventEnter
 					}
-					ch <- event{typ: typ, old: old, new: new}
-					continue
+					select {
+					case ch <- event{typ: typ, old: old, new: new}:
+						continue
+					case <-ctx.Done():
+						return ctx.Err()
+					}
 				}
 				var was bool
 				if old != nil {
@@ -161,17 +168,22 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 						continue
 					}
 				}
-				if err := ctx.Err(); err != nil {
-					return err
+				select {
+				case ch <- event{new: new, old: old, typ: typ}:
+				case <-ctx.Done():
+					return ctx.Err()
 				}
-				ch <- event{new: new, old: old, typ: typ}
 			}
 			return nil
 		}, k)
 		if err != nil {
 			metrics.Watch.ErrorsCounter.Inc()
 		}
-		ch <- event{err: err}
+		select {
+		case ch <- event{err: err}:
+		case <-ctx.Done():
+		}
+
 	}()
 	return ch, nil
 }
