@@ -92,6 +92,7 @@ func TestServer(t *testing.T) {
 	go func() {
 		ch, err := db.Watch(ctx, &testpb.Interface{})
 		require.NoError(err)
+		time.Sleep(10 * time.Millisecond)
 		close(winit)
 		for e := range ch {
 			watches <- e
@@ -183,6 +184,7 @@ func TestServerBatchWatch(t *testing.T) {
 	go func() {
 		ch, err := db.Watch(ctx, &testpb.KV{})
 		require.NoError(err)
+		time.Sleep(10 * time.Millisecond)
 		close(winit)
 		for e := range ch {
 			watches <- e
@@ -302,6 +304,7 @@ func TestServerWatchWithFilter(t *testing.T) {
 			),
 		)
 		require.NoError(err)
+		time.Sleep(10 * time.Millisecond)
 		close(winit)
 		for e := range ch {
 			watches <- e

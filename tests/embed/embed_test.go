@@ -80,6 +80,7 @@ func TestEmbed(t *testing.T) {
 	go func() {
 		ch, err := db.Watch(ctx, &testpb.Interface{})
 		require.NoError(err)
+		time.Sleep(10 * time.Millisecond)
 		close(winit)
 		for e := range ch {
 			watches <- e
@@ -171,6 +172,7 @@ func TestEmbedBatchWatch(t *testing.T) {
 	go func() {
 		ch, err := db.Watch(ctx, &testpb.KV{})
 		require.NoError(err)
+		time.Sleep(10 * time.Millisecond)
 		close(winit)
 		for e := range ch {
 			watches <- e
@@ -281,6 +283,7 @@ func TestEmbedWatchWithFilter(t *testing.T) {
 			),
 		)
 		require.NoError(err)
+		time.Sleep(10 * time.Millisecond)
 		close(winit)
 		for e := range ch {
 			watches <- e
