@@ -23,30 +23,50 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/dgraph-io/badger/v2"
+	"github.com/dgraph-io/badger/v3"
+	"github.com/dgraph-io/ristretto/z"
 	pf "go.linka.cloud/protofilters"
 	"google.golang.org/protobuf/proto"
 
 	"go.linka.cloud/protodb/internal/token"
 )
 
-var (
-	ErrClosed = errors.New("transaction closed")
-)
-
-func newTx(ctx context.Context, db *db) (Tx, error) {
+func newTx(ctx context.Context, db *db, opts ...TxOption) (*tx, error) {
 	if db.closed() {
-		return nil, badger.ErrDBClosed
+		return nil, ErrDBClosed
 	}
 	end := metrics.Tx.Start("")
-	return &tx{ctx: ctx, txn: db.bdb.NewTransaction(true), db: db, me: end}, nil
+	readTs := db.orc.readTs()
+	tx := &tx{
+		ctx:          ctx,
+		txn:          db.bdb.NewTransactionAt(readTs, true),
+		readTs:       readTs,
+		db:           db,
+		me:           end,
+		update:       true,
+		conflictKeys: make(map[uint64]struct{}),
+	}
+	var o TxOpts
+	for _, opt := range opts {
+		opt(&o)
+	}
+	tx.update = !o.ReadOnly
+	return tx, nil
 }
 
 type tx struct {
 	ctx context.Context
 
-	db  *db
-	txn *badger.Txn
+	db       *db
+	update   bool
+	txn      *badger.Txn
+	readTs   uint64
+	doneRead bool
+
+	reads []uint64 // contains fingerprints of keys read.
+	// contains fingerprints of keys written. This is used for conflict detection.
+	conflictKeys map[uint64]struct{}
+	readsLock    sync.Mutex // guards the reads slice. See addReadKey.
 
 	applyDefaults bool
 
@@ -69,7 +89,7 @@ func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...GetOption) (out 
 
 func (tx *tx) get(ctx context.Context, m proto.Message, opts ...GetOption) (out []proto.Message, info *PagingInfo, err error) {
 	if tx.closed() {
-		return nil, nil, ErrClosed
+		return nil, nil, ErrDBClosed
 	}
 	o := makeGetOpts(opts...)
 	prefix, _ := dataPrefix(m)
@@ -102,6 +122,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...GetOption) (out 
 			return nil, nil, err
 		}
 		item := it.Item()
+		tx.addReadKey(item.Key())
 		if item.Version() <= inToken.Ts &&
 			count < o.Paging.GetOffset() &&
 			bytes.Compare(item.Key(), inToken.GetLastPrefix()) <= 0 {
@@ -153,6 +174,17 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...GetOption) (out 
 	return out, &PagingInfo{HasNext: hasNext, Token: tks}, nil
 }
 
+func (tx *tx) getRaw(key []byte) ([]byte, error) {
+	if tx.closed() {
+		return nil, ErrDBClosed
+	}
+	item, err := tx.txn.Get(key)
+	if err != nil {
+		return nil, err
+	}
+	return item.ValueCopy(nil)
+}
+
 func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error) {
 	defer metrics.Tx.Set.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 	m, err := tx.set(ctx, m, opts...)
@@ -163,7 +195,10 @@ func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...SetOption) (prot
 }
 func (tx *tx) set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error) {
 	if tx.closed() {
-		return nil, ErrClosed
+		return nil, ErrDBClosed
+	}
+	if !tx.update {
+		return nil, ErrReadOnlyTxn
 	}
 	if m == nil {
 		return nil, errors.New("empty message")
@@ -203,6 +238,9 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...SetOption) (prot
 	if err := tx.checkSize(e); err != nil {
 		return nil, err
 	}
+	// The txn.conflictKeys is used for conflict detection.
+	fp := z.MemHash(e.Key) // Avoid dealing with byte arrays.
+	tx.conflictKeys[fp] = struct{}{}
 	if err := ctx.Err(); err != nil {
 		tx.close()
 		return nil, err
@@ -211,6 +249,13 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...SetOption) (prot
 		return nil, err
 	}
 	return m, nil
+}
+
+func (tx *tx) setRaw(key, val []byte) error {
+	if tx.closed() {
+		return ErrDBClosed
+	}
+	return tx.txn.Set(key, val)
 }
 
 func (tx *tx) Delete(ctx context.Context, m proto.Message) error {
@@ -224,10 +269,13 @@ func (tx *tx) Delete(ctx context.Context, m proto.Message) error {
 
 func (tx *tx) delete(ctx context.Context, m proto.Message) error {
 	if tx.closed() {
-		return ErrClosed
+		return ErrDBClosed
 	}
 	if m == nil {
 		return errors.New("empty message")
+	}
+	if !tx.update {
+		return ErrReadOnlyTxn
 	}
 	// TODO(adphi): should we check / read for key first ?
 	k, err := dataPrefix(m)
@@ -237,6 +285,9 @@ func (tx *tx) delete(ctx context.Context, m proto.Message) error {
 	if err := tx.checkSize(badger.NewEntry(k, nil)); err != nil {
 		return err
 	}
+	// The txn.conflictKeys is used for conflict detection.
+	fp := z.MemHash(k) // Avoid dealing with byte arrays.
+	tx.conflictKeys[fp] = struct{}{}
 	if err := ctx.Err(); err != nil {
 		tx.close()
 		return err
@@ -245,6 +296,13 @@ func (tx *tx) delete(ctx context.Context, m proto.Message) error {
 		return err
 	}
 	return nil
+}
+
+func (tx *tx) deleteRaw(key []byte) error {
+	if tx.closed() {
+		return ErrDBClosed
+	}
+	return tx.txn.Delete(key)
 }
 
 func (tx *tx) Count() (int64, error) {
@@ -261,10 +319,18 @@ func (tx *tx) Size() (int64, error) {
 
 func (tx *tx) Commit(ctx context.Context) error {
 	if tx.closed() {
-		return ErrClosed
+		return ErrDBClosed
 	}
 	defer tx.close()
-	if err := tx.txn.Commit(); err != nil {
+	tx.db.orc.writeChLock.Lock()
+	defer tx.db.orc.writeChLock.Unlock()
+
+	ts, conflict := tx.db.orc.newCommitTs(tx)
+	if conflict {
+		return ErrConflict
+	}
+	defer tx.db.orc.doneCommit(ts)
+	if err := tx.txn.CommitAt(ts, nil); err != nil {
 		metrics.Tx.ErrorsCounter.WithLabelValues("").Inc()
 		return err
 	}
@@ -290,6 +356,7 @@ func (tx *tx) close() {
 	tx.me.End()
 	metrics.Tx.OpCountHist.Observe(float64(tx.count))
 	metrics.Tx.SizeHist.Observe(float64(tx.size))
+	tx.db.orc.doneRead(tx)
 	tx.done = true
 	tx.m.Unlock()
 }
@@ -298,12 +365,26 @@ func (tx *tx) checkSize(e *badger.Entry) error {
 	tx.m.Lock()
 	defer tx.m.Unlock()
 	count := tx.count + 1
-	size := tx.size + int64(estimateSize(e, tx.db.bopts.ValueThreshold))
+	size := tx.size + int64(estimateSize(e, int(tx.db.bopts.ValueThreshold)))
 	if count >= tx.db.bdb.MaxBatchCount() || size >= tx.db.bdb.MaxBatchSize() {
-		return badger.ErrTxnTooBig
+		return ErrTxnTooBig
 	}
 	tx.count, tx.size = count, size
 	return nil
+}
+
+func (txn *tx) addReadKey(key []byte) {
+	if txn.update {
+		fp := z.MemHash(key)
+
+		// Because of the possibility of multiple iterators it is now possible
+		// for multiple threads within a read-write transaction to read keys at
+		// the same time. The reads slice is not currently thread-safe and
+		// needs to be locked whenever we mark a key as read.
+		txn.readsLock.Lock()
+		txn.reads = append(txn.reads, fp)
+		txn.readsLock.Unlock()
+	}
 }
 
 func hash(f Filter) (hash string, err error) {

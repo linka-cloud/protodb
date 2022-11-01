@@ -23,6 +23,7 @@ import (
 	"go.linka.cloud/protofilters/filters"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -163,15 +164,22 @@ func (c *client) Watch(ctx context.Context, m proto.Message, opts ...protodb.Get
 	return ch, nil
 }
 
-func (c *client) Tx(ctx context.Context) (protodb.Tx, error) {
-	return c.newTx(ctx)
+func (c *client) Tx(ctx context.Context, opts ...protodb.TxOption) (protodb.Tx, error) {
+	return c.newTx(ctx, opts...)
 }
 
 func (c *client) Close() error {
 	return nil
 }
 
-func (c *client) newTx(ctx context.Context) (protodb.Tx, error) {
+func (c *client) newTx(ctx context.Context, opts ...protodb.TxOption) (protodb.Tx, error) {
+	var o protodb.TxOpts
+	for _, opt := range opts {
+		opt(&o)
+	}
+	if o.ReadOnly {
+		ctx = metadata.AppendToOutgoingContext(ctx, pb.ReadOnlyTxKey, "true")
+	}
 	txn, err := c.c.Tx(ctx)
 	if err != nil {
 		return nil, err

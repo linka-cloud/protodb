@@ -18,11 +18,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"sync"
 
-	"github.com/dgraph-io/badger/v2"
+	"github.com/dgraph-io/badger/v3"
+	bpb "github.com/dgraph-io/badger/v3/pb"
 	"go.linka.cloud/grpc/logger"
 	"go.linka.cloud/protoc-gen-defaults/defaults"
 	pf "go.linka.cloud/protofilters"
@@ -49,17 +51,32 @@ func Open(ctx context.Context, opts ...Option) (DB, error) {
 		o.logger = logger.C(ctx).WithField("service", "protodb")
 	}
 	bopts := o.build()
-	bdb, err := badger.Open(bopts)
+	// we check for conflicts internally, so we don't need badger to do it
+	bopts.DetectConflicts = false
+	bdb, err := badger.OpenManaged(bopts)
 	if err != nil {
 		return nil, err
 	}
+
+	orc := newOracle()
+
+	// We do increment nextTxnTs below. So, no need to do it here.
+	orc.nextTxnTs = bdb.MaxVersion()
+
+	// Let's advance nextTxnTs to one more than whatever we observed via
+	// replaying the logs.
+	orc.txnMark.Done(orc.nextTxnTs)
+	// In normal mode, we must update readMark so older versions of keys can be removed during
+	// compaction when run in offline mode via the flatten tool.
+	orc.readMark.Done(orc.nextTxnTs)
+	orc.incrementNextTs()
 	// TODO(adphi): Use custom registry to avoid this hack
 	if err := os.Setenv(protobufRegistrationConflictEnv, protobufRegistrationConflictPolicy); err != nil {
 		return nil, err
 	}
 	reg := preg.GlobalFiles
 
-	db := &db{bdb: bdb, opts: o, reg: reg, bopts: bopts}
+	db := &db{bdb: bdb, orc: orc, opts: o, reg: reg, bopts: bopts}
 	if err := db.load(); err != nil {
 		return nil, err
 	}
@@ -70,6 +87,7 @@ type db struct {
 	bdb   *badger.DB
 	opts  options
 	bopts badger.Options
+	orc   *oracle
 
 	mu  sync.RWMutex
 	reg *preg.Files
@@ -83,11 +101,17 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 	o := makeGetOpts(opts...)
 
 	k, _ := dataPrefix(m)
+	log := logger.StandardLogger().WithFields("service", "protodb", "action", "watch", "key", string(k))
+	log.Debugf("start watching for key %s", string(k))
 	ch := make(chan Event, 1)
+	wait := make(chan struct{})
 	go func() {
 		defer end.End()
 		defer close(ch)
+		log.Debugf("subscribing to changes")
+		close(wait)
 		err := db.bdb.Subscribe(ctx, func(kv *badger.KVList) error {
+			log.Debugf("received event containing %d kv", len(kv.Kv))
 			for _, v := range kv.Kv {
 				if err := ctx.Err(); err != nil {
 					return err
@@ -134,6 +158,8 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 					} else {
 						typ = pb.WatchEventEnter
 					}
+
+					log.Debugf("sending event with key %s and type %v", string(v.Key), typ)
 					select {
 					case ch <- event{typ: typ, old: old, new: new}:
 						continue
@@ -165,9 +191,11 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 					if is {
 						typ = pb.WatchEventEnter
 					} else {
+						log.Debugf("skipping non matching event with key %s", string(v.Key))
 						continue
 					}
 				}
+				log.Debugf("sending event with key %s and type %v", string(v.Key), typ)
 				select {
 				case ch <- event{new: new, old: old, typ: typ}:
 				case <-ctx.Done():
@@ -175,22 +203,24 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 				}
 			}
 			return nil
-		}, k)
+		}, []bpb.Match{{Prefix: k}})
 		if err != nil {
 			metrics.Watch.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
+			log.Errorf("failed to watch prefix %s: %v", string(k), err)
 		}
 		select {
 		case ch <- event{err: err}:
 		case <-ctx.Done():
 		}
-
+		log.Debugf("stopped watching")
 	}()
+	<-wait
 	return ch, nil
 }
 
 func (db *db) Get(ctx context.Context, m proto.Message, opts ...GetOption) ([]proto.Message, *PagingInfo, error) {
 	defer metrics.Get.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
-	tx, err := db.Tx(ctx)
+	tx, err := db.Tx(ctx, WithReadOnly())
 	if err != nil {
 		metrics.Get.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 		return nil, nil, err
@@ -249,8 +279,8 @@ func (db *db) Delete(ctx context.Context, m proto.Message) error {
 	return nil
 }
 
-func (db *db) Tx(ctx context.Context) (Tx, error) {
-	return newTx(ctx, db)
+func (db *db) Tx(ctx context.Context, opts ...TxOption) (Tx, error) {
+	return newTx(ctx, db, opts...)
 }
 
 func (db *db) Close() error {
@@ -297,19 +327,22 @@ func (db *db) RegisterProto(ctx context.Context, file *descriptorpb.FileDescript
 	if err := db.registerFileDescriptorProto(file); err != nil {
 		return err
 	}
-	txn := db.bdb.NewTransaction(true)
-	defer txn.Discard()
+	txn, err := newTx(ctx, db)
+	if err != nil {
+		return err
+	}
+	defer txn.Close()
 	b, err := proto.Marshal(file)
 	if err != nil {
 		return err
 	}
-	if err := txn.Set(descriptorPrefix(file), b); err != nil {
+	if err := txn.setRaw(descriptorPrefix(file), b); err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := txn.Commit(); err != nil {
+	if err := txn.Commit(ctx); err != nil {
 		return err
 	}
 	return nil
@@ -375,6 +408,11 @@ func (db *db) FileDescriptors(_ context.Context) ([]*descriptorpb.FileDescriptor
 	return out, nil
 }
 
+func (db *db) Backup(ctx context.Context, w io.Writer) error {
+	_, err := db.bdb.NewStream().Backup(w, 0)
+	return err
+}
+
 func (db *db) registerFileDescriptorProto(file *descriptorpb.FileDescriptorProto) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
@@ -411,80 +449,118 @@ func (db *db) handleRegisterErr(err error) error {
 func (db *db) load() error {
 	db.mu.Lock()
 	defer db.mu.Unlock()
+
+	if err := db.saveDescriptors(); err != nil {
+		return err
+	}
+
+	return db.loadDescriptors()
+}
+
+func (db *db) saveDescriptors() error {
 	var fdps []*descriptorpb.FileDescriptorProto
 	db.reg.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
 		// we can't register it now as the protogistry.globalMutex would dead lock
 		fdps = append(fdps, pdesc.ToFileDescriptorProto(fd))
 		return true
 	})
+	tx, err := newTx(context.Background(), db)
+	if err != nil {
+		return err
+	}
+	defer tx.Close()
 	for _, v := range fdps {
 		if err := db.registerFileDescriptorProto(v); err != nil {
 			return err
 		}
-		if err := db.bdb.Update(func(txn *badger.Txn) error {
-			b, err := db.marshal(v)
-			if err != nil {
+		b, err := db.marshal(v)
+		if err != nil {
+			return err
+		}
+		if err := tx.setRaw(descriptorPrefix(v), b); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(context.Background()); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (db *db) loadDescriptors() error {
+	tx, err := newTx(context.Background(), db)
+	if err != nil {
+		return err
+	}
+	defer tx.Close()
+	txn := tx.txn
+	it := txn.NewIterator(badger.IteratorOptions{Prefix: []byte(descriptors)})
+	defer it.Close()
+	for it.Rewind(); it.Valid(); it.Next() {
+		if err := it.Item().Value(func(val []byte) error {
+			fdp := &descriptorpb.FileDescriptorProto{}
+			if err := db.unmarshal(val, fdp); err != nil {
 				return err
 			}
-			return txn.Set(descriptorPrefix(v), b)
+			return db.registerFileDescriptorProto(fdp)
+
 		}); err != nil {
 			return err
 		}
 	}
-	return db.bdb.View(func(txn *badger.Txn) error {
-		it := txn.NewIterator(badger.IteratorOptions{Prefix: []byte(descriptors)})
-		defer it.Close()
-		for it.Rewind(); it.Valid(); it.Next() {
-			if err := it.Item().Value(func(val []byte) error {
-				fdp := &descriptorpb.FileDescriptorProto{}
-				if err := db.unmarshal(val, fdp); err != nil {
-					return err
-				}
-				return db.registerFileDescriptorProto(fdp)
-
-			}); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	return nil
 }
 
 func (db *db) recoverRegister(file *descriptorpb.FileDescriptorProto) error {
-	return db.bdb.Update(func(txn *badger.Txn) error {
-		key := descriptorPrefix(file)
-		it := txn.NewIterator(badger.IteratorOptions{Prefix: key})
-		defer it.Close()
-		found := false
-		equals := false
-		for it.Rewind(); it.Valid(); it.Next() {
-			if err := it.Item().Value(func(val []byte) error {
-				got := &descriptorpb.FileDescriptorProto{}
-				if err := proto.Unmarshal(val, got); err != nil {
-					// TODO(adphi): should we delete the malformed FileDescriptorProto and silently continue ?
-					return err
-				}
-				found = true
-				if proto.Equal(got, file) {
-					equals = true
-				}
-				return nil
-			}); err != nil {
+	tx, err := newTx(context.Background(), db)
+	if err != nil {
+		return err
+	}
+	txn := tx.txn
+	key := descriptorPrefix(file)
+	it := txn.NewIterator(badger.IteratorOptions{Prefix: key})
+	defer it.Close()
+	found := false
+	equals := false
+	for it.Rewind(); it.Valid(); it.Next() {
+		if err := it.Item().Value(func(val []byte) error {
+			got := &descriptorpb.FileDescriptorProto{}
+			if err := proto.Unmarshal(val, got); err != nil {
+				// TODO(adphi): should we delete the malformed FileDescriptorProto and silently continue ?
 				return err
 			}
-		}
-		if equals {
+			found = true
+			if proto.Equal(got, file) {
+				equals = true
+			}
 			return nil
-		}
-		if found {
-			return errors.New("updating definitions not yet supported")
-		}
-		b, err := proto.Marshal(file)
-		if err != nil {
+		}); err != nil {
 			return err
 		}
-		return txn.Set(key, b)
-	})
+	}
+	if equals {
+		return nil
+	}
+	if found {
+		return errors.New("updating definitions not yet supported")
+	}
+	b, err := proto.Marshal(file)
+	if err != nil {
+		return err
+	}
+	if err := txn.Set(key, b); err != nil {
+		return err
+	}
+	it.Close()
+	ts, confict := db.orc.newCommitTs(tx)
+	if confict {
+		return ErrConflict
+	}
+	defer db.orc.doneCommit(ts)
+	if err := txn.CommitAt(ts, nil); err != nil {
+		return err
+	}
+	return nil
 }
 
 func applyDefaults(m proto.Message) {

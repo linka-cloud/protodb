@@ -69,7 +69,7 @@ type Writer interface {
 }
 
 type TxProvider interface {
-	Tx(ctx context.Context) (Tx, error)
+	Tx(ctx context.Context, opts ...TxOption) (Tx, error)
 }
 
 type Committer interface {

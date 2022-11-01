@@ -46,6 +46,7 @@ bin:
 	@go install google.golang.org/grpc/cmd/protoc-gen-go-grpc
 	@go install go.linka.cloud/protoc-gen-defaults
 	@go install go.linka.cloud/protoc-gen-go-fields
+	@go install go.linka.cloud/protoc-gen-proxy
 	@go install github.com/envoyproxy/protoc-gen-validate
 	@go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway
 	@go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2
@@ -69,6 +70,7 @@ gen-proto: protoc-gen-protodb
     		--go-patch_out=plugin=defaults,$(PROTO_OPTS):. \
     		--go-patch_out=plugin=go-fields,$(PROTO_OPTS):. \
     		--go-patch_out=plugin=protodb,$(PROTO_OPTS):. \
+    		--go-patch_out=plugin=proxy,$(PROTO_OPTS):. \
     		--go-patch_out=plugin=go-vtproto,features=marshal+unmarshal+size,$(PROTO_OPTS):. \
     		--go-patch_out=plugin=validate,lang=go,$(PROTO_OPTS):. {} \;
 

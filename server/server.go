@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
@@ -89,7 +90,13 @@ func (s *server) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteR
 
 func (s *server) Tx(stream pb.ProtoDB_TxServer) error {
 	ctx := stream.Context()
-	tx, err := s.db.Tx(stream.Context())
+	var opts []protodb.TxOption
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		if v := md.Get(pb.ReadOnlyTxKey); len(v) > 0 {
+			opts = append(opts, protodb.WithReadOnly())
+		}
+	}
+	tx, err := s.db.Tx(stream.Context(), opts...)
 	if err != nil {
 		return err
 	}
