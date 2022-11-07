@@ -6,12 +6,11 @@ package testpb
 
 import (
 	fmt "fmt"
-	io "io"
-	bits "math/bits"
-
 	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	wrapperspb "google.golang.org/protobuf/types/known/wrapperspb"
+	io "io"
+	bits "math/bits"
 )
 
 const (

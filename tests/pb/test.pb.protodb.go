@@ -20,10 +20,9 @@ import (
 	"context"
 	"fmt"
 
-	"go.uber.org/multierr"
-
 	"go.linka.cloud/protodb"
 	pdbc "go.linka.cloud/protodb/client"
+	"go.uber.org/multierr"
 )
 
 var (

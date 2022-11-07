@@ -76,28 +76,29 @@ type Metrics struct {
 }
 
 func newOpMetrics(op string) OpMetrics {
+	labels := []string{"message"}
 	return OpMetrics{
-		OpsCounter: promauto.NewCounter(prometheus.CounterOpts{
+		OpsCounter: promauto.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: op,
 			Name:      "total",
-		}),
-		ErrorsCounter: promauto.NewCounter(prometheus.CounterOpts{
+		}, labels),
+		ErrorsCounter: promauto.NewCounterVec(prometheus.CounterOpts{
 			Namespace: namespace,
 			Subsystem: op,
 			Name:      "error_total",
-		}),
-		DurationHist: promauto.NewHistogram(prometheus.HistogramOpts{
+		}, labels),
+		DurationHist: promauto.NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: op,
 			Name:      "duration_seconds",
 			Buckets:   prometheus.DefBuckets,
-		}),
-		Inflight: promauto.NewGauge(prometheus.GaugeOpts{
+		}, labels),
+		Inflight: promauto.NewGaugeVec(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Subsystem: op,
 			Name:      "inflight",
-		}),
+		}, labels),
 	}
 }
 
@@ -112,20 +113,20 @@ func (f endFn) End() {
 }
 
 type OpMetrics struct {
-	OpsCounter    prometheus.Counter
-	ErrorsCounter prometheus.Counter
-	DurationHist  prometheus.Histogram
-	Inflight      prometheus.Gauge
+	OpsCounter    *prometheus.CounterVec
+	ErrorsCounter *prometheus.CounterVec
+	DurationHist  *prometheus.HistogramVec
+	Inflight      *prometheus.GaugeVec
 }
 
-func (m *OpMetrics) Start() MetricsEnd {
-	m.OpsCounter.Inc()
-	m.Inflight.Inc()
+func (m *OpMetrics) Start(lvs ...string) MetricsEnd {
+	m.OpsCounter.WithLabelValues(lvs...).Inc()
+	m.Inflight.WithLabelValues(lvs...).Inc()
 	start := time.Now()
 	return endFn(func() {
 		duration := time.Since(start)
-		m.Inflight.Dec()
-		m.DurationHist.Observe(duration.Seconds())
+		m.Inflight.WithLabelValues(lvs...).Dec()
+		m.DurationHist.WithLabelValues(lvs...).Observe(duration.Seconds())
 	})
 }
 

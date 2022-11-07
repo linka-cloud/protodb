@@ -6,9 +6,6 @@ package pb
 
 import (
 	fmt "fmt"
-	io "io"
-	bits "math/bits"
-
 	filters "go.linka.cloud/protofilters/filters"
 	proto "google.golang.org/protobuf/proto"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -18,6 +15,8 @@ import (
 	fieldmaskpb "google.golang.org/protobuf/types/known/fieldmaskpb"
 	structpb "google.golang.org/protobuf/types/known/structpb"
 	wrapperspb "google.golang.org/protobuf/types/known/wrapperspb"
+	io "io"
+	bits "math/bits"
 )
 
 const (

@@ -79,7 +79,7 @@ type db struct {
 }
 
 func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-chan Event, error) {
-	end := metrics.Watch.Start()
+	end := metrics.Watch.Start(string(m.ProtoReflect().Descriptor().FullName()))
 	o := makeGetOpts(opts...)
 
 	k, _ := dataPrefix(m)
@@ -177,7 +177,7 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 			return nil
 		}, k)
 		if err != nil {
-			metrics.Watch.ErrorsCounter.Inc()
+			metrics.Watch.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 		}
 		select {
 		case ch <- event{err: err}:
@@ -189,61 +189,61 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 }
 
 func (db *db) Get(ctx context.Context, m proto.Message, opts ...GetOption) ([]proto.Message, *PagingInfo, error) {
-	defer metrics.Get.Start().End()
+	defer metrics.Get.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 	tx, err := db.Tx(ctx)
 	if err != nil {
-		metrics.Get.ErrorsCounter.Inc()
+		metrics.Get.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 		return nil, nil, err
 	}
 	defer tx.Close()
 	msgs, paging, err := tx.Get(ctx, m, opts...)
 	if err != nil {
-		metrics.Get.ErrorsCounter.Inc()
+		metrics.Get.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 	}
 	return msgs, paging, err
 }
 
 func (db *db) Set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error) {
-	defer metrics.Set.Start().End()
+	defer metrics.Set.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 	tx, err := db.Tx(ctx)
 	if err != nil {
-		metrics.Set.ErrorsCounter.Inc()
+		metrics.Set.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 		return nil, err
 	}
 	defer tx.Close()
 	m, err = tx.Set(ctx, m, opts...)
 	if err != nil {
-		metrics.Set.ErrorsCounter.Inc()
+		metrics.Set.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 		return nil, err
 	}
 	if err := ctx.Err(); err != nil {
-		metrics.Set.ErrorsCounter.Inc()
+		metrics.Set.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 		return nil, err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		metrics.Set.ErrorsCounter.Inc()
+		metrics.Set.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 		return nil, err
 	}
 	return m, nil
 }
 
 func (db *db) Delete(ctx context.Context, m proto.Message) error {
-	defer metrics.Delete.Start().End()
+	defer metrics.Delete.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 	tx, err := db.Tx(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Close()
 	if err := tx.Delete(ctx, m); err != nil {
-		metrics.Delete.ErrorsCounter.Inc()
+		metrics.Delete.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 		return err
 	}
 	if err := ctx.Err(); err != nil {
-		metrics.Delete.ErrorsCounter.Inc()
+		metrics.Delete.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 		return err
 	}
 	if err := tx.Commit(ctx); err != nil {
-		metrics.Delete.ErrorsCounter.Inc()
+		metrics.Delete.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 		return err
 	}
 	return nil

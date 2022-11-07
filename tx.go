@@ -38,7 +38,7 @@ func newTx(ctx context.Context, db *db) (Tx, error) {
 	if db.closed() {
 		return nil, badger.ErrDBClosed
 	}
-	end := metrics.Tx.Start()
+	end := metrics.Tx.Start("")
 	return &tx{ctx: ctx, txn: db.bdb.NewTransaction(true), db: db, me: end}, nil
 }
 
@@ -59,10 +59,10 @@ type tx struct {
 }
 
 func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...GetOption) (out []proto.Message, info *PagingInfo, err error) {
-	defer metrics.Tx.Get.Start().End()
+	defer metrics.Tx.Get.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 	out, info, err = tx.get(ctx, m, opts...)
 	if err != nil {
-		metrics.Tx.Get.ErrorsCounter.Inc()
+		metrics.Tx.Get.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 	}
 	return
 }
@@ -154,10 +154,10 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...GetOption) (out 
 }
 
 func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error) {
-	defer metrics.Tx.Set.Start().End()
+	defer metrics.Tx.Set.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 	m, err := tx.set(ctx, m, opts...)
 	if err != nil {
-		metrics.Tx.Set.ErrorsCounter.Inc()
+		metrics.Tx.Set.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 	}
 	return m, err
 }
@@ -214,9 +214,9 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...SetOption) (prot
 }
 
 func (tx *tx) Delete(ctx context.Context, m proto.Message) error {
-	defer metrics.Tx.Delete.Start().End()
+	defer metrics.Tx.Delete.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 	if err := tx.delete(ctx, m); err != nil {
-		metrics.Tx.Delete.ErrorsCounter.Inc()
+		metrics.Tx.Delete.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 		return err
 	}
 	return nil
@@ -265,7 +265,7 @@ func (tx *tx) Commit(ctx context.Context) error {
 	}
 	defer tx.close()
 	if err := tx.txn.Commit(); err != nil {
-		metrics.Tx.ErrorsCounter.Inc()
+		metrics.Tx.ErrorsCounter.WithLabelValues("").Inc()
 		return err
 	}
 	return nil
