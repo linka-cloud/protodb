@@ -37,21 +37,20 @@ func newTx(ctx context.Context, db *db, opts ...TxOption) (*tx, error) {
 	}
 	end := metrics.Tx.Start("")
 	readTs := db.orc.readTs()
-	tx := &tx{
-		ctx:          ctx,
-		txn:          db.bdb.NewTransactionAt(readTs, true),
-		readTs:       readTs,
-		db:           db,
-		me:           end,
-		update:       true,
-		conflictKeys: make(map[uint64]struct{}),
-	}
 	var o TxOpts
 	for _, opt := range opts {
 		opt(&o)
 	}
-	tx.update = !o.ReadOnly
-	return tx, nil
+	update := !o.ReadOnly
+	return &tx{
+		ctx:          ctx,
+		txn:          db.bdb.NewTransactionAt(readTs, update),
+		readTs:       readTs,
+		db:           db,
+		me:           end,
+		update:       update,
+		conflictKeys: make(map[uint64]struct{}),
+	}, nil
 }
 
 type tx struct {
@@ -330,6 +329,7 @@ func (tx *tx) Commit(ctx context.Context) error {
 		return ErrConflict
 	}
 	defer tx.db.orc.doneCommit(ts)
+	// TODO(adphi): we may need to import more checks from badger txn commit method
 	if err := tx.txn.CommitAt(ts, nil); err != nil {
 		metrics.Tx.ErrorsCounter.WithLabelValues("").Inc()
 		return err
