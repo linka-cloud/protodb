@@ -155,11 +155,11 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...GetOption) (out 
 
 func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error) {
 	defer metrics.Tx.Set.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
-	m, err := tx.set(ctx, m, opts...)
+	m2, err := tx.set(ctx, m, opts...)
 	if err != nil {
 		metrics.Tx.Set.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 	}
-	return m, err
+	return m2, err
 }
 func (tx *tx) set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error) {
 	if tx.closed() {
