@@ -22,7 +22,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/dgraph-io/badger/v2"
+	"github.com/dgraph-io/badger/v3"
+	bpb "github.com/dgraph-io/badger/v3/pb"
 	"go.linka.cloud/grpc/logger"
 	"go.linka.cloud/protoc-gen-defaults/defaults"
 	pf "go.linka.cloud/protofilters"
@@ -175,7 +176,7 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 				}
 			}
 			return nil
-		}, k)
+		}, []bpb.Match{{Prefix: k}})
 		if err != nil {
 			metrics.Watch.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 		}

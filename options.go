@@ -18,8 +18,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dgraph-io/badger/v2"
-	boptions "github.com/dgraph-io/badger/v2/options"
+	"github.com/dgraph-io/badger/v3"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
@@ -118,12 +117,12 @@ func (o options) build() badger.Options {
 		WithLogger(o.logger)
 	// https://github.com/dgraph-io/badger/issues/1304#issuecomment-630078745
 	if o.lowMemory {
-		opts.TableLoadingMode = boptions.FileIO
-		opts.ValueLogLoadingMode = boptions.FileIO
+		// opts.TableLoadingMode = boptions.FileIO
+		// opts.ValueLogLoadingMode = boptions.FileIO
 
 		// Memtable size. This is the actively written in-memory data structure.
 		// This value also affects the size of a transaction. The size of a transaction is 15% of the table size.
-		opts.MaxTableSize = 1 << 20
+		// opts.MaxTableSize = 1 << 20
 		// To allow writes at a faster speed, we create a new memtable as soon as
 		// an existing memtable is filled up. This option determines how many
 		// memtables should be kept in memory.
@@ -131,7 +130,7 @@ func (o options) build() badger.Options {
 
 		// This option will have a significant effect the memory. If the level is kept
 		// in-memory, read are faster but the tables will be kept in memory.
-		opts.KeepL0InMemory = false
+		// opts.KeepL0InMemory = false
 
 		// The NumLevelZeroTables and NumLevelZeroTableStall will not have any
 		// effect on the memory if `KeepL0InMemory` is set to false.
@@ -144,7 +143,7 @@ func (o options) build() badger.Options {
 		// opts.SyncWrites = false
 
 		// LoadBloomsOnOpen=false will improve the db startup speed
-		opts.LoadBloomsOnOpen = false
+		// opts.LoadBloomsOnOpen = false
 
 		// Bloom filters will be kept in memory if the following option is not set. Each
 		// bloom filter takes up 5 MB of memory. A smaller bf cache would mean that

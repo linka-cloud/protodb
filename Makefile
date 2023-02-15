@@ -74,8 +74,8 @@ gen-proto: protoc-gen-protodb
 
 .PHONY: lint
 lint:
-	@goimports -w -local $(MODULE) $(PWD)
 	@gofmt -w $(PWD)
+	# @goimports -w -local $(MODULE) $(PWD)
 
 .PHONY: tests
 tests: proto

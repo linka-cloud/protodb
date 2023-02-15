@@ -23,7 +23,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/dgraph-io/badger/v2"
+	"github.com/dgraph-io/badger/v3"
 	pf "go.linka.cloud/protofilters"
 	"google.golang.org/protobuf/proto"
 
@@ -320,8 +320,8 @@ func hash(f Filter) (hash string, err error) {
 	return base64.StdEncoding.EncodeToString(h), nil
 }
 
-func estimateSize(e *badger.Entry, threshold int) int {
-	if len(e.Value) < threshold {
+func estimateSize(e *badger.Entry, threshold int64) int {
+	if int64(len(e.Value)) < threshold {
 		return len(e.Key) + len(e.Value) + 2 // Meta, UserMeta
 	}
 	return len(e.Key) + 12 + 2 // 12 for ValuePointer, 2 for metas.
