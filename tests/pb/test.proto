@@ -40,8 +40,8 @@ message MessageWithStaticKey {
 
 message Interface {
   option (protodb.enabled) = true;
-  string name = 1;
-  google.protobuf.StringValue mac = 2 [(validate.rules).string = {pattern: "^([0-9A-F]{2}[:-]){5}([0-9A-F]{2})$"}];
+  string name = 1 [(protodb.key) = true];
+  google.protobuf.StringValue mac = 2 [(validate.rules).string = {pattern: "^([0-9A-F]{2}[:-]){5}([0-9A-F]{2})$"}, (protodb.index) = true];
   enum Status {
     option (go.enum).name = "InterfaceStatus";
     UNKNOWN = 0 [(go.value).name = "StatusUnknown"];

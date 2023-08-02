@@ -30,4 +30,7 @@ extend google.protobuf.MessageOptions {
 extend google.protobuf.FieldOptions {
   // key mark the field as message key
   optional bool key = 1191;
+  // index mark the field as index
+  // it is only valid for scalar non-repeated fields
+  optional bool index = 1192;
 }
