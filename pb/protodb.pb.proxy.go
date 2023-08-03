@@ -27,6 +27,7 @@ import (
 var (
 	_ = errors.New("")
 	_ = io.EOF
+	_ = context.Background()
 )
 
 var _ ProtoDBServer = (*proxyProtoDB)(nil)

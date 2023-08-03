@@ -71,13 +71,14 @@ gen-proto: protoc-gen-protodb
     		--go-patch_out=plugin=go-fields,$(PROTO_OPTS):. \
     		--go-patch_out=plugin=protodb,$(PROTO_OPTS):. \
     		--go-patch_out=plugin=proxy,$(PROTO_OPTS):. \
-    		--go-patch_out=plugin=go-vtproto,features=marshal+unmarshal+size,$(PROTO_OPTS):. \
+    		--go-patch_out=plugin=go-vtproto,features=marshal+unmarshal+size+clone+equal,$(PROTO_OPTS):. \
     		--go-patch_out=plugin=validate,lang=go,$(PROTO_OPTS):. {} \;
 
 .PHONY: lint
 lint:
-	@goimports -w -local $(MODULE) $(PWD)
 	@gofmt -w $(PWD)
+
+# @goimports -w -local $(MODULE) $(PWD)
 
 .PHONY: tests
 tests: proto

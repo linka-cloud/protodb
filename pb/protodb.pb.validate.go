@@ -133,6 +133,7 @@ func (m *SetRequest) validate(all bool) error {
 	if len(errors) > 0 {
 		return SetRequestMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -260,6 +261,7 @@ func (m *SetResponse) validate(all bool) error {
 	if len(errors) > 0 {
 		return SetResponseMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -373,6 +375,7 @@ func (m *DeleteRequest) validate(all bool) error {
 	if len(errors) > 0 {
 		return DeleteRequestMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -472,6 +475,7 @@ func (m *DeleteResponse) validate(all bool) error {
 	if len(errors) > 0 {
 		return DeleteResponseMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -673,6 +677,7 @@ func (m *GetRequest) validate(all bool) error {
 	if len(errors) > 0 {
 		return GetRequestMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -834,6 +839,7 @@ func (m *GetResponse) validate(all bool) error {
 	if len(errors) > 0 {
 		return GetResponseMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -929,9 +935,20 @@ func (m *TxRequest) validate(all bool) error {
 
 	var errors []error
 
-	switch m.Request.(type) {
-
+	oneofRequestPresent := false
+	switch v := m.Request.(type) {
 	case *TxRequest_Get:
+		if v == nil {
+			err := TxRequestValidationError{
+				field:  "Request",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRequestPresent = true
 
 		if all {
 			switch v := interface{}(m.GetGet()).(type) {
@@ -963,6 +980,17 @@ func (m *TxRequest) validate(all bool) error {
 		}
 
 	case *TxRequest_Set:
+		if v == nil {
+			err := TxRequestValidationError{
+				field:  "Request",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRequestPresent = true
 
 		if all {
 			switch v := interface{}(m.GetSet()).(type) {
@@ -994,6 +1022,17 @@ func (m *TxRequest) validate(all bool) error {
 		}
 
 	case *TxRequest_Delete:
+		if v == nil {
+			err := TxRequestValidationError{
+				field:  "Request",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRequestPresent = true
 
 		if all {
 			switch v := interface{}(m.GetDelete()).(type) {
@@ -1025,6 +1064,17 @@ func (m *TxRequest) validate(all bool) error {
 		}
 
 	case *TxRequest_Commit:
+		if v == nil {
+			err := TxRequestValidationError{
+				field:  "Request",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRequestPresent = true
 
 		if all {
 			switch v := interface{}(m.GetCommit()).(type) {
@@ -1056,6 +1106,17 @@ func (m *TxRequest) validate(all bool) error {
 		}
 
 	case *TxRequest_Count:
+		if v == nil {
+			err := TxRequestValidationError{
+				field:  "Request",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRequestPresent = true
 
 		if all {
 			switch v := interface{}(m.GetCount()).(type) {
@@ -1087,6 +1148,17 @@ func (m *TxRequest) validate(all bool) error {
 		}
 
 	case *TxRequest_Size:
+		if v == nil {
+			err := TxRequestValidationError{
+				field:  "Request",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRequestPresent = true
 
 		if all {
 			switch v := interface{}(m.GetSize()).(type) {
@@ -1118,6 +1190,9 @@ func (m *TxRequest) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofRequestPresent {
 		err := TxRequestValidationError{
 			field:  "Request",
 			reason: "value is required",
@@ -1126,12 +1201,12 @@ func (m *TxRequest) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
 		return TxRequestMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -1227,9 +1302,18 @@ func (m *TxResponse) validate(all bool) error {
 
 	var errors []error
 
-	switch m.Response.(type) {
-
+	switch v := m.Response.(type) {
 	case *TxResponse_Get:
+		if v == nil {
+			err := TxResponseValidationError{
+				field:  "Response",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetGet()).(type) {
@@ -1261,6 +1345,16 @@ func (m *TxResponse) validate(all bool) error {
 		}
 
 	case *TxResponse_Set:
+		if v == nil {
+			err := TxResponseValidationError{
+				field:  "Response",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetSet()).(type) {
@@ -1292,6 +1386,16 @@ func (m *TxResponse) validate(all bool) error {
 		}
 
 	case *TxResponse_Delete:
+		if v == nil {
+			err := TxResponseValidationError{
+				field:  "Response",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetDelete()).(type) {
@@ -1323,6 +1427,16 @@ func (m *TxResponse) validate(all bool) error {
 		}
 
 	case *TxResponse_Commit:
+		if v == nil {
+			err := TxResponseValidationError{
+				field:  "Response",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetCommit()).(type) {
@@ -1354,6 +1468,16 @@ func (m *TxResponse) validate(all bool) error {
 		}
 
 	case *TxResponse_Count:
+		if v == nil {
+			err := TxResponseValidationError{
+				field:  "Response",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetCount()).(type) {
@@ -1385,6 +1509,16 @@ func (m *TxResponse) validate(all bool) error {
 		}
 
 	case *TxResponse_Size:
+		if v == nil {
+			err := TxResponseValidationError{
+				field:  "Response",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetSize()).(type) {
@@ -1415,11 +1549,14 @@ func (m *TxResponse) validate(all bool) error {
 			}
 		}
 
+	default:
+		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {
 		return TxResponseMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -1547,6 +1684,7 @@ func (m *CommitResponse) validate(all bool) error {
 	if len(errors) > 0 {
 		return CommitResponseMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -1646,6 +1784,7 @@ func (m *CountRequest) validate(all bool) error {
 	if len(errors) > 0 {
 		return CountRequestMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -1746,6 +1885,7 @@ func (m *CountResponse) validate(all bool) error {
 	if len(errors) > 0 {
 		return CountResponseMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -1845,6 +1985,7 @@ func (m *SizeRequest) validate(all bool) error {
 	if len(errors) > 0 {
 		return SizeRequestMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -1945,6 +2086,7 @@ func (m *SizeResponse) validate(all bool) error {
 	if len(errors) > 0 {
 		return SizeResponseMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -2048,6 +2190,7 @@ func (m *Paging) validate(all bool) error {
 	if len(errors) > 0 {
 		return PagingMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -2150,6 +2293,7 @@ func (m *PagingInfo) validate(all bool) error {
 	if len(errors) > 0 {
 		return PagingInfoMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -2292,6 +2436,7 @@ func (m *WatchRequest) validate(all bool) error {
 	if len(errors) > 0 {
 		return WatchRequestMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -2450,6 +2595,7 @@ func (m *WatchEvent) validate(all bool) error {
 	if len(errors) > 0 {
 		return WatchEventMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -2577,6 +2723,7 @@ func (m *RegisterRequest) validate(all bool) error {
 	if len(errors) > 0 {
 		return RegisterRequestMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -2676,6 +2823,7 @@ func (m *RegisterResponse) validate(all bool) error {
 	if len(errors) > 0 {
 		return RegisterResponseMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -2775,6 +2923,7 @@ func (m *DescriptorsRequest) validate(all bool) error {
 	if len(errors) > 0 {
 		return DescriptorsRequestMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -2910,6 +3059,7 @@ func (m *DescriptorsResponse) validate(all bool) error {
 	if len(errors) > 0 {
 		return DescriptorsResponseMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -3011,6 +3161,7 @@ func (m *FileDescriptorsRequest) validate(all bool) error {
 	if len(errors) > 0 {
 		return FileDescriptorsRequestMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -3146,6 +3297,7 @@ func (m *FileDescriptorsResponse) validate(all bool) error {
 	if len(errors) > 0 {
 		return FileDescriptorsResponseMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -3293,6 +3445,7 @@ func (m *MessageDiff) validate(all bool) error {
 	if len(errors) > 0 {
 		return MessageDiffMultiError(errors)
 	}
+
 	return nil
 }
 
@@ -3449,6 +3602,7 @@ func (m *FieldDiff) validate(all bool) error {
 	if len(errors) > 0 {
 		return FieldDiffMultiError(errors)
 	}
+
 	return nil
 }
 

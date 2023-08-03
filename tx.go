@@ -42,6 +42,22 @@ func newTx(ctx context.Context, db *db, opts ...TxOption) (*tx, error) {
 		opt(&o)
 	}
 	update := !o.ReadOnly
+	var (
+		txr *replTx
+		err error
+	)
+	if update && db.repl != nil {
+		if !db.repl.isLeader() {
+			return nil, ErrNotLeader
+		}
+		txr, err = db.repl.newTx(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if err := txr.new(ctx, readTs); err != nil {
+			return nil, err
+		}
+	}
 	return &tx{
 		ctx:          ctx,
 		txn:          db.bdb.NewTransactionAt(readTs, update),
@@ -50,6 +66,7 @@ func newTx(ctx context.Context, db *db, opts ...TxOption) (*tx, error) {
 		me:           end,
 		update:       update,
 		conflictKeys: make(map[uint64]struct{}),
+		txr:          txr,
 	}, nil
 }
 
@@ -75,6 +92,8 @@ type tx struct {
 
 	m    sync.RWMutex
 	done bool
+
+	txr *replTx
 }
 
 func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...GetOption) (out []proto.Message, info *PagingInfo, err error) {
@@ -230,6 +249,7 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...SetOption) (prot
 	if err != nil {
 		return nil, err
 	}
+	// TODO(adphi): store that for replication
 	e := badger.NewEntry(k, b)
 	if o.TTL != 0 {
 		e = e.WithTTL(o.TTL)
@@ -247,14 +267,23 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...SetOption) (prot
 	if err := tx.txn.SetEntry(e); err != nil {
 		return nil, err
 	}
-	return m, nil
+	if tx.txr == nil {
+		return m, nil
+	}
+	return m, tx.txr.set(ctx, e.Key, e.Value, e.ExpiresAt)
 }
 
-func (tx *tx) setRaw(key, val []byte) error {
+func (tx *tx) setRaw(ctx context.Context, key, val []byte) error {
 	if tx.closed() {
 		return ErrDBClosed
 	}
-	return tx.txn.Set(key, val)
+	if err := tx.txn.Set(key, val); err != nil {
+		return err
+	}
+	if tx.txr == nil {
+		return nil
+	}
+	return tx.txr.set(ctx, key, val, 0)
 }
 
 func (tx *tx) Delete(ctx context.Context, m proto.Message) error {
@@ -294,7 +323,10 @@ func (tx *tx) delete(ctx context.Context, m proto.Message) error {
 	if err := tx.txn.Delete(k); err != nil {
 		return err
 	}
-	return nil
+	if tx.txr == nil {
+		return nil
+	}
+	return tx.txr.delete(ctx, k)
 }
 
 func (tx *tx) deleteRaw(key []byte) error {
@@ -330,11 +362,15 @@ func (tx *tx) Commit(ctx context.Context) error {
 	}
 	defer tx.db.orc.doneCommit(ts)
 	// TODO(adphi): we may need to import more checks from badger txn commit method
+	// TODO(adphi): replicate the txn
 	if err := tx.txn.CommitAt(ts, nil); err != nil {
 		metrics.Tx.ErrorsCounter.WithLabelValues("").Inc()
 		return err
 	}
-	return nil
+	if tx.txr == nil {
+		return nil
+	}
+	return tx.txr.commit(ctx, ts)
 }
 
 func (tx *tx) Close() {
@@ -373,17 +409,17 @@ func (tx *tx) checkSize(e *badger.Entry) error {
 	return nil
 }
 
-func (txn *tx) addReadKey(key []byte) {
-	if txn.update {
+func (tx *tx) addReadKey(key []byte) {
+	if tx.update {
 		fp := z.MemHash(key)
 
 		// Because of the possibility of multiple iterators it is now possible
 		// for multiple threads within a read-write transaction to read keys at
 		// the same time. The reads slice is not currently thread-safe and
 		// needs to be locked whenever we mark a key as read.
-		txn.readsLock.Lock()
-		txn.reads = append(txn.reads, fp)
-		txn.readsLock.Unlock()
+		tx.readsLock.Lock()
+		tx.reads = append(tx.reads, fp)
+		tx.readsLock.Unlock()
 	}
 }
 

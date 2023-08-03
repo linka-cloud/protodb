@@ -98,6 +98,15 @@ func WithProtoRegisterErrHandler(fn func(err error) error) Option {
 	}
 }
 
+func WithReplication(m ReplicationMode, opts ...ReplicationOption) Option {
+	return func(o *options) {
+		o.repl.mode = m
+		for _, opt := range opts {
+			opt(&o.repl)
+		}
+	}
+}
+
 type options struct {
 	path                      string
 	inMemory                  bool
@@ -108,6 +117,8 @@ type options struct {
 	registerErrHandler        func(err error) error
 	badgerOptionsFunc         func(opts badger.Options) badger.Options
 	// lowMemory                 bool
+
+	repl replOptions
 }
 
 func (o options) build() badger.Options {
@@ -160,6 +171,7 @@ func (o options) build() badger.Options {
 var defaultOptions = options{
 	path:        DefaultPath,
 	numVersions: 2,
+	repl:        defaultReplicationOptions,
 }
 
 type GetOption func(o *GetOpts)

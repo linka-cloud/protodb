@@ -15,6 +15,8 @@
 package protodb
 
 import (
+	"errors"
+
 	"github.com/dgraph-io/badger/v3"
 )
 
@@ -74,4 +76,6 @@ var (
 
 	// ErrDBClosed is returned when a get operation is performed after closing the DB.
 	ErrDBClosed = badger.ErrDBClosed
+
+	ErrNotLeader = errors.New("current node is not leader")
 )

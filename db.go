@@ -15,6 +15,7 @@
 package protodb
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -77,8 +78,17 @@ func Open(ctx context.Context, opts ...Option) (DB, error) {
 	reg := preg.GlobalFiles
 
 	db := &db{bdb: bdb, orc: orc, opts: o, reg: reg, bopts: bopts}
-	if err := db.load(); err != nil {
-		return nil, err
+	if o.repl.mode != ReplicationModeNone {
+		var err error
+		db.repl, err = newRepl(ctx, db, o.repl)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if db.repl != nil && db.repl.isLeader() {
+		if err := db.load(ctx); err != nil {
+			return nil, err
+		}
 	}
 	return db, nil
 }
@@ -91,6 +101,8 @@ type db struct {
 
 	mu  sync.RWMutex
 	reg *preg.Files
+
+	repl *repl
 
 	cmu   sync.RWMutex
 	close bool
@@ -286,6 +298,9 @@ func (db *db) Tx(ctx context.Context, opts ...TxOption) (Tx, error) {
 func (db *db) Close() error {
 	db.cmu.Lock()
 	db.close = true
+	if db.repl != nil {
+		db.repl.close()
+	}
 	db.cmu.Unlock()
 	return db.bdb.Close()
 }
@@ -324,7 +339,7 @@ func (db *db) RegisterProto(ctx context.Context, file *descriptorpb.FileDescript
 	}
 	db.mu.Lock()
 	defer db.mu.Unlock()
-	if err := db.registerFileDescriptorProto(file); err != nil {
+	if err := db.registerFileDescriptorProto(ctx, file); err != nil {
 		return err
 	}
 	txn, err := newTx(ctx, db)
@@ -336,7 +351,7 @@ func (db *db) RegisterProto(ctx context.Context, file *descriptorpb.FileDescript
 	if err != nil {
 		return err
 	}
-	if err := txn.setRaw(descriptorPrefix(file), b); err != nil {
+	if err := txn.setRaw(ctx, descriptorPrefix(file), b); err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {
@@ -413,13 +428,13 @@ func (db *db) Backup(ctx context.Context, w io.Writer) error {
 	return err
 }
 
-func (db *db) registerFileDescriptorProto(file *descriptorpb.FileDescriptorProto) (err error) {
+func (db *db) registerFileDescriptorProto(ctx context.Context, file *descriptorpb.FileDescriptorProto) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			var ok bool
 			ok, err = isAlreadyRegistered(e)
 			if ok {
-				err = db.recoverRegister(file)
+				err = db.recoverRegister(ctx, file)
 			}
 			if err != nil {
 				err = db.handleRegisterErr(err)
@@ -437,6 +452,9 @@ func (db *db) registerFileDescriptorProto(file *descriptorpb.FileDescriptorProto
 }
 
 func (db *db) handleRegisterErr(err error) error {
+	if errors.Is(err, ErrNotLeader) {
+		return err
+	}
 	if db.opts.ignoreProtoRegisterErrors {
 		return nil
 	}
@@ -446,18 +464,21 @@ func (db *db) handleRegisterErr(err error) error {
 	return err
 }
 
-func (db *db) load() error {
+func (db *db) load(ctx context.Context) error {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 
-	if err := db.saveDescriptors(); err != nil {
+	if err := db.saveDescriptors(ctx); err != nil && !errors.Is(err, ErrNotLeader) {
 		return err
 	}
 
-	return db.loadDescriptors()
+	if err := db.loadDescriptors(ctx); err != nil && !errors.Is(err, ErrNotLeader) {
+		return err
+	}
+	return nil
 }
 
-func (db *db) saveDescriptors() error {
+func (db *db) saveDescriptors(ctx context.Context) error {
 	var fdps []*descriptorpb.FileDescriptorProto
 	db.reg.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
 		// we can't register it now as the protogistry.globalMutex would dead lock
@@ -470,14 +491,22 @@ func (db *db) saveDescriptors() error {
 	}
 	defer tx.Close()
 	for _, v := range fdps {
-		if err := db.registerFileDescriptorProto(v); err != nil {
+		if err := db.registerFileDescriptorProto(ctx, v); err != nil {
 			return err
 		}
 		b, err := db.marshal(v)
 		if err != nil {
 			return err
 		}
-		if err := tx.setRaw(descriptorPrefix(v), b); err != nil {
+		k := descriptorPrefix(v)
+		g, err := tx.getRaw(k)
+		if err != nil && !errors.Is(err, ErrKeyNotFound) {
+			return err
+		}
+		if bytes.Equal(g, b) {
+			continue
+		}
+		if err := tx.setRaw(ctx, k, b); err != nil {
 			return err
 		}
 	}
@@ -487,8 +516,8 @@ func (db *db) saveDescriptors() error {
 	return nil
 }
 
-func (db *db) loadDescriptors() error {
-	tx, err := newTx(context.Background(), db)
+func (db *db) loadDescriptors(ctx context.Context) error {
+	tx, err := newTx(ctx, db, WithReadOnly())
 	if err != nil {
 		return err
 	}
@@ -502,7 +531,7 @@ func (db *db) loadDescriptors() error {
 			if err := db.unmarshal(val, fdp); err != nil {
 				return err
 			}
-			return db.registerFileDescriptorProto(fdp)
+			return db.registerFileDescriptorProto(ctx, fdp)
 
 		}); err != nil {
 			return err
@@ -511,8 +540,8 @@ func (db *db) loadDescriptors() error {
 	return nil
 }
 
-func (db *db) recoverRegister(file *descriptorpb.FileDescriptorProto) error {
-	tx, err := newTx(context.Background(), db)
+func (db *db) recoverRegister(ctx context.Context, file *descriptorpb.FileDescriptorProto) error {
+	tx, err := newTx(ctx, db)
 	if err != nil {
 		return err
 	}
@@ -548,16 +577,11 @@ func (db *db) recoverRegister(file *descriptorpb.FileDescriptorProto) error {
 	if err != nil {
 		return err
 	}
-	if err := txn.Set(key, b); err != nil {
+	if err := tx.setRaw(ctx, key, b); err != nil {
 		return err
 	}
 	it.Close()
-	ts, confict := db.orc.newCommitTs(tx)
-	if confict {
-		return ErrConflict
-	}
-	defer db.orc.doneCommit(ts)
-	if err := txn.CommitAt(ts, nil); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
 	return nil
