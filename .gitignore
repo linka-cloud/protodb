@@ -11,3 +11,4 @@ Dockerfile
 prom.yml
 .dockerignore
 .chglog
+*.pprof

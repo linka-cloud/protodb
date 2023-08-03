@@ -22,7 +22,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"go.linka.cloud/protodb"
-	pdbc "go.linka.cloud/protodb/client"
 )
 
 type message[T any] interface {
@@ -38,7 +37,7 @@ type Store[T any, PT message[T]] interface {
 
 	Register(ctx context.Context) error
 
-	Raw() pdbc.Client
+	Raw() protodb.Client
 }
 
 type Tx[T any, PT message[T]] interface {
@@ -73,15 +72,15 @@ type Event[T any, PT message[T]] interface {
 	Err() error
 }
 
-func NewStore[T any, PT message[T]](c pdbc.Client) Store[T, PT] {
+func NewStore[T any, PT message[T]](c protodb.Client) Store[T, PT] {
 	return &store[T, PT]{db: c}
 }
 
 type store[T any, PT message[T]] struct {
-	db pdbc.Client
+	db protodb.Client
 }
 
-func (s *store[T, PT]) Raw() pdbc.Client {
+func (s *store[T, PT]) Raw() protodb.Client {
 	return s.db
 }
 

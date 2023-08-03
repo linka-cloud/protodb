@@ -25,6 +25,7 @@ option (go.lint).all = true;
 service ReplicationService {
   rpc Init(InitRequest) returns (stream InitResponse) {}
   rpc Replicate (stream Op) returns (stream Ack) {}
+  rpc Alive (stream Ack) returns (stream Ack) {}
 }
 
 message InitRequest {

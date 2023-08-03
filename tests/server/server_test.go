@@ -28,7 +28,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"go.linka.cloud/protodb"
-	"go.linka.cloud/protodb/client"
 	"go.linka.cloud/protodb/pb"
 	"go.linka.cloud/protodb/server"
 	testpb "go.linka.cloud/protodb/tests/pb"
@@ -84,7 +83,7 @@ func TestServer(t *testing.T) {
 	tr := &inprocgrpc.Channel{}
 	pb.RegisterProtoDBServer(tr, srv)
 
-	db, err := client.New(tr)
+	db, err := protodb.NewClient(tr)
 	require.NoError(err)
 
 	winit := make(chan struct{})
@@ -292,7 +291,7 @@ func TestServerWatchWithFilter(t *testing.T) {
 	tr := &inprocgrpc.Channel{}
 	pb.RegisterProtoDBServer(tr, srv)
 
-	db, err := client.New(tr)
+	db, err := protodb.NewClient(tr)
 	require.NoError(err)
 
 	watches := make(chan protodb.Event)
@@ -383,7 +382,7 @@ func TestRegister(t *testing.T) {
 	tr := &inprocgrpc.Channel{}
 	pb.RegisterProtoDBServer(tr, srv)
 
-	db, err := client.New(tr)
+	db, err := protodb.NewClient(tr)
 	require.NoError(err)
 	defer db.Close()
 
@@ -410,7 +409,7 @@ func TestBatchInsertAndQuery(t *testing.T) {
 	tr := &inprocgrpc.Channel{}
 	pb.RegisterProtoDBServer(tr, srv)
 
-	db, err := client.New(tr)
+	db, err := protodb.NewClient(tr)
 	require.NoError(err)
 
 	tx, err := db.Tx(ctx)
@@ -479,7 +478,7 @@ func TestFieldMask(t *testing.T) {
 	tr := &inprocgrpc.Channel{}
 	pb.RegisterProtoDBServer(tr, srv)
 
-	db, err := client.New(tr)
+	db, err := protodb.NewClient(tr)
 	require.NoError(err)
 
 	_, err = db.Set(ctx, i0)

@@ -128,7 +128,6 @@ import (
 	"fmt"
 
 	"go.linka.cloud/protodb"
-	pdbc "go.linka.cloud/protodb/client"
 	"go.uber.org/multierr"
 )
 
@@ -149,7 +148,7 @@ type {{ name . }}Store interface {
 
 	Register(ctx context.Context) error
 
-	Raw() pdbc.Client
+	Raw() protodb.Client
 }
 
 type {{ name . }}Tx interface {
@@ -184,15 +183,15 @@ type {{ name . }}Event interface {
 	Err() error
 }
 
-func New{{ name . }}Store(db pdbc.Client) {{ name . }}Store {
+func New{{ name . }}Store(db protodb.Client) {{ name . }}Store {
 	return &_{{ name . }}DB{db: db}
 }
 
 type _{{ name . }}DB struct {
-	db pdbc.Client
+	db protodb.Client
 }
 
-func (s *_{{ name . }}DB) Raw() pdbc.Client {
+func (s *_{{ name . }}DB) Raw() protodb.Client {
 	return s.db
 }
 

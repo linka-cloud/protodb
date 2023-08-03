@@ -16,6 +16,16 @@
 
 package replication
 
+var ReplicationServiceMethods = struct {
+	Init      string
+	Replicate string
+	Alive     string
+}{
+	Init:      "/linka.cloud.protodb.internal.replication.ReplicationService/Init",
+	Replicate: "/linka.cloud.protodb.internal.replication.ReplicationService/Replicate",
+	Alive:     "/linka.cloud.protodb.internal.replication.ReplicationService/Alive",
+}
+
 var InitRequestFields = struct {
 	Since string
 }{

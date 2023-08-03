@@ -15,22 +15,38 @@
 package protodb
 
 import (
-	"fmt"
+	"context"
+	"errors"
+	"io"
 
 	"github.com/dgraph-io/badger/v3"
-	gerrs "go.linka.cloud/grpc/errors"
-	"go.linka.cloud/grpc/logger"
+	gerrs "go.linka.cloud/grpc-toolkit/errors"
+	"go.linka.cloud/grpc-toolkit/logger"
+	"google.golang.org/grpc/peer"
 
 	repl2 "go.linka.cloud/protodb/internal/replication"
+	"go.linka.cloud/protodb/pb"
 )
+
+type replicationClient struct {
+	repl2.ReplicationServiceClient
+	name string
+}
 
 func (r *repl) Init(req *repl2.InitRequest, ss repl2.ReplicationService_InitServer) error {
 	if !r.isLeader() {
 		return gerrs.FailedPreconditionf("cannot initialize from non-le")
 	}
+	p, ok := peer.FromContext(ss.Context())
+	if !ok {
+		return gerrs.Internalf("cannot get peer from context")
+	}
+	log := logger.C(ss.Context())
+	log.Infof("Initializing replication request from %s", p.Addr)
+	// TODO(adphi): check that peer is not the leader
 	m := r.db.bdb.MaxVersion()
 	if req.Since > m {
-		return fmt.Errorf("invalid replication version %d, max is %d", req.Since, m)
+		return gerrs.FailedPreconditionf("invalid replication version %d, max is %d", req.Since, m)
 	}
 	if req.Since == m {
 		return nil
@@ -44,9 +60,14 @@ func (r *repl) Init(req *repl2.InitRequest, ss repl2.ReplicationService_InitServ
 
 func (r *repl) Replicate(ss repl2.ReplicationService_ReplicateServer) error {
 	if r.isLeader() {
-		return gerrs.FailedPreconditionf("cannot replicate to le")
+		return gerrs.FailedPreconditionf("cannot replicate to leader")
 	}
 	log := logger.C(ss.Context())
+	p, ok := peer.FromContext(ss.Context())
+	if !ok {
+		return gerrs.Internalf("cannot get peer from context")
+	}
+	log.Infof("Replicating from %s", p.Addr)
 	var tx *badger.Txn
 	for {
 		op, err := ss.Recv()
@@ -114,4 +135,123 @@ func (r *repl) Replicate(ss repl2.ReplicationService_ReplicateServer) error {
 			return nil
 		}
 	}
+}
+
+func (r *repl) Alive(ss repl2.ReplicationService_AliveServer) error {
+	for {
+		if _, err := ss.Recv(); err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+		if err := ss.Send(&repl2.Ack{}); err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+func (r *repl) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
+	p, ok, err := r.maybeLeaderProxy(ctx, true)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return r.h.Get(ctx, req)
+	}
+	return p.Get(ctx, req)
+}
+
+func (r *repl) Set(ctx context.Context, req *pb.SetRequest) (*pb.SetResponse, error) {
+	p, ok, err := r.maybeLeaderProxy(ctx, false)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return r.h.Set(ctx, req)
+	}
+	return p.Set(ctx, req)
+}
+
+func (r *repl) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
+	p, ok, err := r.maybeLeaderProxy(ctx, false)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return r.h.Delete(ctx, req)
+	}
+	return p.Delete(ctx, req)
+}
+
+func (r *repl) Tx(ss pb.ProtoDB_TxServer) error {
+	p, ok, err := r.maybeLeaderProxy(ss.Context(), false)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return r.h.Tx(ss)
+	}
+	return p.Tx(ss)
+}
+
+func (r *repl) Watch(req *pb.WatchRequest, ss pb.ProtoDB_WatchServer) error {
+	p, ok, err := r.maybeLeaderProxy(ss.Context(), true)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return r.h.Watch(req, ss)
+	}
+	return p.Watch(req, ss)
+}
+
+func (r *repl) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
+	p, ok, err := r.maybeLeaderProxy(ctx, false)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return r.h.Register(ctx, req)
+	}
+	return p.Register(ctx, req)
+}
+
+func (r *repl) Descriptors(ctx context.Context, req *pb.DescriptorsRequest) (*pb.DescriptorsResponse, error) {
+	p, ok, err := r.maybeLeaderProxy(ctx, true)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return r.h.Descriptors(ctx, req)
+	}
+	return p.Descriptors(ctx, req)
+}
+
+func (r *repl) FileDescriptors(ctx context.Context, req *pb.FileDescriptorsRequest) (*pb.FileDescriptorsResponse, error) {
+	p, ok, err := r.maybeLeaderProxy(ctx, true)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return r.h.FileDescriptors(ctx, req)
+	}
+	return p.FileDescriptors(ctx, req)
+}
+
+func (r *repl) maybeLeaderProxy(ctx context.Context, read bool) (pb.ProtoDBServer, bool, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.l || (read && r.mode == ReplicationModeSync) {
+		return nil, false, nil
+	}
+	c, ok := r.ccs[r.cle]
+	if !ok {
+		return nil, false, gerrs.Internalf("no leader connection")
+	}
+	logger.C(ctx).Infof("proxying to leader %s", r.cle)
+	return pb.NewProtoDBProxy(pb.NewProtoDBClient(c)), true, nil
 }

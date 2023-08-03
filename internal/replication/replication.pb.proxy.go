@@ -99,4 +99,45 @@ func (x *proxyReplicationService) Replicate(s ReplicationService_ReplicateServer
 	return <-errs
 }
 
+// Alive proxies call to backend server
+func (x *proxyReplicationService) Alive(s ReplicationService_AliveServer) error {
+	cs, err := x.c.Alive(s.Context(), x.opts...)
+	if err != nil {
+		return err
+	}
+	errs := make(chan error, 2)
+	recv := func() error {
+		for {
+			req, err := s.Recv()
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if err := cs.Send(req); err != nil {
+				return err
+			}
+		}
+	}
+	send := func() error {
+		for {
+			res, err := cs.Recv()
+			if err != nil {
+				return err
+			}
+			if err := s.Send(res); err != nil {
+				return err
+			}
+		}
+	}
+	go func() {
+		errs <- recv()
+	}()
+	go func() {
+		errs <- send()
+	}()
+	return <-errs
+}
+
 func (x *proxyReplicationService) mustEmbedUnimplementedReplicationServiceServer() {}

@@ -19,27 +19,34 @@ import (
 	"errors"
 	"io"
 
-	"go.linka.cloud/grpc/logger"
+	"go.linka.cloud/grpc-toolkit/logger"
 	"go.uber.org/multierr"
 
 	repl2 "go.linka.cloud/protodb/internal/replication"
 )
 
 func (r *repl) newTx(ctx context.Context) (*replTx, error) {
+	log := logger.C(ctx)
 	var cs []repl2.ReplicationService_ReplicateClient
-	for _, c := range r.clients() {
-		c, err := c.Replicate(ctx)
+	if r.mode < ReplicationModeSync {
+		ctx = context.Background()
+	}
+	for _, v := range r.clients() {
+		log.Infof("Starting replicated transaction with %v", v.name)
+		c, err := v.Replicate(ctx)
 		if err != nil {
 			return nil, err
 		}
 		cs = append(cs, c)
+		log.Infof("Started replicated transaction with %v", v.name)
 	}
-	return &replTx{mode: r.mode, cs: cs}, nil
+	return &replTx{mode: r.mode, cs: cs, sync: make(chan struct{}, 1)}, nil
 }
 
 type replTx struct {
 	mode ReplicationMode
 	cs   []repl2.ReplicationService_ReplicateClient
+	sync chan struct{}
 }
 
 func (r *replTx) new(ctx context.Context, at uint64) error {
@@ -83,10 +90,6 @@ func (r *replTx) do(ctx context.Context, msg *repl2.Op) error {
 			}
 		}()
 		return nil
-	case ReplicationModeSent:
-		if err := r.send(ctx, msg, cb(log, nil)); err != nil {
-			return err
-		}
 	case ReplicationModeSync:
 		errs := make(chan error, 1)
 		if err := r.send(ctx, msg, cb(log, errs)); err != nil {

@@ -26,9 +26,10 @@ import (
 
 	"github.com/dgraph-io/badger/v3"
 	bpb "github.com/dgraph-io/badger/v3/pb"
-	"go.linka.cloud/grpc/logger"
+	"go.linka.cloud/grpc-toolkit/logger"
 	"go.linka.cloud/protoc-gen-defaults/defaults"
 	pf "go.linka.cloud/protofilters"
+	"go.uber.org/multierr"
 	"google.golang.org/protobuf/proto"
 	pdesc "google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -85,7 +86,7 @@ func Open(ctx context.Context, opts ...Option) (DB, error) {
 			return nil, err
 		}
 	}
-	if db.repl != nil && db.repl.isLeader() {
+	if db.replicated() && db.repl.isLeader() {
 		if err := db.load(ctx); err != nil {
 			return nil, err
 		}
@@ -110,6 +111,15 @@ type db struct {
 
 func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-chan Event, error) {
 	end := metrics.Watch.Start(string(m.ProtoReflect().Descriptor().FullName()))
+	c, ok, err := db.maybeProxy(true)
+	if err != nil {
+		end.End()
+		return nil, err
+	}
+	if ok {
+		return c.Watch(ctx, m, opts...)
+	}
+
 	o := makeGetOpts(opts...)
 
 	k, _ := dataPrefix(m)
@@ -232,6 +242,15 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 
 func (db *db) Get(ctx context.Context, m proto.Message, opts ...GetOption) ([]proto.Message, *PagingInfo, error) {
 	defer metrics.Get.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
+
+	c, ok, err := db.maybeProxy(true)
+	if err != nil {
+		return nil, nil, err
+	}
+	if ok {
+		return c.Get(ctx, m, opts...)
+	}
+
 	tx, err := db.Tx(ctx, WithReadOnly())
 	if err != nil {
 		metrics.Get.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
@@ -247,6 +266,15 @@ func (db *db) Get(ctx context.Context, m proto.Message, opts ...GetOption) ([]pr
 
 func (db *db) Set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error) {
 	defer metrics.Set.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
+
+	c, ok, err := db.maybeProxy(false)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return c.Set(ctx, m, opts...)
+	}
+
 	tx, err := db.Tx(ctx)
 	if err != nil {
 		metrics.Set.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
@@ -271,6 +299,15 @@ func (db *db) Set(ctx context.Context, m proto.Message, opts ...SetOption) (prot
 
 func (db *db) Delete(ctx context.Context, m proto.Message) error {
 	defer metrics.Delete.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
+
+	c, ok, err := db.maybeProxy(false)
+	if err != nil {
+		return err
+	}
+	if ok {
+		return c.Delete(ctx, m)
+	}
+
 	tx, err := db.Tx(ctx)
 	if err != nil {
 		return err
@@ -292,17 +329,28 @@ func (db *db) Delete(ctx context.Context, m proto.Message) error {
 }
 
 func (db *db) Tx(ctx context.Context, opts ...TxOption) (Tx, error) {
+	o := TxOpts{}
+	for _, opt := range opts {
+		opt(&o)
+	}
+	c, ok, err := db.maybeProxy(o.ReadOnly)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return c.Tx(ctx, opts...)
+	}
 	return newTx(ctx, db, opts...)
 }
 
-func (db *db) Close() error {
+func (db *db) Close() (err error) {
 	db.cmu.Lock()
 	db.close = true
-	if db.repl != nil {
-		db.repl.close()
+	if db.replicated() {
+		err = multierr.Append(err, db.repl.close())
 	}
 	db.cmu.Unlock()
-	return db.bdb.Close()
+	return multierr.Append(err, db.bdb.Close())
 }
 
 func (db *db) closed() bool {
@@ -337,6 +385,15 @@ func (db *db) RegisterProto(ctx context.Context, file *descriptorpb.FileDescript
 	if file == nil || file.GetName() == "" {
 		return errors.New("invalid file")
 	}
+
+	c, ok, err := db.maybeProxy(false)
+	if err != nil {
+		return err
+	}
+	if ok {
+		return c.RegisterProto(ctx, file)
+	}
+
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	if err := db.registerFileDescriptorProto(ctx, file); err != nil {
@@ -371,7 +428,15 @@ func (db *db) Resolver() pdesc.Resolver {
 	return db.reg
 }
 
-func (db *db) Descriptors(_ context.Context) ([]*descriptorpb.DescriptorProto, error) {
+func (db *db) Descriptors(ctx context.Context) ([]*descriptorpb.DescriptorProto, error) {
+	c, ok, err := db.maybeProxy(true)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return c.Descriptors(ctx)
+	}
+
 	m := make(map[string]*descriptorpb.FileDescriptorProto)
 	if err := db.bdb.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.IteratorOptions{Prefix: []byte(descriptors)})
@@ -399,7 +464,15 @@ func (db *db) Descriptors(_ context.Context) ([]*descriptorpb.DescriptorProto, e
 	return out, nil
 }
 
-func (db *db) FileDescriptors(_ context.Context) ([]*descriptorpb.FileDescriptorProto, error) {
+func (db *db) FileDescriptors(ctx context.Context) ([]*descriptorpb.FileDescriptorProto, error) {
+	c, ok, err := db.maybeProxy(true)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return c.FileDescriptors(ctx)
+	}
+
 	var out []*descriptorpb.FileDescriptorProto
 	if err := db.bdb.View(func(txn *badger.Txn) error {
 		it := txn.NewIterator(badger.IteratorOptions{Prefix: []byte(descriptors)})
@@ -424,6 +497,7 @@ func (db *db) FileDescriptors(_ context.Context) ([]*descriptorpb.FileDescriptor
 }
 
 func (db *db) Backup(ctx context.Context, w io.Writer) error {
+	// TODO(adphi): add to service and proxy
 	_, err := db.bdb.NewStream().Backup(w, 0)
 	return err
 }
@@ -585,6 +659,28 @@ func (db *db) recoverRegister(ctx context.Context, file *descriptorpb.FileDescri
 		return err
 	}
 	return nil
+}
+
+func (db *db) replicated() bool {
+	return db.repl != nil
+}
+
+func (db *db) maybeProxy(read bool) (Client, bool, error) {
+	if db.repl == nil {
+		return nil, false, nil
+	}
+	if db.repl.isLeader() || (db.repl.mode == ReplicationModeSync && read) {
+		return nil, false, nil
+	}
+	cc, ok := db.repl.leaderConn()
+	if !ok {
+		return nil, false, fmt.Errorf("no leader connection")
+	}
+	c, err := NewClient(cc)
+	if err != nil {
+		return nil, false, err
+	}
+	return c, true, nil
 }
 
 func applyDefaults(m proto.Message) {

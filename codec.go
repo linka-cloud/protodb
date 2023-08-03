@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package server
+package protodb
 
 import (
-	"go.linka.cloud/grpc/codec"
+	"go.linka.cloud/grpc-toolkit/codec"
 	"google.golang.org/grpc/encoding"
 	_ "google.golang.org/grpc/encoding/proto"
 )

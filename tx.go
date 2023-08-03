@@ -46,7 +46,7 @@ func newTx(ctx context.Context, db *db, opts ...TxOption) (*tx, error) {
 		txr *replTx
 		err error
 	)
-	if update && db.repl != nil {
+	if update && db.replicated() {
 		if !db.repl.isLeader() {
 			return nil, ErrNotLeader
 		}

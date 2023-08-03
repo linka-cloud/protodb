@@ -18,7 +18,6 @@ var defaultReplicationOptions = replOptions{
 	addrs:      []string{"localhost"},
 	gossipPort: 7080,
 	grpcPort:   7081,
-	// TODO(adphi): certificates, gossip encryption, etc.
 }
 
 type ReplicationOption func(o *replOptions)
@@ -28,6 +27,9 @@ type replOptions struct {
 	gossipPort int
 	grpcPort   int
 	mode       ReplicationMode
+	// TODO(adphi): replication service.Options, e.g. peer tls, server tls, etc.
+	// TODO(adphi): protodb service.Options, e.g. peer tls, server tls, etc.
+	// TODO(adphi): gossip encryption key & verification
 }
 
 func WithAddrs(addrs ...string) ReplicationOption {

@@ -35,6 +35,7 @@ const _ = grpc.SupportPackageIsVersion7
 const (
 	ReplicationService_Init_FullMethodName      = "/linka.cloud.protodb.internal.replication.ReplicationService/Init"
 	ReplicationService_Replicate_FullMethodName = "/linka.cloud.protodb.internal.replication.ReplicationService/Replicate"
+	ReplicationService_Alive_FullMethodName     = "/linka.cloud.protodb.internal.replication.ReplicationService/Alive"
 )
 
 // ReplicationServiceClient is the client API for ReplicationService service.
@@ -43,6 +44,7 @@ const (
 type ReplicationServiceClient interface {
 	Init(ctx context.Context, in *InitRequest, opts ...grpc.CallOption) (ReplicationService_InitClient, error)
 	Replicate(ctx context.Context, opts ...grpc.CallOption) (ReplicationService_ReplicateClient, error)
+	Alive(ctx context.Context, opts ...grpc.CallOption) (ReplicationService_AliveClient, error)
 }
 
 type replicationServiceClient struct {
@@ -116,12 +118,44 @@ func (x *replicationServiceReplicateClient) Recv() (*Ack, error) {
 	return m, nil
 }
 
+func (c *replicationServiceClient) Alive(ctx context.Context, opts ...grpc.CallOption) (ReplicationService_AliveClient, error) {
+	stream, err := c.cc.NewStream(ctx, &ReplicationService_ServiceDesc.Streams[2], ReplicationService_Alive_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &replicationServiceAliveClient{stream}
+	return x, nil
+}
+
+type ReplicationService_AliveClient interface {
+	Send(*Ack) error
+	Recv() (*Ack, error)
+	grpc.ClientStream
+}
+
+type replicationServiceAliveClient struct {
+	grpc.ClientStream
+}
+
+func (x *replicationServiceAliveClient) Send(m *Ack) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *replicationServiceAliveClient) Recv() (*Ack, error) {
+	m := new(Ack)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // ReplicationServiceServer is the server API for ReplicationService service.
 // All implementations must embed UnimplementedReplicationServiceServer
 // for forward compatibility
 type ReplicationServiceServer interface {
 	Init(*InitRequest, ReplicationService_InitServer) error
 	Replicate(ReplicationService_ReplicateServer) error
+	Alive(ReplicationService_AliveServer) error
 	mustEmbedUnimplementedReplicationServiceServer()
 }
 
@@ -134,6 +168,9 @@ func (UnimplementedReplicationServiceServer) Init(*InitRequest, ReplicationServi
 }
 func (UnimplementedReplicationServiceServer) Replicate(ReplicationService_ReplicateServer) error {
 	return status.Errorf(codes.Unimplemented, "method Replicate not implemented")
+}
+func (UnimplementedReplicationServiceServer) Alive(ReplicationService_AliveServer) error {
+	return status.Errorf(codes.Unimplemented, "method Alive not implemented")
 }
 func (UnimplementedReplicationServiceServer) mustEmbedUnimplementedReplicationServiceServer() {}
 
@@ -195,6 +232,32 @@ func (x *replicationServiceReplicateServer) Recv() (*Op, error) {
 	return m, nil
 }
 
+func _ReplicationService_Alive_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ReplicationServiceServer).Alive(&replicationServiceAliveServer{stream})
+}
+
+type ReplicationService_AliveServer interface {
+	Send(*Ack) error
+	Recv() (*Ack, error)
+	grpc.ServerStream
+}
+
+type replicationServiceAliveServer struct {
+	grpc.ServerStream
+}
+
+func (x *replicationServiceAliveServer) Send(m *Ack) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *replicationServiceAliveServer) Recv() (*Ack, error) {
+	m := new(Ack)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
 // ReplicationService_ServiceDesc is the grpc.ServiceDesc for ReplicationService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -211,6 +274,12 @@ var ReplicationService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Replicate",
 			Handler:       _ReplicationService_Replicate_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "Alive",
+			Handler:       _ReplicationService_Alive_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

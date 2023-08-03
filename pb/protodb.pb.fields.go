@@ -16,6 +16,26 @@
 
 package pb
 
+var ProtoDBMethods = struct {
+	Get             string
+	Set             string
+	Delete          string
+	Tx              string
+	Watch           string
+	Register        string
+	Descriptors     string
+	FileDescriptors string
+}{
+	Get:             "/linka.cloud.protodb.ProtoDB/Get",
+	Set:             "/linka.cloud.protodb.ProtoDB/Set",
+	Delete:          "/linka.cloud.protodb.ProtoDB/Delete",
+	Tx:              "/linka.cloud.protodb.ProtoDB/Tx",
+	Watch:           "/linka.cloud.protodb.ProtoDB/Watch",
+	Register:        "/linka.cloud.protodb.ProtoDB/Register",
+	Descriptors:     "/linka.cloud.protodb.ProtoDB/Descriptors",
+	FileDescriptors: "/linka.cloud.protodb.ProtoDB/FileDescriptors",
+}
+
 var SetRequestFields = struct {
 	Payload   string
 	Ttl       string
