@@ -1,6 +1,6 @@
 module go.linka.cloud/protodb
 
-go 1.19
+go 1.20
 
 require (
 	github.com/alta/protopatch v0.5.2
