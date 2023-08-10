@@ -548,6 +548,11 @@ func (db *db) registerFileDescriptorProto(ctx context.Context, file *descriptorp
 	if err != nil {
 		return db.handleRegisterErr(err)
 	}
+	if d, err := db.freg.FindFileByPath(fd.Path()); err == nil {
+		if proto.Equal(pdesc.ToFileDescriptorProto(d), file) {
+			return nil
+		}
+	}
 	if err := db.freg.RegisterFile(fd); err != nil {
 		return db.handleRegisterErr(err)
 	}

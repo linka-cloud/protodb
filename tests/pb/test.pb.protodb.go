@@ -21,8 +21,6 @@ import (
 	"fmt"
 
 	"go.linka.cloud/protodb"
-	"go.linka.cloud/protodb/internal/client"
-
 	"go.uber.org/multierr"
 )
 
@@ -39,7 +37,7 @@ type MessageWithKeyOptionStore interface {
 
 	Register(ctx context.Context) error
 
-	Raw() client.Client
+	Raw() protodb.Client
 }
 
 type MessageWithKeyOptionTx interface {
@@ -74,15 +72,15 @@ type MessageWithKeyOptionEvent interface {
 	Err() error
 }
 
-func NewMessageWithKeyOptionStore(db client.Client) MessageWithKeyOptionStore {
+func NewMessageWithKeyOptionStore(db protodb.Client) MessageWithKeyOptionStore {
 	return &_MessageWithKeyOptionDB{db: db}
 }
 
 type _MessageWithKeyOptionDB struct {
-	db client.Client
+	db protodb.Client
 }
 
-func (s *_MessageWithKeyOptionDB) Raw() client.Client {
+func (s *_MessageWithKeyOptionDB) Raw() protodb.Client {
 	return s.db
 }
 
@@ -247,7 +245,7 @@ type InterfaceStore interface {
 
 	Register(ctx context.Context) error
 
-	Raw() client.Client
+	Raw() protodb.Client
 }
 
 type InterfaceTx interface {
@@ -282,15 +280,15 @@ type InterfaceEvent interface {
 	Err() error
 }
 
-func NewInterfaceStore(db client.Client) InterfaceStore {
+func NewInterfaceStore(db protodb.Client) InterfaceStore {
 	return &_InterfaceDB{db: db}
 }
 
 type _InterfaceDB struct {
-	db client.Client
+	db protodb.Client
 }
 
-func (s *_InterfaceDB) Raw() client.Client {
+func (s *_InterfaceDB) Raw() protodb.Client {
 	return s.db
 }
 
