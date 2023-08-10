@@ -28,8 +28,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"go.linka.cloud/protodb"
-	"go.linka.cloud/protodb/pb"
-	"go.linka.cloud/protodb/server"
 	testpb "go.linka.cloud/protodb/tests/pb"
 )
 
@@ -77,11 +75,11 @@ func TestServer(t *testing.T) {
 	assert.NotNil(sdb)
 	defer sdb.Close()
 
-	srv, err := server.New(sdb)
+	srv, err := protodb.NewServer(sdb)
 	require.NoError(err)
 
 	tr := &inprocgrpc.Channel{}
-	pb.RegisterProtoDBServer(tr, srv)
+	srv.RegisterService(tr)
 
 	db, err := protodb.NewClient(tr)
 	require.NoError(err)
@@ -285,11 +283,11 @@ func TestServerWatchWithFilter(t *testing.T) {
 	assert.NotNil(sdb)
 	defer sdb.Close()
 
-	srv, err := server.New(sdb)
+	srv, err := protodb.NewServer(sdb)
 	require.NoError(err)
 
 	tr := &inprocgrpc.Channel{}
-	pb.RegisterProtoDBServer(tr, srv)
+	srv.RegisterService(tr)
 
 	db, err := protodb.NewClient(tr)
 	require.NoError(err)
@@ -299,7 +297,7 @@ func TestServerWatchWithFilter(t *testing.T) {
 	go func() {
 		ch, err := db.Watch(ctx, &testpb.Interface{},
 			protodb.WithFilter(
-				filters.Where(testpb.InterfaceFields.Status, filters.NumberEquals(float64(testpb.StatusUp))).Expr(),
+				filters.Where(testpb.InterfaceFields.Status).NumberEquals(float64(testpb.StatusUp)),
 			),
 		)
 		require.NoError(err)
@@ -376,11 +374,11 @@ func TestRegister(t *testing.T) {
 	assert.NotNil(sdb)
 	defer sdb.Close()
 
-	srv, err := server.New(sdb)
+	srv, err := protodb.NewServer(sdb)
 	require.NoError(err)
 
 	tr := &inprocgrpc.Channel{}
-	pb.RegisterProtoDBServer(tr, srv)
+	srv.RegisterService(tr)
 
 	db, err := protodb.NewClient(tr)
 	require.NoError(err)
@@ -403,11 +401,11 @@ func TestBatchInsertAndQuery(t *testing.T) {
 	assert.NotNil(sdb)
 	defer sdb.Close()
 
-	srv, err := server.New(sdb)
+	srv, err := protodb.NewServer(sdb)
 	require.NoError(err)
 
 	tr := &inprocgrpc.Channel{}
-	pb.RegisterProtoDBServer(tr, srv)
+	srv.RegisterService(tr)
 
 	db, err := protodb.NewClient(tr)
 	require.NoError(err)
@@ -434,8 +432,8 @@ func TestBatchInsertAndQuery(t *testing.T) {
 	regex := `^eth\d*0$`
 	for i := 0; i*batch <= max/10; i++ {
 		start = time.Now()
-		paging := &pb.Paging{Limit: uint64(batch), Offset: uint64(i * batch), Token: tk}
-		ms, pinfo, err := db.Get(ctx, &testpb.Interface{}, protodb.WithPaging(paging), protodb.WithFilter(protodb.Where("name", filters.StringRegex(regex)).Expr()))
+		paging := &protodb.Paging{Limit: uint64(batch), Offset: uint64(i * batch), Token: tk}
+		ms, pinfo, err := db.Get(ctx, &testpb.Interface{}, protodb.WithPaging(paging), protodb.WithFilter(protodb.Where("name").StringRegex(regex)))
 		require.NoError(err)
 		if i%10 == 0 {
 			t.Logf("queried name=~\"%s\" (offset: %v, limit: %v) on %d items in %v", regex, paging.GetOffset(), paging.GetLimit(), max, time.Since(start))
@@ -472,11 +470,11 @@ func TestFieldMask(t *testing.T) {
 	assert.NotNil(sdb)
 	defer sdb.Close()
 
-	srv, err := server.New(sdb)
+	srv, err := protodb.NewServer(sdb)
 	require.NoError(err)
 
 	tr := &inprocgrpc.Channel{}
-	pb.RegisterProtoDBServer(tr, srv)
+	srv.RegisterService(tr)
 
 	db, err := protodb.NewClient(tr)
 	require.NoError(err)

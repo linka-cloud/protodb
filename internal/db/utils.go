@@ -1,10 +1,10 @@
-// Copyright 2021 Linka Cloud  All rights reserved.
+// Copyright 2023 Linka Cloud  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-// http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,12 +12,17 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package protodb
+package db
 
 import (
+	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/mennanov/fmutils"
+	"go.linka.cloud/grpc-toolkit/logger"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
@@ -53,4 +58,33 @@ func ApplyFieldMaskPaths(src, dst proto.Message, path ...string) error {
 	fmutils.Prune(dst, fm.Paths)
 	proto.Merge(dst, src)
 	return nil
+}
+
+type lock struct {
+	m sync.RWMutex
+	n atomic.Int64
+}
+
+func (l *lock) Lock() {
+	logger.C(context.Background()).Warnf("lock (%d)", l.n.Add(1))
+	n := time.Now()
+	l.m.Lock()
+	logger.C(context.Background()).Warnf("lock took %s (%d)", time.Since(n), l.n.Load())
+}
+
+func (l *lock) Unlock() {
+	logger.C(context.Background()).Warnf("unlock (%d)", l.n.Load())
+	l.m.Unlock()
+}
+
+func (l *lock) RLock() {
+	logger.C(context.Background()).Warnf("rlock (%d)", l.n.Add(1))
+	n := time.Now()
+	l.m.RLock()
+	logger.C(context.Background()).Warnf("rlock took %s (%d)", time.Since(n), l.n.Load())
+}
+
+func (l *lock) RUnlock() {
+	logger.C(context.Background()).Warnf("runlock")
+	l.m.RUnlock()
 }

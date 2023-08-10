@@ -34,6 +34,7 @@ func Test(t *testing.T) {
 	if err != nil {
 		logrus.Fatal(err)
 	}
+	defer db.Close()
 	s := typed.NewStore[testpb.Interface, *testpb.Interface](db)
 	require.NoError(t, s.Register(ctx))
 	if _, err := s.Set(ctx, &testpb.Interface{Name: "eth0"}); err != nil {

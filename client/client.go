@@ -15,15 +15,15 @@
 package client
 
 import (
-	"go.linka.cloud/protodb"
+	"go.linka.cloud/protodb/internal/client"
 )
 
 // Client is the ProtoDB client.
 // It is a wrapper around the gRPC client.
 // It implements most of the protodb.DB interface.
 // Deprecated: use protodb.Client instead.
-type Client = protodb.Client
+type Client = client.Client
 
 // New creates a new client.
 // Deprecated: use protodb.NewClient instead.
-var New = protodb.NewClient
+var New = client.NewClient

@@ -12,30 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package protodb
+package replication
 
 import (
 	"context"
 	"errors"
 	"io"
+	"net"
+	"strings"
 
 	"github.com/dgraph-io/badger/v3"
 	gerrs "go.linka.cloud/grpc-toolkit/errors"
 	"go.linka.cloud/grpc-toolkit/logger"
 	"google.golang.org/grpc/peer"
 
-	repl2 "go.linka.cloud/protodb/internal/replication"
+	"go.linka.cloud/protodb/internal/protodb"
+	pb2 "go.linka.cloud/protodb/internal/replication/pb"
 	"go.linka.cloud/protodb/pb"
 )
 
-type replicationClient struct {
-	repl2.ReplicationServiceClient
-	name string
-}
-
-func (r *repl) Init(req *repl2.InitRequest, ss repl2.ReplicationService_InitServer) error {
-	if !r.isLeader() {
-		return gerrs.FailedPreconditionf("cannot initialize from non-le")
+func (r *Repl) Init(req *pb2.InitRequest, ss pb2.ReplicationService_InitServer) error {
+	if !r.IsLeader() {
+		return gerrs.FailedPreconditionf("cannot initialize from non-leader")
 	}
 	p, ok := peer.FromContext(ss.Context())
 	if !ok {
@@ -43,23 +41,31 @@ func (r *repl) Init(req *repl2.InitRequest, ss repl2.ReplicationService_InitServ
 	}
 	log := logger.C(ss.Context())
 	log.Infof("Initializing replication request from %s", p.Addr)
-	// TODO(adphi): check that peer is not the leader
-	m := r.db.bdb.MaxVersion()
+	addr, _, err := net.SplitHostPort(p.Addr.String())
+	if err != nil {
+		return gerrs.Internalf("failed to split host port: %v", err)
+	}
+	var found bool
+	for _, v := range r.clients() {
+		if found = addr == v.addr.String(); found {
+			break
+		}
+	}
+	if !found {
+		return gerrs.Abortedf("node %s is not in the cluster", addr)
+	}
+	m := r.db.MaxVersion()
 	if req.Since > m {
 		return gerrs.FailedPreconditionf("invalid replication version %d, max is %d", req.Since, m)
 	}
 	if req.Since == m {
 		return nil
 	}
-	s := r.db.bdb.NewStreamAt(m)
-	s.LogPrefix = "Init replication"
-	s.SinceTs = req.Since
-	_, err := s.Backup(&replWriter{ss: ss}, req.Since)
-	return err
+	return r.db.Stream(ss.Context(), m, req.Since, &writer{ss: ss})
 }
 
-func (r *repl) Replicate(ss repl2.ReplicationService_ReplicateServer) error {
-	if r.isLeader() {
+func (r *Repl) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
+	if r.IsLeader() {
 		return gerrs.FailedPreconditionf("cannot replicate to leader")
 	}
 	log := logger.C(ss.Context())
@@ -69,23 +75,40 @@ func (r *repl) Replicate(ss repl2.ReplicationService_ReplicateServer) error {
 	}
 	log.Infof("Replicating from %s", p.Addr)
 	var tx *badger.Txn
+	var reload bool
+	defer func() {
+		if tx != nil {
+			tx.Discard()
+		}
+		if !reload {
+			return
+		}
+		go func() {
+			if err := r.db.LoadDescriptors(context.Background()); err != nil {
+				log.Errorf("failed to reload descriptors: %v", err)
+			}
+		}()
+	}()
 	for {
 		op, err := ss.Recv()
 		if err != nil {
 			return err
 		}
 		switch a := op.Action.(type) {
-		case *repl2.Op_New:
+		case *pb2.Op_New:
 			log.Debugf("new transaction at %d", a.New.At)
 			if tx != nil {
 				return gerrs.InvalidArgumentf("transaction already started")
 			}
-			tx = r.db.bdb.NewTransactionAt(a.New.At, true)
-			if err := ss.Send(&repl2.Ack{}); err != nil {
+			tx = r.db.NewTransactionAt(a.New.At, true)
+			if err := ss.Send(&pb2.Ack{}); err != nil {
 				return gerrs.Internalf("failed to send ack: %v", err)
 			}
-		case *repl2.Op_Set:
-			log.WithField("key", string(a.Set.Key)).Debugf("set key")
+		case *pb2.Op_Set:
+			log.WithField("key", string(a.Set.Key)).Tracef("set key")
+			if strings.HasPrefix(string(a.Set.Key), protodb.Descriptors) {
+				reload = true
+			}
 			if tx == nil {
 				return gerrs.InvalidArgumentf("transaction not started")
 			}
@@ -96,21 +119,21 @@ func (r *repl) Replicate(ss repl2.ReplicationService_ReplicateServer) error {
 			}); err != nil {
 				return gerrs.Internalf("failed to set key %s: %v", a.Set.Key, err)
 			}
-			if err := ss.Send(&repl2.Ack{}); err != nil {
+			if err := ss.Send(&pb2.Ack{}); err != nil {
 				return gerrs.Internalf("failed to send ack: %v", err)
 			}
-		case *repl2.Op_Delete:
-			log.WithField("key", string(a.Delete.Key)).Debugf("delete key")
+		case *pb2.Op_Delete:
+			log.WithField("key", string(a.Delete.Key)).Tracef("delete key")
 			if tx == nil {
 				return gerrs.InvalidArgumentf("transaction not started")
 			}
 			if err := tx.Delete(a.Delete.Key); err != nil {
 				return gerrs.Internalf("failed to delete key %s: %v", a.Delete.Key, err)
 			}
-			if err := ss.Send(&repl2.Ack{}); err != nil {
+			if err := ss.Send(&pb2.Ack{}); err != nil {
 				return gerrs.Internalf("failed to send ack: %v", err)
 			}
-		case *repl2.Op_Commit:
+		case *pb2.Op_Commit:
 			log.Debugf("commit transaction at %d", a.Commit.At)
 			if tx == nil {
 				return gerrs.InvalidArgumentf("transaction not started")
@@ -124,20 +147,16 @@ func (r *repl) Replicate(ss repl2.ReplicationService_ReplicateServer) error {
 			if err := <-errs; err != nil {
 				return gerrs.Internalf("failed to commit transaction: %v", err)
 			}
-			if err := ss.Send(&repl2.Ack{}); err != nil {
+			if err := ss.Send(&pb2.Ack{}); err != nil {
 				return gerrs.Internalf("failed to send response: %v", err)
 			}
-			r.db.orc.Lock()
-			r.db.orc.txnMark.Done(a.Commit.At)
-			r.db.orc.readMark.Done(a.Commit.At)
-			r.db.orc.nextTxnTs = a.Commit.At + 1
-			r.db.orc.Unlock()
+			r.db.SetVersion(a.Commit.At)
 			return nil
 		}
 	}
 }
 
-func (r *repl) Alive(ss repl2.ReplicationService_AliveServer) error {
+func (r *Repl) Alive(ss pb2.ReplicationService_AliveServer) error {
 	for {
 		if _, err := ss.Recv(); err != nil {
 			if errors.Is(err, io.EOF) {
@@ -145,7 +164,7 @@ func (r *repl) Alive(ss repl2.ReplicationService_AliveServer) error {
 			}
 			return err
 		}
-		if err := ss.Send(&repl2.Ack{}); err != nil {
+		if err := ss.Send(&pb2.Ack{}); err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
@@ -154,7 +173,7 @@ func (r *repl) Alive(ss repl2.ReplicationService_AliveServer) error {
 	}
 }
 
-func (r *repl) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
+func (r *Repl) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
 	p, ok, err := r.maybeLeaderProxy(ctx, true)
 	if err != nil {
 		return nil, err
@@ -165,7 +184,7 @@ func (r *repl) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, er
 	return p.Get(ctx, req)
 }
 
-func (r *repl) Set(ctx context.Context, req *pb.SetRequest) (*pb.SetResponse, error) {
+func (r *Repl) Set(ctx context.Context, req *pb.SetRequest) (*pb.SetResponse, error) {
 	p, ok, err := r.maybeLeaderProxy(ctx, false)
 	if err != nil {
 		return nil, err
@@ -176,7 +195,7 @@ func (r *repl) Set(ctx context.Context, req *pb.SetRequest) (*pb.SetResponse, er
 	return p.Set(ctx, req)
 }
 
-func (r *repl) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
+func (r *Repl) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
 	p, ok, err := r.maybeLeaderProxy(ctx, false)
 	if err != nil {
 		return nil, err
@@ -187,7 +206,7 @@ func (r *repl) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteRes
 	return p.Delete(ctx, req)
 }
 
-func (r *repl) Tx(ss pb.ProtoDB_TxServer) error {
+func (r *Repl) Tx(ss pb.ProtoDB_TxServer) error {
 	p, ok, err := r.maybeLeaderProxy(ss.Context(), false)
 	if err != nil {
 		return err
@@ -198,7 +217,7 @@ func (r *repl) Tx(ss pb.ProtoDB_TxServer) error {
 	return p.Tx(ss)
 }
 
-func (r *repl) Watch(req *pb.WatchRequest, ss pb.ProtoDB_WatchServer) error {
+func (r *Repl) Watch(req *pb.WatchRequest, ss pb.ProtoDB_WatchServer) error {
 	p, ok, err := r.maybeLeaderProxy(ss.Context(), true)
 	if err != nil {
 		return err
@@ -209,7 +228,7 @@ func (r *repl) Watch(req *pb.WatchRequest, ss pb.ProtoDB_WatchServer) error {
 	return p.Watch(req, ss)
 }
 
-func (r *repl) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
+func (r *Repl) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
 	p, ok, err := r.maybeLeaderProxy(ctx, false)
 	if err != nil {
 		return nil, err
@@ -220,7 +239,7 @@ func (r *repl) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.Regis
 	return p.Register(ctx, req)
 }
 
-func (r *repl) Descriptors(ctx context.Context, req *pb.DescriptorsRequest) (*pb.DescriptorsResponse, error) {
+func (r *Repl) Descriptors(ctx context.Context, req *pb.DescriptorsRequest) (*pb.DescriptorsResponse, error) {
 	p, ok, err := r.maybeLeaderProxy(ctx, true)
 	if err != nil {
 		return nil, err
@@ -231,7 +250,7 @@ func (r *repl) Descriptors(ctx context.Context, req *pb.DescriptorsRequest) (*pb
 	return p.Descriptors(ctx, req)
 }
 
-func (r *repl) FileDescriptors(ctx context.Context, req *pb.FileDescriptorsRequest) (*pb.FileDescriptorsResponse, error) {
+func (r *Repl) FileDescriptors(ctx context.Context, req *pb.FileDescriptorsRequest) (*pb.FileDescriptorsResponse, error) {
 	p, ok, err := r.maybeLeaderProxy(ctx, true)
 	if err != nil {
 		return nil, err
@@ -242,16 +261,17 @@ func (r *repl) FileDescriptors(ctx context.Context, req *pb.FileDescriptorsReque
 	return p.FileDescriptors(ctx, req)
 }
 
-func (r *repl) maybeLeaderProxy(ctx context.Context, read bool) (pb.ProtoDBServer, bool, error) {
+func (r *Repl) maybeLeaderProxy(ctx context.Context, read bool) (pb.ProtoDBServer, bool, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	if r.l || (read && r.mode == ReplicationModeSync) {
+	if r.leading || (read && r.mode == ModeSync) {
 		return nil, false, nil
 	}
-	c, ok := r.ccs[r.cle]
+	n, ok := r.nodes[r.leaderName]
 	if !ok {
 		return nil, false, gerrs.Internalf("no leader connection")
 	}
-	logger.C(ctx).Infof("proxying to leader %s", r.cle)
-	return pb.NewProtoDBProxy(pb.NewProtoDBClient(c)), true, nil
+	logger.C(ctx).Infof("proxying to leader %s", r.leaderName)
+
+	return n.proxy, true, nil
 }

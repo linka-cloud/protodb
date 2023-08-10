@@ -279,7 +279,7 @@ func TestEmbedWatchWithFilter(t *testing.T) {
 	go func() {
 		ch, err := db.Watch(ctx, &testpb.Interface{},
 			protodb.WithFilter(
-				filters.NumberField(testpb.InterfaceFields.Status).Equals(float64(testpb.StatusUp)),
+				filters.Where(testpb.InterfaceFields.Status).NumberEquals(float64(testpb.StatusUp)),
 			),
 		)
 		require.NoError(err)
@@ -396,7 +396,7 @@ func TestBatchInsertAndQuery(t *testing.T) {
 	for i := 0; i*batch <= max/10; i++ {
 		start = time.Now()
 		paging := &pb.Paging{Limit: uint64(batch), Offset: uint64(i * batch), Token: tk}
-		ms, pinfo, err := db.Get(ctx, &testpb.Interface{}, protodb.WithPaging(paging), protodb.WithFilter(protodb.Where("name", filters.StringRegex(regex)).Expr()))
+		ms, pinfo, err := db.Get(ctx, &testpb.Interface{}, protodb.WithPaging(paging), protodb.WithFilter(protodb.Where("name").StringRegex(regex)))
 		require.NoError(err)
 		if i%10 == 0 {
 			t.Logf("queried name=~\"%s\" (offset: %v, limit: %v) on %d items in %v", regex, paging.GetOffset(), paging.GetLimit(), max, time.Since(start))

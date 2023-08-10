@@ -1,10 +1,10 @@
-// Copyright 2021 Linka Cloud  All rights reserved.
+// Copyright 2023 Linka Cloud  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-// http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package protodb
+package db
 
 import (
 	"bytes"
@@ -28,33 +28,35 @@ import (
 	pf "go.linka.cloud/protofilters"
 	"google.golang.org/protobuf/proto"
 
+	"go.linka.cloud/protodb/internal/protodb"
+	"go.linka.cloud/protodb/internal/replication"
 	"go.linka.cloud/protodb/internal/token"
 )
 
-func newTx(ctx context.Context, db *db, opts ...TxOption) (*tx, error) {
+func newTx(ctx context.Context, db *db, opts ...protodb.TxOption) (*tx, error) {
 	if db.closed() {
-		return nil, ErrDBClosed
+		return nil, badger.ErrDBClosed
 	}
 	end := metrics.Tx.Start("")
 	readTs := db.orc.readTs()
-	var o TxOpts
+	var o protodb.TxOpts
 	for _, opt := range opts {
 		opt(&o)
 	}
 	update := !o.ReadOnly
 	var (
-		txr *replTx
+		txr *replication.Tx
 		err error
 	)
 	if update && db.replicated() {
-		if !db.repl.isLeader() {
-			return nil, ErrNotLeader
+		if !db.repl.IsLeader() {
+			return nil, protodb.ErrNotLeader
 		}
-		txr, err = db.repl.newTx(ctx)
+		txr, err = db.repl.NewTx(ctx)
 		if err != nil {
 			return nil, err
 		}
-		if err := txr.new(ctx, readTs); err != nil {
+		if err := txr.New(ctx, readTs); err != nil {
 			return nil, err
 		}
 	}
@@ -93,10 +95,10 @@ type tx struct {
 	m    sync.RWMutex
 	done bool
 
-	txr *replTx
+	txr *replication.Tx
 }
 
-func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...GetOption) (out []proto.Message, info *PagingInfo, err error) {
+func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (out []proto.Message, info *protodb.PagingInfo, err error) {
 	defer metrics.Tx.Get.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 	out, info, err = tx.get(ctx, m, opts...)
 	if err != nil {
@@ -105,12 +107,12 @@ func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...GetOption) (out 
 	return
 }
 
-func (tx *tx) get(ctx context.Context, m proto.Message, opts ...GetOption) (out []proto.Message, info *PagingInfo, err error) {
+func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (out []proto.Message, info *protodb.PagingInfo, err error) {
 	if tx.closed() {
-		return nil, nil, ErrDBClosed
+		return nil, nil, badger.ErrDBClosed
 	}
 	o := makeGetOpts(opts...)
-	prefix, _ := dataPrefix(m)
+	prefix, _ := protodb.DataPrefix(m)
 	it := tx.txn.NewIterator(badger.IteratorOptions{Prefix: prefix, PrefetchValues: false})
 	defer it.Close()
 	hasContinuationToken := o.Paging.GetToken() != ""
@@ -189,12 +191,12 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...GetOption) (out 
 	if err != nil {
 		return nil, nil, err
 	}
-	return out, &PagingInfo{HasNext: hasNext, Token: tks}, nil
+	return out, &protodb.PagingInfo{HasNext: hasNext, Token: tks}, nil
 }
 
 func (tx *tx) getRaw(key []byte) ([]byte, error) {
 	if tx.closed() {
-		return nil, ErrDBClosed
+		return nil, badger.ErrDBClosed
 	}
 	item, err := tx.txn.Get(key)
 	if err != nil {
@@ -203,7 +205,7 @@ func (tx *tx) getRaw(key []byte) ([]byte, error) {
 	return item.ValueCopy(nil)
 }
 
-func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error) {
+func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOption) (proto.Message, error) {
 	defer metrics.Tx.Set.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 	m, err := tx.set(ctx, m, opts...)
 	if err != nil {
@@ -211,12 +213,12 @@ func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...SetOption) (prot
 	}
 	return m, err
 }
-func (tx *tx) set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error) {
+func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOption) (proto.Message, error) {
 	if tx.closed() {
-		return nil, ErrDBClosed
+		return nil, badger.ErrDBClosed
 	}
 	if !tx.update {
-		return nil, ErrReadOnlyTxn
+		return nil, badger.ErrReadOnlyTxn
 	}
 	if m == nil {
 		return nil, errors.New("empty message")
@@ -225,7 +227,7 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...SetOption) (prot
 		applyDefaults(m)
 	}
 	o := makeSetOpts(opts...)
-	k, err := dataPrefix(m)
+	k, err := protodb.DataPrefix(m)
 	if err != nil {
 		return nil, err
 	}
@@ -270,12 +272,12 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...SetOption) (prot
 	if tx.txr == nil {
 		return m, nil
 	}
-	return m, tx.txr.set(ctx, e.Key, e.Value, e.ExpiresAt)
+	return m, tx.txr.Set(ctx, e.Key, e.Value, e.ExpiresAt)
 }
 
 func (tx *tx) setRaw(ctx context.Context, key, val []byte) error {
 	if tx.closed() {
-		return ErrDBClosed
+		return badger.ErrDBClosed
 	}
 	if err := tx.txn.Set(key, val); err != nil {
 		return err
@@ -283,7 +285,7 @@ func (tx *tx) setRaw(ctx context.Context, key, val []byte) error {
 	if tx.txr == nil {
 		return nil
 	}
-	return tx.txr.set(ctx, key, val, 0)
+	return tx.txr.Set(ctx, key, val, 0)
 }
 
 func (tx *tx) Delete(ctx context.Context, m proto.Message) error {
@@ -297,16 +299,16 @@ func (tx *tx) Delete(ctx context.Context, m proto.Message) error {
 
 func (tx *tx) delete(ctx context.Context, m proto.Message) error {
 	if tx.closed() {
-		return ErrDBClosed
+		return badger.ErrDBClosed
 	}
 	if m == nil {
 		return errors.New("empty message")
 	}
 	if !tx.update {
-		return ErrReadOnlyTxn
+		return badger.ErrReadOnlyTxn
 	}
 	// TODO(adphi): should we check / read for key first ?
-	k, err := dataPrefix(m)
+	k, err := protodb.DataPrefix(m)
 	if err != nil {
 		return err
 	}
@@ -326,12 +328,12 @@ func (tx *tx) delete(ctx context.Context, m proto.Message) error {
 	if tx.txr == nil {
 		return nil
 	}
-	return tx.txr.delete(ctx, k)
+	return tx.txr.Delete(ctx, k)
 }
 
 func (tx *tx) deleteRaw(key []byte) error {
 	if tx.closed() {
-		return ErrDBClosed
+		return badger.ErrDBClosed
 	}
 	return tx.txn.Delete(key)
 }
@@ -350,7 +352,7 @@ func (tx *tx) Size() (int64, error) {
 
 func (tx *tx) Commit(ctx context.Context) error {
 	if tx.closed() {
-		return ErrDBClosed
+		return badger.ErrDBClosed
 	}
 	defer tx.close()
 	tx.db.orc.writeChLock.Lock()
@@ -358,7 +360,7 @@ func (tx *tx) Commit(ctx context.Context) error {
 
 	ts, conflict := tx.db.orc.newCommitTs(tx)
 	if conflict {
-		return ErrConflict
+		return badger.ErrConflict
 	}
 	defer tx.db.orc.doneCommit(ts)
 	// TODO(adphi): we may need to import more checks from badger txn commit method
@@ -370,7 +372,7 @@ func (tx *tx) Commit(ctx context.Context) error {
 	if tx.txr == nil {
 		return nil
 	}
-	return tx.txr.commit(ctx, ts)
+	return tx.txr.Commit(ctx, ts)
 }
 
 func (tx *tx) Close() {
@@ -403,7 +405,7 @@ func (tx *tx) checkSize(e *badger.Entry) error {
 	count := tx.count + 1
 	size := tx.size + int64(estimateSize(e, int(tx.db.bopts.ValueThreshold)))
 	if count >= tx.db.bdb.MaxBatchCount() || size >= tx.db.bdb.MaxBatchSize() {
-		return ErrTxnTooBig
+		return badger.ErrTxnTooBig
 	}
 	tx.count, tx.size = count, size
 	return nil
@@ -423,7 +425,7 @@ func (tx *tx) addReadKey(key []byte) {
 	}
 }
 
-func hash(f Filter) (hash string, err error) {
+func hash(f protodb.Filter) (hash string, err error) {
 	var b []byte
 	if f != nil {
 		b, err = f.Expr().MarshalVT()

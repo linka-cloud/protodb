@@ -12,3 +12,6 @@ prom.yml
 .dockerignore
 .chglog
 *.pprof
+/tests/index
+/tests/server/*.yaml
+/pdbc

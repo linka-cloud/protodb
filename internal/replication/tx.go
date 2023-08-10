@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package protodb
+package replication
 
 import (
 	"context"
@@ -22,53 +22,53 @@ import (
 	"go.linka.cloud/grpc-toolkit/logger"
 	"go.uber.org/multierr"
 
-	repl2 "go.linka.cloud/protodb/internal/replication"
+	"go.linka.cloud/protodb/internal/replication/pb"
 )
 
-func (r *repl) newTx(ctx context.Context) (*replTx, error) {
+func (r *Repl) NewTx(ctx context.Context) (*Tx, error) {
 	log := logger.C(ctx)
-	var cs []repl2.ReplicationService_ReplicateClient
-	if r.mode < ReplicationModeSync {
+	var cs []pb.ReplicationService_ReplicateClient
+	if r.mode < ModeSync {
 		ctx = context.Background()
 	}
 	for _, v := range r.clients() {
 		log.Infof("Starting replicated transaction with %v", v.name)
-		c, err := v.Replicate(ctx)
+		c, err := v.repl.Replicate(ctx)
 		if err != nil {
 			return nil, err
 		}
 		cs = append(cs, c)
 		log.Infof("Started replicated transaction with %v", v.name)
 	}
-	return &replTx{mode: r.mode, cs: cs, sync: make(chan struct{}, 1)}, nil
+	return &Tx{mode: r.mode, cs: cs, sync: make(chan struct{}, 1)}, nil
 }
 
-type replTx struct {
-	mode ReplicationMode
-	cs   []repl2.ReplicationService_ReplicateClient
+type Tx struct {
+	mode Mode
+	cs   []pb.ReplicationService_ReplicateClient
 	sync chan struct{}
 }
 
-func (r *replTx) new(ctx context.Context, at uint64) error {
-	return r.do(ctx, &repl2.Op{Action: &repl2.Op_New{New: &repl2.New{At: at}}})
+func (r *Tx) New(ctx context.Context, at uint64) error {
+	return r.do(ctx, &pb.Op{Action: &pb.Op_New{New: &pb.New{At: at}}})
 }
 
-func (r *replTx) set(ctx context.Context, key, value []byte, expiresAt uint64) error {
-	return r.do(ctx, &repl2.Op{Action: &repl2.Op_Set{Set: &repl2.Set{Key: key, Value: value, ExpiresAt: expiresAt}}})
+func (r *Tx) Set(ctx context.Context, key, value []byte, expiresAt uint64) error {
+	return r.do(ctx, &pb.Op{Action: &pb.Op_Set{Set: &pb.Set{Key: key, Value: value, ExpiresAt: expiresAt}}})
 }
 
-func (r *replTx) delete(ctx context.Context, key []byte) error {
-	return r.do(ctx, &repl2.Op{Action: &repl2.Op_Delete{Delete: &repl2.Delete{Key: key}}})
+func (r *Tx) Delete(ctx context.Context, key []byte) error {
+	return r.do(ctx, &pb.Op{Action: &pb.Op_Delete{Delete: &pb.Delete{Key: key}}})
 }
 
-func (r *replTx) commit(ctx context.Context, at uint64) error {
-	if err := r.do(ctx, &repl2.Op{Action: &repl2.Op_Commit{Commit: &repl2.Commit{At: at}}}); err != nil && !errors.Is(err, io.EOF) {
+func (r *Tx) Commit(ctx context.Context, at uint64) error {
+	if err := r.do(ctx, &pb.Op{Action: &pb.Op_Commit{Commit: &pb.Commit{At: at}}}); err != nil && !errors.Is(err, io.EOF) {
 		return err
 	}
 	return nil
 }
 
-func (r *replTx) cancel(_ context.Context) error {
+func (r *Tx) cancel(_ context.Context) error {
 	var merr error
 	for _, c := range r.cs {
 		if err := c.CloseSend(); err != nil {
@@ -78,19 +78,17 @@ func (r *replTx) cancel(_ context.Context) error {
 	return merr
 }
 
-func (r *replTx) do(ctx context.Context, msg *repl2.Op) error {
+func (r *Tx) do(ctx context.Context, msg *pb.Op) error {
 	log := logger.C(ctx)
 	switch r.mode {
-	case ReplicationModeNone:
-		return nil
-	case ReplicationModeAsync:
+	case ModeAsync:
 		go func() {
 			if err := r.send(ctx, msg, cb(log, nil)); err != nil {
 				log.WithError(err).Errorf("failed to send replication message")
 			}
 		}()
 		return nil
-	case ReplicationModeSync:
+	case ModeSync:
 		errs := make(chan error, 1)
 		if err := r.send(ctx, msg, cb(log, errs)); err != nil {
 			return err
@@ -100,11 +98,11 @@ func (r *replTx) do(ctx context.Context, msg *repl2.Op) error {
 	return nil
 }
 
-func (r *replTx) send(_ context.Context, msg *repl2.Op, cb func(err error)) error {
+func (r *Tx) send(_ context.Context, msg *pb.Op, cb func(err error)) error {
 	serrs := make(chan error, len(r.cs))
 	aerrs := make(chan error, len(r.cs))
 	for _, v := range r.cs {
-		go func(v repl2.ReplicationService_ReplicateClient) {
+		go func(v pb.ReplicationService_ReplicateClient) {
 			serrs <- v.Send(msg.CloneVT())
 			_, err := v.Recv()
 			aerrs <- err

@@ -1,10 +1,10 @@
-// Copyright 2021 Linka Cloud  All rights reserved.
+// Copyright 2023 Linka Cloud  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-// http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,26 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package protodb
+package db
 
 import (
 	"strings"
-	"time"
 
 	"github.com/dgraph-io/badger/v3"
-	"google.golang.org/protobuf/types/known/fieldmaskpb"
+
+	"go.linka.cloud/protodb/internal/protodb"
+	"go.linka.cloud/protodb/internal/replication"
 )
 
 var (
 	DefaultPath = "./data"
 )
 
-type Logger interface {
-	Errorf(string, ...interface{})
-	Warningf(string, ...interface{})
-	Infof(string, ...interface{})
-	Debugf(string, ...interface{})
-}
+type (
+	Logger = protodb.Logger
+)
 
 type Option func(o *options)
 
@@ -98,12 +96,15 @@ func WithProtoRegisterErrHandler(fn func(err error) error) Option {
 	}
 }
 
-func WithReplication(m ReplicationMode, opts ...ReplicationOption) Option {
+func WithOnClose(fn func()) Option {
 	return func(o *options) {
-		o.repl.mode = m
-		for _, opt := range opts {
-			opt(&o.repl)
-		}
+		o.onClose = fn
+	}
+}
+
+func WithReplication(opts ...replication.Option) Option {
+	return func(o *options) {
+		o.repl = append(o.repl, opts...)
 	}
 }
 
@@ -117,8 +118,9 @@ type options struct {
 	registerErrHandler        func(err error) error
 	badgerOptionsFunc         func(opts badger.Options) badger.Options
 	// lowMemory                 bool
+	onClose func()
 
-	repl replOptions
+	repl []replication.Option
 }
 
 func (o options) build() badger.Options {
@@ -171,55 +173,10 @@ func (o options) build() badger.Options {
 var defaultOptions = options{
 	path:        DefaultPath,
 	numVersions: 2,
-	repl:        defaultReplicationOptions,
 }
 
-type GetOption func(o *GetOpts)
-
-func WithPaging(paging *Paging) GetOption {
-	return func(o *GetOpts) {
-		o.Paging = paging
-	}
-}
-
-func WithFilter(filter Filter) GetOption {
-	return func(o *GetOpts) {
-		o.Filter = filter
-	}
-}
-
-func WithReadFieldMaskPaths(paths ...string) GetOption {
-	return func(o *GetOpts) {
-		o.FieldMask = &fieldmaskpb.FieldMask{Paths: paths}
-	}
-}
-
-func WithReadFieldMask(fieldMask *fieldmaskpb.FieldMask) GetOption {
-	return func(o *GetOpts) {
-		o.FieldMask = fieldMask
-	}
-}
-
-type TxOpts struct {
-	ReadOnly bool
-}
-
-type TxOption func(o *TxOpts)
-
-func WithReadOnly() TxOption {
-	return func(o *TxOpts) {
-		o.ReadOnly = true
-	}
-}
-
-type GetOpts struct {
-	Paging    *Paging
-	Filter    Filter
-	FieldMask *fieldmaskpb.FieldMask
-}
-
-func makeGetOpts(opts ...GetOption) GetOpts {
-	o := GetOpts{}
+func makeGetOpts(opts ...protodb.GetOption) protodb.GetOpts {
+	o := protodb.GetOpts{}
 	for _, fn := range opts {
 		if fn != nil {
 			fn(&o)
@@ -228,33 +185,8 @@ func makeGetOpts(opts ...GetOption) GetOpts {
 	return o
 }
 
-type SetOption func(o *SetOpts)
-
-func WithTTL(d time.Duration) SetOption {
-	return func(o *SetOpts) {
-		o.TTL = d
-	}
-}
-
-func WithWriteFieldMaskPaths(paths ...string) SetOption {
-	return func(o *SetOpts) {
-		o.FieldMask = &fieldmaskpb.FieldMask{Paths: paths}
-	}
-}
-
-func WithWriteFieldMask(fieldMask *fieldmaskpb.FieldMask) SetOption {
-	return func(o *SetOpts) {
-		o.FieldMask = fieldMask
-	}
-}
-
-type SetOpts struct {
-	TTL       time.Duration
-	FieldMask *fieldmaskpb.FieldMask
-}
-
-func makeSetOpts(opts ...SetOption) SetOpts {
-	o := SetOpts{}
+func makeSetOpts(opts ...protodb.SetOption) protodb.SetOpts {
+	o := protodb.SetOpts{}
 	for _, fn := range opts {
 		if fn != nil {
 			fn(&o)

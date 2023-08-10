@@ -16,9 +16,9 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             v4.23.3
-// source: internal/replication/replication.proto
+// source: internal/replication/pb/replication.proto
 
-package replication
+package pb
 
 import (
 	context "context"
@@ -284,5 +284,5 @@ var ReplicationService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "internal/replication/replication.proto",
+	Metadata: "internal/replication/pb/replication.proto",
 }

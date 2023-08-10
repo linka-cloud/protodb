@@ -1,10 +1,10 @@
-// Copyright 2021 Linka Cloud  All rights reserved.
+// Copyright 2023 Linka Cloud  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-// http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package protodb
+package db
 
 import (
 	"bytes"
@@ -35,7 +35,11 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	preg "google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/descriptorpb"
+	"google.golang.org/protobuf/types/dynamicpb"
 
+	"go.linka.cloud/protodb/internal/client"
+	"go.linka.cloud/protodb/internal/protodb"
+	"go.linka.cloud/protodb/internal/replication"
 	"go.linka.cloud/protodb/pb"
 )
 
@@ -44,7 +48,7 @@ const (
 	protobufRegistrationConflictPolicy = "ignore"
 )
 
-func Open(ctx context.Context, opts ...Option) (DB, error) {
+func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 	o := defaultOptions
 	for _, v := range opts {
 		v(&o)
@@ -76,20 +80,22 @@ func Open(ctx context.Context, opts ...Option) (DB, error) {
 	if err := os.Setenv(protobufRegistrationConflictEnv, protobufRegistrationConflictPolicy); err != nil {
 		return nil, err
 	}
-	reg := preg.GlobalFiles
+	freg := preg.GlobalFiles
+	treg := preg.GlobalTypes
 
-	db := &db{bdb: bdb, orc: orc, opts: o, reg: reg, bopts: bopts}
-	if o.repl.mode != ReplicationModeNone {
+	db := &db{bdb: bdb, orc: orc, opts: o, freg: freg, treg: treg, bopts: bopts}
+	if len(o.repl) > 0 {
 		var err error
-		db.repl, err = newRepl(ctx, db, o.repl)
+		db.repl, err = replication.New(ctx, db, o.repl...)
 		if err != nil {
 			return nil, err
 		}
 	}
-	if db.replicated() && db.repl.isLeader() {
-		if err := db.load(ctx); err != nil {
-			return nil, err
-		}
+	if db.replicated() {
+		return db, nil
+	}
+	if err := db.load(ctx); err != nil {
+		return nil, err
 	}
 	return db, nil
 }
@@ -100,16 +106,32 @@ type db struct {
 	bopts badger.Options
 	orc   *oracle
 
-	mu  sync.RWMutex
-	reg *preg.Files
+	mu   sync.RWMutex
+	freg *preg.Files
+	treg *preg.Types
 
-	repl *repl
+	repl *replication.Repl
 
 	cmu   sync.RWMutex
 	close bool
 }
 
-func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-chan Event, error) {
+func (db *db) IsLeader() bool {
+	return db.repl.IsLeader()
+}
+
+func (db *db) Leader() string {
+	if _, ok := db.repl.LeaderConn(); ok || db.repl.IsLeader() {
+		return db.repl.CurrentLeader()
+	}
+	return ""
+}
+
+func (db *db) LeaderChanges() <-chan string {
+	return db.repl.Subscribe()
+}
+
+func (db *db) Watch(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (<-chan protodb.Event, error) {
 	end := metrics.Watch.Start(string(m.ProtoReflect().Descriptor().FullName()))
 	c, ok, err := db.maybeProxy(true)
 	if err != nil {
@@ -122,10 +144,10 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 
 	o := makeGetOpts(opts...)
 
-	k, _ := dataPrefix(m)
+	k, _ := protodb.DataPrefix(m)
 	log := logger.StandardLogger().WithFields("service", "protodb", "action", "watch", "key", string(k))
 	log.Debugf("start watching for key %s", string(k))
-	ch := make(chan Event, 1)
+	ch := make(chan protodb.Event, 1)
 	wait := make(chan struct{})
 	go func() {
 		defer end.End()
@@ -139,7 +161,7 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 					return err
 				}
 				var err error
-				var typ EventType
+				var typ protodb.EventType
 				var new proto.Message
 				var old proto.Message
 				if err := db.bdb.View(func(txn *badger.Txn) error {
@@ -240,7 +262,7 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-
 	return ch, nil
 }
 
-func (db *db) Get(ctx context.Context, m proto.Message, opts ...GetOption) ([]proto.Message, *PagingInfo, error) {
+func (db *db) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOption) ([]proto.Message, *protodb.PagingInfo, error) {
 	defer metrics.Get.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 
 	c, ok, err := db.maybeProxy(true)
@@ -251,7 +273,7 @@ func (db *db) Get(ctx context.Context, m proto.Message, opts ...GetOption) ([]pr
 		return c.Get(ctx, m, opts...)
 	}
 
-	tx, err := db.Tx(ctx, WithReadOnly())
+	tx, err := db.Tx(ctx, protodb.WithReadOnly())
 	if err != nil {
 		metrics.Get.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 		return nil, nil, err
@@ -264,7 +286,7 @@ func (db *db) Get(ctx context.Context, m proto.Message, opts ...GetOption) ([]pr
 	return msgs, paging, err
 }
 
-func (db *db) Set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error) {
+func (db *db) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOption) (proto.Message, error) {
 	defer metrics.Set.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 
 	c, ok, err := db.maybeProxy(false)
@@ -328,8 +350,8 @@ func (db *db) Delete(ctx context.Context, m proto.Message) error {
 	return nil
 }
 
-func (db *db) Tx(ctx context.Context, opts ...TxOption) (Tx, error) {
-	o := TxOpts{}
+func (db *db) Tx(ctx context.Context, opts ...protodb.TxOption) (protodb.Tx, error) {
+	o := protodb.TxOpts{}
 	for _, opt := range opts {
 		opt(&o)
 	}
@@ -344,13 +366,20 @@ func (db *db) Tx(ctx context.Context, opts ...TxOption) (Tx, error) {
 }
 
 func (db *db) Close() (err error) {
+	if db.closed() {
+		return nil
+	}
 	db.cmu.Lock()
 	db.close = true
 	if db.replicated() {
-		err = multierr.Append(err, db.repl.close())
+		err = multierr.Append(err, db.repl.Close())
 	}
 	db.cmu.Unlock()
-	return multierr.Append(err, db.bdb.Close())
+	err = multierr.Append(err, db.bdb.Close())
+	if db.opts.onClose != nil {
+		db.opts.onClose()
+	}
+	return err
 }
 
 func (db *db) closed() bool {
@@ -408,7 +437,7 @@ func (db *db) RegisterProto(ctx context.Context, file *descriptorpb.FileDescript
 	if err != nil {
 		return err
 	}
-	if err := txn.setRaw(ctx, descriptorPrefix(file), b); err != nil {
+	if err := txn.setRaw(ctx, protodb.DescriptorPrefix(file), b); err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {
@@ -425,7 +454,7 @@ func (db *db) Register(ctx context.Context, fd protoreflect.FileDescriptor) erro
 }
 
 func (db *db) Resolver() pdesc.Resolver {
-	return db.reg
+	return db.freg
 }
 
 func (db *db) Descriptors(ctx context.Context) ([]*descriptorpb.DescriptorProto, error) {
@@ -439,7 +468,7 @@ func (db *db) Descriptors(ctx context.Context) ([]*descriptorpb.DescriptorProto,
 
 	m := make(map[string]*descriptorpb.FileDescriptorProto)
 	if err := db.bdb.View(func(txn *badger.Txn) error {
-		it := txn.NewIterator(badger.IteratorOptions{Prefix: []byte(descriptors)})
+		it := txn.NewIterator(badger.IteratorOptions{Prefix: []byte(protodb.Descriptors)})
 		defer it.Close()
 		for it.Rewind(); it.Valid(); it.Next() {
 			if err := it.Item().Value(func(val []byte) error {
@@ -475,7 +504,7 @@ func (db *db) FileDescriptors(ctx context.Context) ([]*descriptorpb.FileDescript
 
 	var out []*descriptorpb.FileDescriptorProto
 	if err := db.bdb.View(func(txn *badger.Txn) error {
-		it := txn.NewIterator(badger.IteratorOptions{Prefix: []byte(descriptors)})
+		it := txn.NewIterator(badger.IteratorOptions{Prefix: []byte(protodb.Descriptors)})
 		defer it.Close()
 		for it.Rewind(); it.Valid(); it.Next() {
 			if err := it.Item().Value(func(val []byte) error {
@@ -505,28 +534,34 @@ func (db *db) Backup(ctx context.Context, w io.Writer) error {
 func (db *db) registerFileDescriptorProto(ctx context.Context, file *descriptorpb.FileDescriptorProto) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
-			var ok bool
-			ok, err = isAlreadyRegistered(e)
-			if ok {
-				err = db.recoverRegister(ctx, file)
-			}
+			// var ok bool
+			// ok, err = isAlreadyRegistered(e)
+			// if ok {
+			// 	err = db.recoverRegister(ctx, file)
+			// }
 			if err != nil {
 				err = db.handleRegisterErr(err)
 			}
 		}
 	}()
-	fd, err := pdesc.NewFile(file, db.reg)
+	fd, err := pdesc.NewFile(file, db.freg)
 	if err != nil {
 		return db.handleRegisterErr(err)
 	}
-	if err := db.reg.RegisterFile(fd); err != nil {
+	if err := db.freg.RegisterFile(fd); err != nil {
 		return db.handleRegisterErr(err)
+	}
+	for i := 0; i < fd.Messages().Len(); i++ {
+		m := fd.Messages().Get(i)
+		if err := db.treg.RegisterMessage(dynamicpb.NewMessageType(m)); err != nil {
+			return db.handleRegisterErr(err)
+		}
 	}
 	return nil
 }
 
 func (db *db) handleRegisterErr(err error) error {
-	if errors.Is(err, ErrNotLeader) {
+	if errors.Is(err, protodb.ErrNotLeader) {
 		return err
 	}
 	if db.opts.ignoreProtoRegisterErrors {
@@ -542,11 +577,11 @@ func (db *db) load(ctx context.Context) error {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 
-	if err := db.saveDescriptors(ctx); err != nil && !errors.Is(err, ErrNotLeader) {
+	if err := db.saveDescriptors(ctx); err != nil && !errors.Is(err, protodb.ErrNotLeader) {
 		return err
 	}
 
-	if err := db.loadDescriptors(ctx); err != nil && !errors.Is(err, ErrNotLeader) {
+	if err := db.loadDescriptors(ctx); err != nil && !errors.Is(err, protodb.ErrNotLeader) {
 		return err
 	}
 	return nil
@@ -554,7 +589,7 @@ func (db *db) load(ctx context.Context) error {
 
 func (db *db) saveDescriptors(ctx context.Context) error {
 	var fdps []*descriptorpb.FileDescriptorProto
-	db.reg.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
+	db.freg.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
 		// we can't register it now as the protogistry.globalMutex would dead lock
 		fdps = append(fdps, pdesc.ToFileDescriptorProto(fd))
 		return true
@@ -572,9 +607,9 @@ func (db *db) saveDescriptors(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		k := descriptorPrefix(v)
+		k := protodb.DescriptorPrefix(v)
 		g, err := tx.getRaw(k)
-		if err != nil && !errors.Is(err, ErrKeyNotFound) {
+		if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
 			return err
 		}
 		if bytes.Equal(g, b) {
@@ -591,14 +626,15 @@ func (db *db) saveDescriptors(ctx context.Context) error {
 }
 
 func (db *db) loadDescriptors(ctx context.Context) error {
-	tx, err := newTx(ctx, db, WithReadOnly())
+	tx, err := newTx(ctx, db, protodb.WithReadOnly())
 	if err != nil {
 		return err
 	}
 	defer tx.Close()
 	txn := tx.txn
-	it := txn.NewIterator(badger.IteratorOptions{Prefix: []byte(descriptors)})
+	it := txn.NewIterator(badger.IteratorOptions{Prefix: []byte(protodb.Descriptors)})
 	defer it.Close()
+	var errs error
 	for it.Rewind(); it.Valid(); it.Next() {
 		if err := it.Item().Value(func(val []byte) error {
 			fdp := &descriptorpb.FileDescriptorProto{}
@@ -608,10 +644,10 @@ func (db *db) loadDescriptors(ctx context.Context) error {
 			return db.registerFileDescriptorProto(ctx, fdp)
 
 		}); err != nil {
-			return err
+			errs = multierr.Append(errs, err)
 		}
 	}
-	return nil
+	return errs
 }
 
 func (db *db) recoverRegister(ctx context.Context, file *descriptorpb.FileDescriptorProto) error {
@@ -620,7 +656,7 @@ func (db *db) recoverRegister(ctx context.Context, file *descriptorpb.FileDescri
 		return err
 	}
 	txn := tx.txn
-	key := descriptorPrefix(file)
+	key := protodb.DescriptorPrefix(file)
 	it := txn.NewIterator(badger.IteratorOptions{Prefix: key})
 	defer it.Close()
 	found := false
@@ -665,18 +701,18 @@ func (db *db) replicated() bool {
 	return db.repl != nil
 }
 
-func (db *db) maybeProxy(read bool) (Client, bool, error) {
+func (db *db) maybeProxy(read bool) (client.Client, bool, error) {
 	if db.repl == nil {
 		return nil, false, nil
 	}
-	if db.repl.isLeader() || (db.repl.mode == ReplicationModeSync && read) {
+	if db.repl.IsLeader() || (db.repl.Mode() == replication.ModeSync && read) {
 		return nil, false, nil
 	}
-	cc, ok := db.repl.leaderConn()
+	cc, ok := db.repl.LeaderConn()
 	if !ok {
 		return nil, false, fmt.Errorf("no leader connection")
 	}
-	c, err := NewClient(cc)
+	c, err := client.NewClient(cc)
 	if err != nil {
 		return nil, false, err
 	}

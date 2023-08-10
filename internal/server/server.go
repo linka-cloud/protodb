@@ -1,10 +1,10 @@
-// Copyright 2021 Linka Cloud  All rights reserved.
+// Copyright 2023 Linka Cloud  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-// http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,13 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package protodb
+package server
 
 import (
 	"context"
 	"errors"
 	"fmt"
 
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -26,10 +27,16 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
+	"go.linka.cloud/protodb/internal/protodb"
 	"go.linka.cloud/protodb/pb"
 )
 
-func NewServer(db DB) (pb.ProtoDBServer, error) {
+type Server interface {
+	pb.ProtoDBServer
+	RegisterService(r grpc.ServiceRegistrar)
+}
+
+func NewServer(db protodb.DB) (Server, error) {
 	if db == nil {
 		return nil, errors.New("db cannot be nil")
 	}
@@ -37,8 +44,12 @@ func NewServer(db DB) (pb.ProtoDBServer, error) {
 }
 
 type server struct {
-	db DB
+	db protodb.DB
 	pb.UnimplementedProtoDBServer
+}
+
+func (s *server) RegisterService(r grpc.ServiceRegistrar) {
+	pb.RegisterProtoDBServer(r, s)
 }
 
 func (s *server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
@@ -89,10 +100,10 @@ func (s *server) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteR
 
 func (s *server) Tx(stream pb.ProtoDB_TxServer) error {
 	ctx := stream.Context()
-	var opts []TxOption
+	var opts []protodb.TxOption
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
 		if v := md.Get(pb.ReadOnlyTxKey); len(v) > 0 {
-			opts = append(opts, WithReadOnly())
+			opts = append(opts, protodb.WithReadOnly())
 		}
 	}
 	tx, err := s.db.Tx(stream.Context(), opts...)
@@ -185,7 +196,7 @@ func (s *server) Watch(req *pb.WatchRequest, stream pb.ProtoDB_WatchServer) erro
 	return nil
 }
 
-func (s *server) get(ctx context.Context, r Reader, get *pb.GetRequest) ([]*anypb.Any, *pb.PagingInfo, error) {
+func (s *server) get(ctx context.Context, r protodb.Reader, get *pb.GetRequest) ([]*anypb.Any, *pb.PagingInfo, error) {
 	d, err := s.unmarshalToDynamic(get.Search)
 	if err != nil {
 		return nil, nil, err
@@ -201,7 +212,7 @@ func (s *server) get(ctx context.Context, r Reader, get *pb.GetRequest) ([]*anyp
 	return as, i, nil
 }
 
-func (s *server) set(ctx context.Context, w Writer, set *pb.SetRequest) (*anypb.Any, error) {
+func (s *server) set(ctx context.Context, w protodb.Writer, set *pb.SetRequest) (*anypb.Any, error) {
 	d, err := s.unmarshalToDynamic(set.Payload)
 	if err != nil {
 		return nil, err
@@ -217,7 +228,7 @@ func (s *server) set(ctx context.Context, w Writer, set *pb.SetRequest) (*anypb.
 	return a, nil
 }
 
-func (s *server) delete(ctx context.Context, w Writer, del *pb.DeleteRequest) error {
+func (s *server) delete(ctx context.Context, w protodb.Writer, del *pb.DeleteRequest) error {
 	d, err := s.unmarshalToDynamic(del.Payload)
 	if err != nil {
 		return err
@@ -252,14 +263,14 @@ func (s *server) unmarshalToDynamic(a *anypb.Any) (*dynamicpb.Message, error) {
 	return d, nil
 }
 
-func getOpts(r *pb.GetRequest) (opts []GetOption) {
-	return append(opts, WithFilter(r.Filter), WithPaging(r.Paging), WithReadFieldMask(r.FieldMask))
+func getOpts(r *pb.GetRequest) (opts []protodb.GetOption) {
+	return append(opts, protodb.WithFilter(r.Filter), protodb.WithPaging(r.Paging), protodb.WithReadFieldMask(r.FieldMask))
 }
 
-func setOpts(r *pb.SetRequest) (opts []SetOption) {
-	return append(opts, WithTTL(r.TTL.AsDuration()), WithWriteFieldMask(r.FieldMask))
+func setOpts(r *pb.SetRequest) (opts []protodb.SetOption) {
+	return append(opts, protodb.WithTTL(r.TTL.AsDuration()), protodb.WithWriteFieldMask(r.FieldMask))
 }
 
-func watchOpts(r *pb.WatchRequest) (opts []GetOption) {
-	return append(opts, WithFilter(r.Filter))
+func watchOpts(r *pb.WatchRequest) (opts []protodb.GetOption) {
+	return append(opts, protodb.WithFilter(r.Filter))
 }

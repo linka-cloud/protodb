@@ -15,9 +15,9 @@
 package protodb
 
 import (
-	"errors"
-
 	"github.com/dgraph-io/badger/v3"
+
+	"go.linka.cloud/protodb/internal/protodb"
 )
 
 var (
@@ -77,5 +77,5 @@ var (
 	// ErrDBClosed is returned when a get operation is performed after closing the DB.
 	ErrDBClosed = badger.ErrDBClosed
 
-	ErrNotLeader = errors.New("current node is not leader")
+	ErrNotLeader = protodb.ErrNotLeader
 )

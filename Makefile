@@ -42,7 +42,7 @@ protoc-gen-protodb: bin
 
 bin:
 	@go install golang.org/x/tools/cmd/goimports
-	@go install github.com/golang/protobuf/protoc-gen-go
+	@go install google.golang.org/protobuf/cmd/protoc-gen-go
 	@go install google.golang.org/grpc/cmd/protoc-gen-go-grpc
 	@go install go.linka.cloud/protoc-gen-defaults
 	@go install go.linka.cloud/protoc-gen-go-fields

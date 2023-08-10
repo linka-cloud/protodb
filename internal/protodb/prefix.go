@@ -1,10 +1,10 @@
-// Copyright 2021 Linka Cloud  All rights reserved.
+// Copyright 2023 Linka Cloud  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-// http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -22,19 +22,19 @@ import (
 )
 
 const (
-	data        = "_data"
-	index       = "_index"
-	descriptors = "_schema"
+	Data        = "_data"
+	Index       = "_index"
+	Descriptors = "_schema"
 )
 
-func dataPrefix(m proto.Message) ([]byte, error) {
-	k, err := keyFor(m)
+func DataPrefix(m proto.Message) ([]byte, error) {
+	k, err := KeyFor(m)
 	if err != nil {
-		return []byte(fmt.Sprintf("%s/%s/", data, m.ProtoReflect().Descriptor().FullName())), fmt.Errorf("key: %w", err)
+		return []byte(fmt.Sprintf("%s/%s/", Data, m.ProtoReflect().Descriptor().FullName())), fmt.Errorf("key: %w", err)
 	}
-	return []byte(fmt.Sprintf("%s/%s/%s", data, m.ProtoReflect().Descriptor().FullName(), k)), nil
+	return []byte(fmt.Sprintf("%s/%s/%s", Data, m.ProtoReflect().Descriptor().FullName(), k)), nil
 }
 
-func descriptorPrefix(d *descriptorpb.FileDescriptorProto) []byte {
-	return []byte(fmt.Sprintf("%s/%s/%s", descriptors, d.GetPackage(), d.GetName()))
+func DescriptorPrefix(d *descriptorpb.FileDescriptorProto) []byte {
+	return []byte(fmt.Sprintf("%s/%s/%s", Descriptors, d.GetPackage(), d.GetName()))
 }

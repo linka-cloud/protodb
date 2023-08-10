@@ -20,7 +20,6 @@ package main
 import (
 	_ "github.com/alta/protopatch/cmd/protoc-gen-go-patch"
 	_ "github.com/envoyproxy/protoc-gen-validate"
-	_ "github.com/golang/protobuf/protoc-gen-go"
 	_ "github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway"
 	_ "github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2"
 	_ "github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto"
@@ -30,4 +29,5 @@ import (
 	_ "go.linka.cloud/protofilters"
 	_ "golang.org/x/tools/cmd/goimports"
 	_ "google.golang.org/grpc/cmd/protoc-gen-go-grpc"
+	_ "google.golang.org/protobuf/cmd/protoc-gen-go"
 )

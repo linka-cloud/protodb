@@ -15,83 +15,41 @@
 package protodb
 
 import (
-	"context"
-	"io"
-
 	"go.linka.cloud/protofilters/filters"
-	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protodesc"
-	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/types/descriptorpb"
 
+	"go.linka.cloud/protodb/internal/client"
+	"go.linka.cloud/protodb/internal/db"
+	"go.linka.cloud/protodb/internal/protodb"
+	"go.linka.cloud/protodb/internal/replication"
+	"go.linka.cloud/protodb/internal/server"
 	"go.linka.cloud/protodb/pb"
-)
-
-type (
-	Paging     = pb.Paging
-	PagingInfo = pb.PagingInfo
-	FilterExpr = filters.Expression
-	Filter     = filters.FieldFilterer
 )
 
 var (
 	Where = filters.Where
 )
 
-type DB interface {
-	Registerer
-	Resolverer
-	Reader
-	Writer
-	Watcher
-	TxProvider
-	io.Closer
-}
+type DB = protodb.DB
 
-type Tx interface {
-	Reader
-	Writer
-	Committer
-	Sizer
-}
+type Tx = protodb.Tx
 
-type Reader interface {
-	Get(ctx context.Context, m proto.Message, opts ...GetOption) ([]proto.Message, *PagingInfo, error)
-}
+type Reader = protodb.Reader
 
-type Watcher interface {
-	Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-chan Event, error)
-}
+type Watcher = protodb.Watcher
 
-type Writer interface {
-	Set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error)
-	Delete(ctx context.Context, m proto.Message) error
-}
+type Writer protodb.Writer
 
-type TxProvider interface {
-	Tx(ctx context.Context, opts ...TxOption) (Tx, error)
-}
+type TxProvider = protodb.TxProvider
 
-type Committer interface {
-	Commit(ctx context.Context) error
-	Close()
-}
+type Committer = protodb.Committer
 
-type Sizer interface {
-	Count() (int64, error)
-	Size() (int64, error)
-}
+type Sizer = protodb.Sizer
 
-type Registerer interface {
-	RegisterProto(ctx context.Context, file *descriptorpb.FileDescriptorProto) error
-	Register(ctx context.Context, file protoreflect.FileDescriptor) error
-	Descriptors(ctx context.Context) ([]*descriptorpb.DescriptorProto, error)
-	FileDescriptors(ctx context.Context) ([]*descriptorpb.FileDescriptorProto, error)
-}
+type Registerer = protodb.Registerer
 
-type Resolverer interface {
-	Resolver() protodesc.Resolver
-}
+type Leader = protodb.Leader
+
+type Resolverer = protodb.Resolverer
 
 type EventType = pb.WatchEventType
 
@@ -101,9 +59,75 @@ const (
 	EventTypeUpdate = pb.WatchEventUpdate
 )
 
-type Event interface {
-	Type() EventType
-	Old() proto.Message
-	New() proto.Message
-	Err() error
-}
+type Event = protodb.Event
+
+var DefaultPath = db.DefaultPath
+
+var Open = db.Open
+
+type Option = db.Option
+
+var (
+	WithPath                      = db.WithPath
+	WithInMemory                  = db.WithInMemory
+	WithBadgerOptionsFunc         = db.WithBadgerOptionsFunc
+	WithLogger                    = db.WithLogger
+	WithNumVersionsToKeep         = db.WithNumVersionsToKeep
+	WithApplyDefaults             = db.WithApplyDefaults
+	WithIgnoreProtoRegisterErrors = db.WithIgnoreProtoRegisterErrors
+	WithProtoRegisterErrHandler   = db.WithProtoRegisterErrHandler
+	WithOnClose                   = db.WithOnClose
+	WithReplication               = db.WithReplication
+)
+
+type GetOption = protodb.GetOption
+
+var (
+	WithPaging             = protodb.WithPaging
+	WithFilter             = protodb.WithFilter
+	WithReadFieldMaskPaths = protodb.WithReadFieldMaskPaths
+	WithReadFieldMask      = protodb.WithReadFieldMask
+)
+
+type TxOption = protodb.TxOption
+
+var WithReadOnly = protodb.WithReadOnly
+
+type SetOption = protodb.SetOption
+
+var (
+	WithTTL                 = protodb.WithTTL
+	WithWriteFieldMaskPaths = protodb.WithWriteFieldMaskPaths
+	WithWriteFieldMask      = protodb.WithWriteFieldMask
+)
+
+type ReplicationOption = replication.Option
+
+var (
+	ReplicationModeSync  = replication.ModeSync
+	ReplicationModeAsync = replication.ModeAsync
+)
+
+var (
+	WithMode       = replication.WithMode
+	WithName       = replication.WithName
+	WithAddrs      = replication.WithAddrs
+	WithGossipPort = replication.WithGossipPort
+	WithGRPCPort   = replication.WithGRPCPort
+	WithTick       = replication.WithTick
+)
+
+type (
+	Paging     = pb.Paging
+	PagingInfo = pb.PagingInfo
+	FilterExpr = filters.Expression
+	Filter     = filters.FieldFilterer
+)
+
+type Client = client.Client
+
+var NewClient = client.NewClient
+
+type Server = server.Server
+
+var NewServer = server.NewServer

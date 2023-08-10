@@ -16,7 +16,7 @@ syntax = "proto3";
 
 package linka.cloud.protodb.internal.replication;
 
-option go_package = "go.linka.cloud/protodb/internal/replication;replication";
+option go_package = "go.linka.cloud/protodb/internal/replication/pb;pb";
 
 import "patch/go.proto";
 option (go.lint).all = true;
@@ -68,4 +68,6 @@ message Ack {}
 
 message Meta {
   uint32 grpc_port = 1 [(go.field).name = "GRPCPort"];
+  uint64 local_version = 2 [(go.field).name = "LocalVersion"];
+  bool is_leader = 3 [(go.field).name = "IsLeader"];
 }

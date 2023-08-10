@@ -12,40 +12,68 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package protodb
+package replication
 
-var defaultReplicationOptions = replOptions{
+import (
+	"time"
+)
+
+var defaultOptions = options{
 	addrs:      []string{"localhost"},
 	gossipPort: 7080,
 	grpcPort:   7081,
+	tick:       500 * time.Millisecond,
 }
 
-type ReplicationOption func(o *replOptions)
+type Option func(o *options)
 
-type replOptions struct {
+type options struct {
+	mode       Mode
+	name       string
 	addrs      []string
 	gossipPort int
 	grpcPort   int
-	mode       ReplicationMode
+	tick       time.Duration
+
 	// TODO(adphi): replication service.Options, e.g. peer tls, server tls, etc.
 	// TODO(adphi): protodb service.Options, e.g. peer tls, server tls, etc.
 	// TODO(adphi): gossip encryption key & verification
 }
 
-func WithAddrs(addrs ...string) ReplicationOption {
-	return func(o *replOptions) {
+func WithMode(mode Mode) Option {
+	return func(o *options) {
+		o.mode = mode
+	}
+}
+
+func WithName(name string) Option {
+	return func(o *options) {
+		o.name = name
+	}
+}
+
+func WithAddrs(addrs ...string) Option {
+	return func(o *options) {
 		o.addrs = addrs
 	}
 }
 
-func WithGossipPort(port int) ReplicationOption {
-	return func(o *replOptions) {
+func WithGossipPort(port int) Option {
+	return func(o *options) {
 		o.gossipPort = port
 	}
 }
 
-func WithGRPCPort(port int) ReplicationOption {
-	return func(o *replOptions) {
+func WithGRPCPort(port int) Option {
+	return func(o *options) {
 		o.grpcPort = port
+	}
+}
+
+func WithTick(ms int) Option {
+	return func(o *options) {
+		if ms > 100 {
+			o.tick = time.Duration(ms) * time.Millisecond
+		}
 	}
 }

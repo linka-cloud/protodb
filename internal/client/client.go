@@ -1,10 +1,10 @@
-// Copyright 2021 Linka Cloud  All rights reserved.
+// Copyright 2023 Linka Cloud  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-// http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package protodb
+package client
 
 import (
 	"context"
@@ -32,15 +32,16 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
+	"go.linka.cloud/protodb/internal/protodb"
 	"go.linka.cloud/protodb/pb"
 )
 
 type Client interface {
-	Registerer
-	Reader
-	Writer
-	Watcher
-	TxProvider
+	protodb.Registerer
+	protodb.Reader
+	protodb.Writer
+	protodb.Watcher
+	protodb.TxProvider
 	io.Closer
 }
 
@@ -78,7 +79,7 @@ func (c *client) FileDescriptors(ctx context.Context) ([]*descriptorpb.FileDescr
 	return res.Results, nil
 }
 
-func (c *client) Get(ctx context.Context, m proto.Message, opts ...GetOption) ([]proto.Message, *PagingInfo, error) {
+func (c *client) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOption) ([]proto.Message, *protodb.PagingInfo, error) {
 	a, err := anypb.New(m)
 	if err != nil {
 		return nil, nil, err
@@ -103,7 +104,7 @@ func (c *client) Get(ctx context.Context, m proto.Message, opts ...GetOption) ([
 	return msgs, res.Paging, nil
 }
 
-func (c *client) Set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error) {
+func (c *client) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOption) (proto.Message, error) {
 	a, err := anypb.New(m)
 	if err != nil {
 		return nil, err
@@ -133,7 +134,7 @@ func (c *client) Delete(ctx context.Context, m proto.Message) error {
 	return err
 }
 
-func (c *client) Watch(ctx context.Context, m proto.Message, opts ...GetOption) (<-chan Event, error) {
+func (c *client) Watch(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (<-chan protodb.Event, error) {
 	a, err := anypb.New(m)
 	if err != nil {
 		return nil, err
@@ -147,7 +148,7 @@ func (c *client) Watch(ctx context.Context, m proto.Message, opts ...GetOption) 
 	if err != nil {
 		return nil, err
 	}
-	ch := make(chan Event)
+	ch := make(chan protodb.Event)
 	go func() {
 		defer close(ch)
 		defer w.CloseSend()
@@ -163,7 +164,7 @@ func (c *client) Watch(ctx context.Context, m proto.Message, opts ...GetOption) 
 	return ch, nil
 }
 
-func (c *client) Tx(ctx context.Context, opts ...TxOption) (Tx, error) {
+func (c *client) Tx(ctx context.Context, opts ...protodb.TxOption) (protodb.Tx, error) {
 	return c.newTx(ctx, opts...)
 }
 
@@ -171,8 +172,8 @@ func (c *client) Close() error {
 	return nil
 }
 
-func (c *client) newTx(ctx context.Context, opts ...TxOption) (Tx, error) {
-	var o TxOpts
+func (c *client) newTx(ctx context.Context, opts ...protodb.TxOption) (protodb.Tx, error) {
+	var o protodb.TxOpts
 	for _, opt := range opts {
 		opt(&o)
 	}
@@ -191,7 +192,7 @@ type txc struct {
 	txn pb.ProtoDB_TxClient
 }
 
-func (t *txc) Get(ctx context.Context, m proto.Message, opts ...GetOption) ([]proto.Message, *PagingInfo, error) {
+func (t *txc) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOption) ([]proto.Message, *protodb.PagingInfo, error) {
 	a, err := anypb.New(m)
 	if err != nil {
 		return nil, nil, err
@@ -226,7 +227,7 @@ func (t *txc) Get(ctx context.Context, m proto.Message, opts ...GetOption) ([]pr
 	return msgs, res.GetGet().GetPaging(), nil
 }
 
-func (t *txc) Set(ctx context.Context, m proto.Message, opts ...SetOption) (proto.Message, error) {
+func (t *txc) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOption) (proto.Message, error) {
 	a, err := anypb.New(m)
 	if err != nil {
 		return nil, err
@@ -331,7 +332,7 @@ func (t *txc) Close() {
 }
 
 type eventc struct {
-	typ EventType
+	typ protodb.EventType
 	old proto.Message
 	new proto.Message
 	err error
@@ -356,7 +357,7 @@ func newEvent(e *pb.WatchEvent, err error) *eventc {
 	return ev
 }
 
-func (e *eventc) Type() EventType {
+func (e *eventc) Type() protodb.EventType {
 	return e.typ
 }
 
@@ -372,15 +373,15 @@ func (e *eventc) Err() error {
 	return e.err
 }
 
-func getOps(opts ...GetOption) *GetOpts {
-	o := &GetOpts{}
+func getOps(opts ...protodb.GetOption) *protodb.GetOpts {
+	o := &protodb.GetOpts{}
 	for _, v := range opts {
 		v(o)
 	}
 	return o
 }
-func setOps(opts ...SetOption) *SetOpts {
-	o := &SetOpts{}
+func setOps(opts ...protodb.SetOption) *protodb.SetOpts {
+	o := &protodb.SetOpts{}
 	for _, v := range opts {
 		v(o)
 	}

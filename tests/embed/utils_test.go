@@ -21,7 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
-	"go.linka.cloud/protodb"
+	"go.linka.cloud/protodb/internal/db"
 	testpb "go.linka.cloud/protodb/tests/pb"
 )
 
@@ -87,7 +87,7 @@ func TestApplyFieldMaskPaths(t *testing.T) {
 			n := proto.Clone(n).(*testpb.Interface)
 			w := proto.Clone(o).(*testpb.Interface)
 			tt.want(w)
-			require.NoError(t, protodb.ApplyFieldMaskPaths(n, o, tt.fields...))
+			require.NoError(t, db.ApplyFieldMaskPaths(n, o, tt.fields...))
 			assert.Equal(t, w.String(), o.String())
 		})
 	}

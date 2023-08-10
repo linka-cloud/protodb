@@ -1,10 +1,10 @@
-// Copyright 2021 Linka Cloud  All rights reserved.
+// Copyright 2023 Linka Cloud  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-// http://www.apache.org/licenses/LICENSE-2.0
+//     http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -26,7 +26,7 @@ import (
 	"go.linka.cloud/protodb/protodb"
 )
 
-func keyFromOpts(m proto.Message) (string, bool) {
+func KeyFromOpts(m proto.Message) (string, bool) {
 	sk := proto.GetExtension(m.ProtoReflect().Descriptor().Options(), protodb.E_StaticKey)
 	if sk != nil && sk.(string) != "" {
 		return sk.(string), true
@@ -62,8 +62,8 @@ func keyFromOpts(m proto.Message) (string, bool) {
 	return "", true
 }
 
-func keyFor(m proto.Message) (string, error) {
-	if k, ok := keyFromOpts(m); ok {
+func KeyFor(m proto.Message) (string, error) {
+	if k, ok := KeyFromOpts(m); ok {
 		if k != "" {
 			return k, nil
 		}
