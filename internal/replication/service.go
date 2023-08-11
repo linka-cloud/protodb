@@ -151,6 +151,21 @@ func (r *Repl) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 				return gerrs.Internalf("failed to send response: %v", err)
 			}
 			r.db.SetVersion(a.Commit.At)
+			r.mmu.Lock()
+			r.meta.LocalVersion = a.Commit.At
+			r.mmu.Unlock()
+			go func() {
+				r.mmu.RLock()
+				defer r.mmu.RUnlock()
+				b, err := r.meta.MarshalVT()
+				if err != nil {
+					log.Errorf("failed to marshal meta: %v", err)
+					return
+				}
+				if err := r.g.UpdateMeta(r.ctx, b); err != nil {
+					log.Errorf("failed to update meta: %v", err)
+				}
+			}()
 			return nil
 		}
 	}

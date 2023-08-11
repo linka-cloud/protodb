@@ -26,6 +26,7 @@ service ReplicationService {
   rpc Init(InitRequest) returns (stream InitResponse) {}
   rpc Replicate (stream Op) returns (stream Ack) {}
   rpc Alive (stream Ack) returns (stream Ack) {}
+  rpc Election (Message) returns (Message) {}
 }
 
 message InitRequest {
@@ -65,6 +66,22 @@ message Commit {
 }
 
 message Ack {}
+
+enum ElectionType {
+  NONE = 0;
+  SKIP = 1;
+  OK = 2;
+  ELECTION = 3;
+  LEADER = 4;
+  // skip is in internal special case where a node announce it will not participate in the election
+  // it is used to avoid a node waiting for its known dead peer to participate in the election
+}
+
+message Message {
+  ElectionType type = 1;
+  string name = 2;
+  Meta meta = 3;
+}
 
 message Meta {
   uint32 grpc_port = 1 [(go.field).name = "GRPCPort"];

@@ -52,5 +52,8 @@ func (x *Commit) Default() {
 func (x *Ack) Default() {
 }
 
+func (x *Message) Default() {
+}
+
 func (x *Meta) Default() {
 }

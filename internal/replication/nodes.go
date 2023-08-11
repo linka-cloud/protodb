@@ -42,6 +42,7 @@ type node struct {
 	cc    *grpc.ClientConn
 	repl  pb2.ReplicationServiceClient
 	proxy pb.ProtoDBServer
+	// elect pb2.ReplicationService_ElectionClient
 }
 
 func (r *Repl) handleEvents(ctx context.Context) {
@@ -112,6 +113,9 @@ func (r *Repl) handleEvent(ctx context.Context, e memberlist.NodeEvent) {
 			if v.addr.String() == e.Node.Addr.String() && v.cc.GetState() == connectivity.Ready {
 				log.Infof("already connected to %s %v", e.Node.Name, e.Node.Addr)
 				v.meta = m
+				if e.Node.Name == r.leaderName {
+					r.setReady()
+				}
 				return
 			}
 			log.Infof("closing connection to %s %v", e.Node.Name, e.Node.Addr)
@@ -139,16 +143,19 @@ func (r *Repl) handleEvent(ctx context.Context, e memberlist.NodeEvent) {
 		}
 		log.Infof("connected to %s", e.Node.Name)
 		if e.Node.Name == r.leaderName {
-			r.maybeClose(r.ready)
+			r.setReady()
 		}
 		go func() {
-			ss, err := cs.Alive(ctx)
 			defer func() {
 				r.mu.Lock()
 				defer r.mu.Unlock()
 				delete(r.nodes, e.Node.Name)
 				log.Infof("disconnected from %s", e.Node.Name)
+				if e.Node.Name == r.leaderName {
+					r.Elect(ctx)
+				}
 			}()
+			ss, err := cs.Alive(ctx)
 			if err != nil {
 				log.Errorf("failed to get alive stream: %v", err)
 				return
@@ -182,97 +189,98 @@ func (r *Repl) handleEvent(ctx context.Context, e memberlist.NodeEvent) {
 		if err := r.writeNodes(); err != nil {
 			log.Errorf("failed to write nodes: %v", err)
 		}
+		if r.leaderName == e.Node.Name && !r.leading {
+			r.leaderName = ""
+			go r.Elect(ctx)
+		}
 	}
 }
 
-func (r *Repl) OnStartedLeading(_ context.Context) func(ctx context.Context) {
-	return func(ctx context.Context) {
-		logger.C(ctx).Info("started leading")
+func (r *Repl) onStartedLeading(ctx context.Context) {
+	logger.C(ctx).Info("started leading")
+}
+
+func (r *Repl) onStoppedLeading(ctx context.Context) {
+	logger.C(ctx).Info("stopped leading")
+	r.mmu.Lock()
+	r.meta.IsLeader = false
+	meta := r.meta.CloneVT()
+	r.mmu.Unlock()
+	b, err := meta.MarshalVT()
+	if err != nil {
+		logger.C(ctx).Errorf("failed to marshal meta: %v", err)
+	}
+	// it may be an empty meta...
+	if err := r.g.UpdateMeta(ctx, b); err != nil {
+		logger.C(ctx).Errorf("failed to update meta: %v", err)
+	}
+	if err := r.g.Memberlist().Leave(time.Second); err != nil {
+		logger.C(ctx).Errorf("failed to leave memberlist: %v", err)
+	}
+	if err := r.db.Close(); err != nil {
+		logger.C(ctx).Errorf("failed to close db: %v", err)
 	}
 }
 
-func (r *Repl) OnStoppedLeading(ctx context.Context) func() {
-	return func() {
-		logger.C(ctx).Info("stopped leading")
-		r.mu.Lock()
-		r.meta.IsLeader = false
-		meta := r.meta.CloneVT()
-		r.mu.Unlock()
+func (r *Repl) onNewLeader(ctx context.Context, identity string) {
+	log := logger.C(ctx)
+	if identity == "" {
+		log.Warnf("empty leader")
+		return
+	}
+	log.Infof("new leader: %s", identity)
+	r.mu.Lock()
+	r.leaderName = identity
+	r.leading = identity == r.name
+	r.mmu.Lock()
+	r.meta.IsLeader = r.leading
+	r.mmu.Unlock()
+	meta := r.meta.CloneVT()
+	l := r.leading
+	r.mu.Unlock()
+	if l {
 		b, err := meta.MarshalVT()
 		if err != nil {
-			logger.C(ctx).Errorf("failed to marshal meta: %v", err)
-		}
-		// it may be an empty meta...
-		if err := r.g.UpdateMeta(ctx, b); err != nil {
-			logger.C(ctx).Errorf("failed to update meta: %v", err)
-		}
-		if err := r.g.Memberlist().Leave(time.Second); err != nil {
-			logger.C(ctx).Errorf("failed to leave memberlist: %v", err)
-		}
-		if err := r.db.Close(); err != nil {
-			logger.C(ctx).Errorf("failed to close db: %v", err)
-		}
-	}
-}
-
-func (r *Repl) OnNewLeader(ctx context.Context) func(leader string) {
-	return func(identity string) {
-		log := logger.C(ctx)
-		if identity == "" {
-			log.Warnf("empty leader")
+			log.Errorf("failed to marshal meta: %v", err)
 			return
 		}
-		log.Infof("new leader: %s", identity)
-		r.mu.Lock()
-		r.leaderName = identity
-		r.leading = identity == r.name
-		r.meta.IsLeader = r.leading
-		meta := r.meta.CloneVT()
-		l := r.leading
-		r.mu.Unlock()
-		if l {
-			b, err := meta.MarshalVT()
-			if err != nil {
-				log.Errorf("failed to marshal meta: %v", err)
-				return
-			}
-			log.Infof("broadcasting leadership")
-			if err := r.g.UpdateMeta(ctx, b); err != nil {
-				log.Errorf("failed to update node: %v", err)
-			}
-			if err := r.db.LoadDescriptors(ctx); err != nil {
-				log.Errorf("failed to load proto descriptors: %v", err)
-			}
+		log.Infof("broadcasting leadership")
+		if err := r.g.UpdateMeta(ctx, b); err != nil {
+			log.Errorf("failed to update node: %v", err)
 		}
-		r.pub.Publish(identity)
-		if _, ok := r.leaderClient(); identity != r.name && !ok {
-			log.Warnf("missing client for leader: %s", identity)
+		if err := r.db.LoadDescriptors(ctx); err != nil {
+			log.Errorf("failed to load proto descriptors: %v", err)
 		}
-		// if identity == r.name {
-		// 	r.mu.Lock()
-		// 	defer r.mu.Unlock()
-		// 	for k, v := range r.ccs {
-		// 		if v.GetState() != connectivity.Ready {
-		// 			log.Warnf("client %s not ready, deleting", k)
-		// 			if err := v.Close(); err != nil {
-		// 				log.Errorf("failed to close connection: %v", err)
-		// 			}
-		// 			delete(r.ccs, k)
-		// 			delete(r.cs, k)
-		// 		}
-		// 	}
-		// 	// 	if err := r.db.load(ctx); err != nil {
-		// 	// 		log.Errorf("failed to load protobuf schemas: %v", err)
-		// 	// 		return
-		// 	// 	}
-		// }
-		r.maybeClose(r.ready)
 	}
+	r.pub.Publish(identity)
+	if _, ok := r.leaderClient(); identity != r.name && !ok {
+		log.Warnf("missing client for leader: %s", identity)
+	}
+	// if identity == r.name {
+	// 	r.mu.Lock()
+	// 	defer r.mu.Unlock()
+	// 	for k, v := range r.ccs {
+	// 		if v.GetState() != connectivity.Ready {
+	// 			log.Warnf("client %s not ready, deleting", k)
+	// 			if err := v.Close(); err != nil {
+	// 				log.Errorf("failed to close connection: %v", err)
+	// 			}
+	// 			delete(r.ccs, k)
+	// 			delete(r.cs, k)
+	// 		}
+	// 	}
+	// 	// 	if err := r.db.load(ctx); err != nil {
+	// 	// 		log.Errorf("failed to load protobuf schemas: %v", err)
+	// 	// 		return
+	// 	// 	}
+	// }
+	r.setReady()
 }
 
-func (r *Repl) maybeClose(ch chan struct{}) {
+func (r *Repl) setReady() {
 	r.once.Do(func() {
-		close(ch)
+		logger.C(r.ctx).Info("setting ready")
+		close(r.ready)
 	})
 }
 

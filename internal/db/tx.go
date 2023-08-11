@@ -208,7 +208,7 @@ func (tx *tx) getRaw(key []byte) ([]byte, error) {
 func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOption) (proto.Message, error) {
 	defer metrics.Tx.Set.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 	m, err := tx.set(ctx, m, opts...)
-	if err != nil {
+	if err != nil && m != nil {
 		metrics.Tx.Set.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 	}
 	return m, err

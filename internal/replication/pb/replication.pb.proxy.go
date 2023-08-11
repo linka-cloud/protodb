@@ -140,4 +140,9 @@ func (x *proxyReplicationService) Alive(s ReplicationService_AliveServer) error 
 	return <-errs
 }
 
+// Election proxies call to backend server
+func (x *proxyReplicationService) Election(ctx context.Context, req *Message) (*Message, error) {
+	return x.c.Election(ctx, req, x.opts...)
+}
+
 func (x *proxyReplicationService) mustEmbedUnimplementedReplicationServiceServer() {}

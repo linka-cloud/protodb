@@ -20,10 +20,12 @@ var ReplicationServiceMethods = struct {
 	Init      string
 	Replicate string
 	Alive     string
+	Election  string
 }{
 	Init:      "/linka.cloud.protodb.internal.replication.ReplicationService/Init",
 	Replicate: "/linka.cloud.protodb.internal.replication.ReplicationService/Replicate",
 	Alive:     "/linka.cloud.protodb.internal.replication.ReplicationService/Alive",
+	Election:  "/linka.cloud.protodb.internal.replication.ReplicationService/Election",
 }
 
 var InitRequestFields = struct {
@@ -82,6 +84,16 @@ var CommitFields = struct {
 
 var AckFields = struct {
 }{}
+
+var MessageFields = struct {
+	Type string
+	Name string
+	Meta string
+}{
+	Type: "type",
+	Name: "name",
+	Meta: "meta",
+}
 
 var MetaFields = struct {
 	GrpcPort     string

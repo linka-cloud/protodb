@@ -27,7 +27,6 @@ import (
 	"go.linka.cloud/grpc-toolkit/interceptors/validation"
 	"go.linka.cloud/grpc-toolkit/logger"
 	"go.linka.cloud/grpc-toolkit/service"
-	le "go.linka.cloud/leaderelection"
 	"go.linka.cloud/leaderelection/gossip"
 	pubsub "go.linka.cloud/pubsub/typed"
 	"google.golang.org/grpc"
@@ -65,6 +64,9 @@ type Repl struct {
 	pb2.UnsafeReplicationServiceServer
 	pb.UnsafeProtoDBServer
 
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	mu   sync.RWMutex
 	name string
 	mode Mode
@@ -74,10 +76,10 @@ type Repl struct {
 	version    uint64
 	db         DB
 	nodes      map[string]*node
-	cancel     context.CancelFunc
 
-	meta      *pb2.Meta
-	le        *le.LeaderElector
+	meta *pb2.Meta
+	mmu  sync.RWMutex
+
 	svc       service.Service
 	h         pb.ProtoDBServer
 	events    chan memberlist.NodeEvent
@@ -119,7 +121,7 @@ func New(ctx context.Context, db DB, opts ...Option) (*Repl, error) {
 		pub:       pubsub.NewPublisher[string](time.Second, 2),
 	}
 	r.meta = &pb2.Meta{GRPCPort: uint32(o.grpcPort), LocalVersion: r.version}
-	ctx, r.cancel = context.WithCancel(ctx)
+	r.ctx, r.cancel = context.WithCancel(ctx)
 
 	if len(o.addrs) == 0 {
 		return nil, errors.New("replication: missing cluster addresses")
@@ -135,12 +137,46 @@ func New(ctx context.Context, db DB, opts ...Option) (*Repl, error) {
 
 	log := logger.C(ctx).WithFields("name", "protodb-replication", "node", r.name)
 
+	r.ctx = logger.Set(r.ctx, log)
 	ctx = logger.Set(ctx, log)
 
 	r.bootNodes, err = r.loadNodes()
 	if err != nil {
 		return nil, fmt.Errorf("replication: failed to load saved nodes: %w", err)
 	}
+
+	serverStarted := make(chan struct{})
+	r.svc, err = service.New(
+		service.WithContext(ctx),
+		service.WithName("protodb-replication"),
+		service.WithAddress(fmt.Sprintf(":%d", o.grpcPort)),
+		service.WithInterceptors(validation.NewInterceptors(true)),
+		service.WithAfterStart(func() error {
+			close(serverStarted)
+			return nil
+		}),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	pb2.RegisterReplicationServiceServer(r.svc, r)
+	r.h, err = server.NewServer(r.db)
+	if err != nil {
+		return nil, err
+	}
+	pb.RegisterProtoDBServer(r.svc, r)
+
+	go func() {
+		log.Infof("starting server")
+		if err := r.svc.Start(); err != nil {
+			r.cancel()
+			if !errors.Is(err, context.Canceled) {
+				r.db.Close()
+			}
+			log.Errorf("failed to run grpc server: %v", err)
+		}
+	}()
 
 	c := memberlist.DefaultLocalConfig()
 	c.Name = r.name
@@ -156,54 +192,14 @@ func New(ctx context.Context, db DB, opts ...Option) (*Repl, error) {
 	if err != nil {
 		return nil, err
 	}
-	r.g, err = gossip.New(ctx, c, "protodb", r.name, m, o.addrs...)
-	if err != nil {
-		return nil, err
-	}
 
-	lec := le.Config{
-		Name:            "protodb",
-		Lock:            r.g,
-		LeaseDuration:   15 * o.tick,
-		RenewDeadline:   10 * o.tick,
-		RetryPeriod:     2 * o.tick,
-		ReleaseOnCancel: true,
-		Callbacks: le.Callbacks{
-			OnStartedLeading: r.OnStartedLeading(ctx),
-			OnStoppedLeading: r.OnStoppedLeading(ctx),
-			OnNewLeader:      r.OnNewLeader(ctx),
-		},
+	select {
+	case <-serverStarted:
+	case <-ctx.Done():
+		return nil, ctx.Err()
 	}
-
-	r.svc, err = service.New(
-		service.WithContext(ctx),
-		service.WithName("protodb-replication"),
-		service.WithAddress(fmt.Sprintf(":%d", o.grpcPort)),
-		service.WithInterceptors(validation.NewInterceptors(true)),
-		service.WithAfterStart(func() error {
-			go func() {
-				log.Infof("waiting for leader or version to converge")
-				<-r.converged
-				log.Infof("leader or version converged")
-				time.Sleep(time.Duration(rand.Intn(1000))*time.Millisecond + 100*time.Millisecond)
-				r.le.Run(ctx)
-			}()
-			return nil
-		}),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	pb2.RegisterReplicationServiceServer(r.svc, r)
-	r.h, err = server.NewServer(r.db)
-	if err != nil {
-		return nil, err
-	}
-	pb.RegisterProtoDBServer(r.svc, r)
-
 	log.Infof("starting memberlist: %v", o.addrs)
-	r.le, err = le.New(lec)
+	r.g, err = gossip.New(ctx, c, "protodb", r.name, m, o.addrs...)
 	if err != nil {
 		return nil, err
 	}
@@ -253,14 +249,11 @@ func (r *Repl) run(ctx context.Context) {
 	}
 	go r.handleEvents(ctx)
 	go func() {
-		log.Infof("starting server")
-		if err := r.svc.Start(); err != nil {
-			r.cancel()
-			if !errors.Is(err, context.Canceled) {
-				r.db.Close()
-			}
-			log.Errorf("failed to run grpc server: %v", err)
-		}
+		log.Infof("waiting for leader or version to converge")
+		<-r.converged
+		log.Infof("leader or version converged")
+		time.Sleep(time.Duration(rand.Intn(1000))*time.Millisecond + 100*time.Millisecond)
+		r.Elect(ctx)
 	}()
 }
 
@@ -287,7 +280,10 @@ func (r *Repl) leaderClient() (pb2.ReplicationServiceClient, bool) {
 		return nil, false
 	}
 	c, ok := r.nodes[r.leaderName]
-	return c.repl, ok
+	if !ok {
+		return nil, false
+	}
+	return c.repl, true
 }
 
 func (r *Repl) LeaderConn() (grpc.ClientConnInterface, bool) {

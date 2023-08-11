@@ -36,6 +36,7 @@ const (
 	ReplicationService_Init_FullMethodName      = "/linka.cloud.protodb.internal.replication.ReplicationService/Init"
 	ReplicationService_Replicate_FullMethodName = "/linka.cloud.protodb.internal.replication.ReplicationService/Replicate"
 	ReplicationService_Alive_FullMethodName     = "/linka.cloud.protodb.internal.replication.ReplicationService/Alive"
+	ReplicationService_Election_FullMethodName  = "/linka.cloud.protodb.internal.replication.ReplicationService/Election"
 )
 
 // ReplicationServiceClient is the client API for ReplicationService service.
@@ -45,6 +46,7 @@ type ReplicationServiceClient interface {
 	Init(ctx context.Context, in *InitRequest, opts ...grpc.CallOption) (ReplicationService_InitClient, error)
 	Replicate(ctx context.Context, opts ...grpc.CallOption) (ReplicationService_ReplicateClient, error)
 	Alive(ctx context.Context, opts ...grpc.CallOption) (ReplicationService_AliveClient, error)
+	Election(ctx context.Context, in *Message, opts ...grpc.CallOption) (*Message, error)
 }
 
 type replicationServiceClient struct {
@@ -149,6 +151,15 @@ func (x *replicationServiceAliveClient) Recv() (*Ack, error) {
 	return m, nil
 }
 
+func (c *replicationServiceClient) Election(ctx context.Context, in *Message, opts ...grpc.CallOption) (*Message, error) {
+	out := new(Message)
+	err := c.cc.Invoke(ctx, ReplicationService_Election_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ReplicationServiceServer is the server API for ReplicationService service.
 // All implementations must embed UnimplementedReplicationServiceServer
 // for forward compatibility
@@ -156,6 +167,7 @@ type ReplicationServiceServer interface {
 	Init(*InitRequest, ReplicationService_InitServer) error
 	Replicate(ReplicationService_ReplicateServer) error
 	Alive(ReplicationService_AliveServer) error
+	Election(context.Context, *Message) (*Message, error)
 	mustEmbedUnimplementedReplicationServiceServer()
 }
 
@@ -171,6 +183,9 @@ func (UnimplementedReplicationServiceServer) Replicate(ReplicationService_Replic
 }
 func (UnimplementedReplicationServiceServer) Alive(ReplicationService_AliveServer) error {
 	return status.Errorf(codes.Unimplemented, "method Alive not implemented")
+}
+func (UnimplementedReplicationServiceServer) Election(context.Context, *Message) (*Message, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Election not implemented")
 }
 func (UnimplementedReplicationServiceServer) mustEmbedUnimplementedReplicationServiceServer() {}
 
@@ -258,13 +273,36 @@ func (x *replicationServiceAliveServer) Recv() (*Ack, error) {
 	return m, nil
 }
 
+func _ReplicationService_Election_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Message)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ReplicationServiceServer).Election(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ReplicationService_Election_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ReplicationServiceServer).Election(ctx, req.(*Message))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ReplicationService_ServiceDesc is the grpc.ServiceDesc for ReplicationService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var ReplicationService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "linka.cloud.protodb.internal.replication.ReplicationService",
 	HandlerType: (*ReplicationServiceServer)(nil),
-	Methods:     []grpc.MethodDesc{},
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Election",
+			Handler:    _ReplicationService_Election_Handler,
+		},
+	},
 	Streams: []grpc.StreamDesc{
 		{
 			StreamName:    "Init",

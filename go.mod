@@ -18,7 +18,6 @@ require (
 	github.com/spf13/cobra v1.3.0
 	github.com/stretchr/testify v1.8.4
 	go.linka.cloud/grpc-toolkit v0.4.3
-	go.linka.cloud/leaderelection v0.0.0-20230804164021-33553b7a536f
 	go.linka.cloud/leaderelection/gossip v0.0.0-00010101000000-000000000000
 	go.linka.cloud/protoc-gen-defaults v0.4.0
 	go.linka.cloud/protoc-gen-go-fields v0.3.1
@@ -82,6 +81,7 @@ require (
 	github.com/spf13/afero v1.9.5 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5 // indirect
+	go.linka.cloud/leaderelection v0.0.0-20230804164021-33553b7a536f // indirect
 	go.opencensus.io v0.23.0 // indirect
 	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616 // indirect
 	golang.org/x/mod v0.12.0 // indirect
