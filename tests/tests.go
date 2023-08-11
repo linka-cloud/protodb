@@ -1,10 +1,10 @@
-// Copyright 2022 Linka Cloud  All rights reserved.
+// Copyright 2021 Linka Cloud  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+// http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,22 +12,21 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package server
+package tests
 
 import (
 	"context"
 	"fmt"
-	"os"
 	"testing"
 	"time"
 
-	"github.com/fullstorydev/grpchan/inprocgrpc"
 	assert2 "github.com/stretchr/testify/assert"
 	require2 "github.com/stretchr/testify/require"
 	"go.linka.cloud/protofilters/filters"
 	"google.golang.org/protobuf/proto"
 
 	"go.linka.cloud/protodb"
+	"go.linka.cloud/protodb/pb"
 	testpb "go.linka.cloud/protodb/tests/pb"
 )
 
@@ -57,9 +56,23 @@ func init() {
 	i1.Default()
 }
 
-func TestServer(t *testing.T) {
-	dbPath := "TestServer"
-	defer os.RemoveAll(dbPath)
+type Case struct {
+	Name string
+	Run  func(t *testing.T, client protodb.Client)
+}
+
+var Tests = []Case{
+	{Name: "Test", Run: Test},
+	{Name: "TestBatchWatch", Run: TestBatchWatch},
+	{Name: "TestWatchWithFilter", Run: TestWatchWithFilter},
+	{Name: "TestRegister", Run: TestRegister},
+	{Name: "TestBatchInsertAndQuery", Run: TestBatchInsertAndQuery},
+	{Name: "TestFieldMask", Run: TestFieldMask},
+	{Name: "TestMessageWithKeyOption", Run: TestMessageWithKeyOption},
+	{Name: "TestStaticKey", Run: TestStaticKey},
+}
+
+func Test(t *testing.T, db protodb.Client) {
 	require := require2.New(t)
 	assert := assert2.New(t)
 	equal := func(e, g proto.Message) {
@@ -70,22 +83,9 @@ func TestServer(t *testing.T) {
 	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	sdb, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
-	require.NoError(err)
-	assert.NotNil(sdb)
-	defer sdb.Close()
 
-	srv, err := protodb.NewServer(sdb)
-	require.NoError(err)
-
-	tr := &inprocgrpc.Channel{}
-	srv.RegisterService(tr)
-
-	db, err := protodb.NewClient(tr)
-	require.NoError(err)
-
-	winit := make(chan struct{})
 	watches := make(chan protodb.Event)
+	winit := make(chan struct{})
 	go func() {
 		ch, err := db.Watch(ctx, &testpb.Interface{})
 		require.NoError(err)
@@ -109,7 +109,7 @@ func TestServer(t *testing.T) {
 	is, i, err := db.Get(ctx, &testpb.Interface{})
 	require.NoError(err)
 	assert.NotNil(i)
-	require.Len(is, 1)
+	assert.Len(is, 1)
 	equal(i0, is[0])
 
 	r, err = db.Set(ctx, i1)
@@ -124,7 +124,7 @@ func TestServer(t *testing.T) {
 	is, i, err = db.Get(ctx, &testpb.Interface{})
 	require.NoError(err)
 	assert.NotNil(i)
-	require.Len(is, 2)
+	assert.Len(is, 2)
 	equal(i0, is[0])
 	equal(i1, is[1])
 
@@ -164,17 +164,11 @@ func TestServer(t *testing.T) {
 	<-watches
 }
 
-func TestServerBatchWatch(t *testing.T) {
-	dbPath := "TestServerBatchWatch"
-	defer os.RemoveAll(dbPath)
+func TestBatchWatch(t *testing.T, db protodb.Client) {
 	require := require2.New(t)
 	assert := assert2.New(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	db, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
-	require.NoError(err)
-	assert.NotNil(db)
-	defer db.Close()
 
 	watches := make(chan protodb.Event)
 	winit := make(chan struct{})
@@ -266,9 +260,7 @@ func TestServerBatchWatch(t *testing.T) {
 	}
 }
 
-func TestServerWatchWithFilter(t *testing.T) {
-	dbPath := "TestServerWatchWithFilter"
-	defer os.RemoveAll(dbPath)
+func TestWatchWithFilter(t *testing.T, db protodb.Client) {
 	require := require2.New(t)
 	assert := assert2.New(t)
 	equal := func(e, g proto.Message) {
@@ -278,19 +270,6 @@ func TestServerWatchWithFilter(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	sdb, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
-	require.NoError(err)
-	assert.NotNil(sdb)
-	defer sdb.Close()
-
-	srv, err := protodb.NewServer(sdb)
-	require.NoError(err)
-
-	tr := &inprocgrpc.Channel{}
-	srv.RegisterService(tr)
-
-	db, err := protodb.NewClient(tr)
-	require.NoError(err)
 
 	watches := make(chan protodb.Event)
 	winit := make(chan struct{})
@@ -360,55 +339,23 @@ func TestServerWatchWithFilter(t *testing.T) {
 	<-watches
 }
 
-func TestRegister(t *testing.T) {
-	dbPath := "TestRegister"
-	defer os.RemoveAll(dbPath)
+func TestRegister(t *testing.T, db protodb.Client) {
 	require := require2.New(t)
-	assert := assert2.New(t)
 
 	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	sdb, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
-	require.NoError(err)
-	assert.NotNil(sdb)
-	defer sdb.Close()
-
-	srv, err := protodb.NewServer(sdb)
-	require.NoError(err)
-
-	tr := &inprocgrpc.Channel{}
-	srv.RegisterService(tr)
-
-	db, err := protodb.NewClient(tr)
-	require.NoError(err)
-	defer db.Close()
 
 	require.NoError(db.Register(ctx, (&testpb.Interface{}).ProtoReflect().Descriptor().ParentFile()))
 }
 
-func TestBatchInsertAndQuery(t *testing.T) {
-	dbPath := "TestBatchInsertAndQuery"
-	defer os.RemoveAll(dbPath)
+func TestBatchInsertAndQuery(t *testing.T, db protodb.Client) {
 	require := require2.New(t)
 	assert := assert2.New(t)
 
 	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	sdb, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
-	require.NoError(err)
-	assert.NotNil(sdb)
-	defer sdb.Close()
-
-	srv, err := protodb.NewServer(sdb)
-	require.NoError(err)
-
-	tr := &inprocgrpc.Channel{}
-	srv.RegisterService(tr)
-
-	db, err := protodb.NewClient(tr)
-	require.NoError(err)
 
 	tx, err := db.Tx(ctx)
 	require.NoError(err)
@@ -423,7 +370,7 @@ func TestBatchInsertAndQuery(t *testing.T) {
 		require.NoError(err)
 		i, ok := m.(*testpb.Interface)
 		require.True(ok)
-		require.Equal(uint32(1500), i.Mtu)
+		assert.Equal(uint32(1500), i.Mtu)
 	}
 	require.NoError(tx.Commit(ctx))
 	t.Logf("inserted %d items in %v", max, time.Since(start))
@@ -432,7 +379,7 @@ func TestBatchInsertAndQuery(t *testing.T) {
 	regex := `^eth\d*0$`
 	for i := 0; i*batch <= max/10; i++ {
 		start = time.Now()
-		paging := &protodb.Paging{Limit: uint64(batch), Offset: uint64(i * batch), Token: tk}
+		paging := &pb.Paging{Limit: uint64(batch), Offset: uint64(i * batch), Token: tk}
 		ms, pinfo, err := db.Get(ctx, &testpb.Interface{}, protodb.WithPaging(paging), protodb.WithFilter(protodb.Where("name").StringRegex(regex)))
 		require.NoError(err)
 		if i%10 == 0 {
@@ -450,9 +397,7 @@ func TestBatchInsertAndQuery(t *testing.T) {
 	}
 }
 
-func TestFieldMask(t *testing.T) {
-	dbPath := "TestFieldMask"
-	defer os.RemoveAll(dbPath)
+func TestFieldMask(t *testing.T, db protodb.Client) {
 	require := require2.New(t)
 	assert := assert2.New(t)
 
@@ -465,21 +410,8 @@ func TestFieldMask(t *testing.T) {
 	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
-	sdb, err := protodb.Open(ctx, protodb.WithPath(dbPath), protodb.WithApplyDefaults(true))
-	require.NoError(err)
-	assert.NotNil(sdb)
-	defer sdb.Close()
 
-	srv, err := protodb.NewServer(sdb)
-	require.NoError(err)
-
-	tr := &inprocgrpc.Channel{}
-	srv.RegisterService(tr)
-
-	db, err := protodb.NewClient(tr)
-	require.NoError(err)
-
-	_, err = db.Set(ctx, i0)
+	_, err := db.Set(ctx, i0)
 	require.NoError(err)
 
 	i := &testpb.Interface{
@@ -501,4 +433,71 @@ func TestFieldMask(t *testing.T) {
 	require.NoError(err)
 	require.Len(ms, 1)
 	equal(ms[0], &testpb.Interface{Name: "eth0"})
+}
+
+func TestMessageWithKeyOption(t *testing.T, db protodb.Client) {
+	require := require2.New(t)
+	assert := assert2.New(t)
+
+	equal := func(e, g proto.Message) {
+		if !assert.True(proto.Equal(e, g)) {
+			assert.Equal(e, g)
+		}
+	}
+
+	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	m := &testpb.MessageWithKeyOption{KeyField: 42}
+	m2, err := db.Set(ctx, m)
+	require.NoError(err)
+	equal(m, m2)
+
+	_, err = db.Set(ctx, &testpb.MessageWithKeyOption{KeyField: 10})
+	require.NoError(err)
+
+	ms, _, err := db.Get(ctx, &testpb.MessageWithKeyOption{})
+	require.NoError(err)
+	assert.Len(ms, 2)
+
+	ms, _, err = db.Get(ctx, &testpb.MessageWithKeyOption{KeyField: 42})
+	require.NoError(err)
+	require.Len(ms, 1)
+	equal(m, ms[0])
+}
+
+func TestStaticKey(t *testing.T, db protodb.Client) {
+	require := require2.New(t)
+	assert := assert2.New(t)
+
+	equal := func(e, g proto.Message) {
+		if !assert.True(proto.Equal(e, g)) {
+			assert.Equal(e, g)
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	m := &testpb.MessageWithStaticKey{
+		Name: "static message",
+	}
+	_, err := db.Set(ctx, m)
+	require.NoError(err)
+
+	ms, _, err := db.Get(ctx, &testpb.MessageWithStaticKey{})
+	require.NoError(err)
+	require.Len(ms, 1)
+	equal(m, ms[0])
+
+	m.Name = "other"
+
+	_, err = db.Set(ctx, m)
+	require.NoError(err)
+
+	ms, _, err = db.Get(ctx, &testpb.MessageWithStaticKey{Name: "whatever"})
+	require.NoError(err)
+	require.Len(ms, 1)
+	equal(m, ms[0])
 }

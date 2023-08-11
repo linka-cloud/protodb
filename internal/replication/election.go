@@ -24,9 +24,7 @@ import (
 )
 
 func (r *Repl) Elect(ctx context.Context) {
-	r.mmu.RLock()
-	meta := r.meta.CloneVT()
-	r.mmu.RUnlock()
+	meta := r.meta.Load().CloneVT()
 	log := logger.C(ctx)
 	nodes := r.clients()
 	log.Info("starting election")
@@ -82,15 +80,13 @@ func (r *Repl) Elect(ctx context.Context) {
 	for _, v := range nodes {
 		log.Infof("sending leader message to %s", v.name)
 		if _, err := v.repl.Election(ctx, &pb2.Message{Type: pb2.ElectionTypeLeader, Name: r.name, Meta: meta.CloneVT()}); err != nil {
-			log.WithError(err).Error("failed to send leader message to %s", v.name)
+			log.WithError(err).Errorf("failed to send leader message to %s", v.name)
 		}
 	}
 }
 
 func (r *Repl) Election(_ context.Context, req *pb2.Message) (*pb2.Message, error) {
-	r.mmu.RLock()
-	meta := r.meta.CloneVT()
-	r.mmu.RUnlock()
+	meta := r.meta.Load().CloneVT()
 	log := logger.C(r.ctx)
 	var t pb2.ElectionType
 	select {

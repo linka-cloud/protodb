@@ -657,8 +657,8 @@ go.etcd.io/etcd v0.0.0-20191023171146-3cf2f69b5738/go.mod h1:dnLIgRNXwCJa5e+c6mI
 go.etcd.io/etcd/api/v3 v3.5.1/go.mod h1:cbVKeC6lCfl7j/8jBhAK6aIYO9XOjdptoxU/nLQcPvs=
 go.etcd.io/etcd/client/pkg/v3 v3.5.1/go.mod h1:IJHfcCEKxYu1Os13ZdwCwIUTUVGYTSAM3YSwc9/Ac1g=
 go.etcd.io/etcd/client/v2 v2.305.1/go.mod h1:pMEacxZW7o8pg4CrFE7pquyCJJzZvkvdD2RibOCCCGs=
-go.linka.cloud/grpc-toolkit v0.4.3 h1:v3rrCV52wSCuao6xbDUgFmB9/ioqMmPPG+fjQWXciQI=
-go.linka.cloud/grpc-toolkit v0.4.3/go.mod h1:PAl4rmOrYeUHpyRHxVMMI47d5+6J87yvP9cAk+81axM=
+go.linka.cloud/grpc-toolkit v0.4.4-0.20230811173442-b52ae2c670e4 h1:79rnnKZn7zA96LGKiVKs8DRkJmvykS+QcJHWqmUi9gc=
+go.linka.cloud/grpc-toolkit v0.4.4-0.20230811173442-b52ae2c670e4/go.mod h1:PAl4rmOrYeUHpyRHxVMMI47d5+6J87yvP9cAk+81axM=
 go.linka.cloud/leaderelection v0.0.0-20230804164021-33553b7a536f h1:kW51ekZoSOX65LTfUn9dbbRkQkmL6fCSH1BCqpsH3PI=
 go.linka.cloud/leaderelection v0.0.0-20230804164021-33553b7a536f/go.mod h1:LksbvSAuaGufGyOrXJMjhhrrwn0YRoWdCjuVEdroo88=
 go.linka.cloud/protoc-gen-defaults v0.4.0 h1:ekcfTTY74AhKBGMF9usz+xkUFxLaPVAu6xmQvwmjbfc=

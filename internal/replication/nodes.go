@@ -84,7 +84,7 @@ func (r *Repl) handleEvent(ctx context.Context, e memberlist.NodeEvent) {
 				continue
 			}
 			r.bootNodes = append(r.bootNodes[:i], r.bootNodes[i+1:]...)
-			log.Infof("known node %s is now online (version: %d) (%v)", e.Node.Name, m.LocalVersion, m.LocalVersion <= r.version)
+			log.Infof("known node %s is now online (version: %d) (lower: %v) (leader: %v)", e.Node.Name, m.LocalVersion, m.LocalVersion <= r.version, m.IsLeader)
 			if len(r.bootNodes) == 0 {
 				log.Infof("all known nodes are online")
 			} else {
@@ -109,11 +109,11 @@ func (r *Repl) handleEvent(ctx context.Context, e memberlist.NodeEvent) {
 				close(r.converged)
 			}
 		}
-		if v, ok := r.nodes[e.Node.Name]; ok {
+		if v, ok := r.nodes.Load(e.Node.Name); ok {
 			if v.addr.String() == e.Node.Addr.String() && v.cc.GetState() == connectivity.Ready {
 				log.Infof("already connected to %s %v", e.Node.Name, e.Node.Addr)
 				v.meta = m
-				if e.Node.Name == r.leaderName {
+				if e.Node.Name == r.leaderName.Load() {
 					r.setReady()
 				}
 				return
@@ -122,7 +122,7 @@ func (r *Repl) handleEvent(ctx context.Context, e memberlist.NodeEvent) {
 			if err := v.cc.Close(); err != nil {
 				log.Errorf("failed to close connection to %s: %v", e.Node.Name, err)
 			}
-			delete(r.nodes, e.Node.Name)
+			r.nodes.Delete(e.Node.Name)
 		}
 		c, err := grpc.Dial(fmt.Sprintf("%v:%d", e.Node.Addr, m.GRPCPort), grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
@@ -133,26 +133,26 @@ func (r *Repl) handleEvent(ctx context.Context, e memberlist.NodeEvent) {
 			log.Warnf("connection to %s is not ready", e.Node.Name)
 		}
 		cs := pb2.NewReplicationServiceClient(c)
-		r.nodes[e.Node.Name] = &node{
+		r.nodes.Store(e.Node.Name, &node{
 			name:  e.Node.Name,
 			addr:  e.Node.Addr,
 			meta:  m,
 			cc:    c,
 			repl:  cs,
 			proxy: pb.NewProtoDBProxy(pb.NewProtoDBClient(c)),
-		}
+		})
 		log.Infof("connected to %s", e.Node.Name)
-		if e.Node.Name == r.leaderName {
+		if e.Node.Name == r.leaderName.Load() {
 			r.setReady()
 		}
 		go func() {
 			defer func() {
 				r.mu.Lock()
 				defer r.mu.Unlock()
-				delete(r.nodes, e.Node.Name)
+				r.nodes.Delete(e.Node.Name)
 				log.Infof("disconnected from %s", e.Node.Name)
-				if e.Node.Name == r.leaderName {
-					r.Elect(ctx)
+				if e.Node.Name == r.leaderName.Load() {
+					go r.Elect(ctx)
 				}
 			}()
 			ss, err := cs.Alive(ctx)
@@ -180,32 +180,27 @@ func (r *Repl) handleEvent(ctx context.Context, e memberlist.NodeEvent) {
 		}()
 	case memberlist.NodeLeave:
 		log.Infof("node left: %s", e.Node.Name)
-		if v, ok := r.nodes[e.Node.Name]; ok {
+		if v, ok := r.nodes.Load(e.Node.Name); ok {
 			if err := v.cc.Close(); err != nil {
 				log.Errorf("failed to close connection: %v", err)
 			}
-			delete(r.nodes, e.Node.Name)
+			r.nodes.Delete(e.Node.Name)
 		}
 		if err := r.writeNodes(); err != nil {
 			log.Errorf("failed to write nodes: %v", err)
 		}
-		if r.leaderName == e.Node.Name && !r.leading {
-			r.leaderName = ""
+		if r.leaderName.Load() == e.Node.Name && !r.leading.Load() {
+			r.leaderName.Store("")
 			go r.Elect(ctx)
 		}
 	}
 }
 
-func (r *Repl) onStartedLeading(ctx context.Context) {
-	logger.C(ctx).Info("started leading")
-}
-
 func (r *Repl) onStoppedLeading(ctx context.Context) {
 	logger.C(ctx).Info("stopped leading")
-	r.mmu.Lock()
-	r.meta.IsLeader = false
-	meta := r.meta.CloneVT()
-	r.mmu.Unlock()
+	meta := r.meta.Load().CloneVT()
+	meta.IsLeader = false
+	r.meta.Store(meta)
 	b, err := meta.MarshalVT()
 	if err != nil {
 		logger.C(ctx).Errorf("failed to marshal meta: %v", err)
@@ -228,18 +223,15 @@ func (r *Repl) onNewLeader(ctx context.Context, identity string) {
 		log.Warnf("empty leader")
 		return
 	}
-	log.Infof("new leader: %s", identity)
-	r.mu.Lock()
-	r.leaderName = identity
-	r.leading = identity == r.name
-	r.mmu.Lock()
-	r.meta.IsLeader = r.leading
-	r.mmu.Unlock()
-	meta := r.meta.CloneVT()
-	l := r.leading
-	r.mu.Unlock()
-	if l {
-		b, err := meta.MarshalVT()
+	leader := identity == r.name
+	log.Infof("new leader: %s (us: %v)", identity, leader)
+	r.leaderName.Store(identity)
+	r.leading.Store(leader)
+	meta := r.meta.Load().CloneVT()
+	meta.IsLeader = leader
+	r.meta.Store(meta)
+	if leader {
+		b, err := meta.CloneVT().MarshalVT()
 		if err != nil {
 			log.Errorf("failed to marshal meta: %v", err)
 			return
@@ -256,24 +248,6 @@ func (r *Repl) onNewLeader(ctx context.Context, identity string) {
 	if _, ok := r.leaderClient(); identity != r.name && !ok {
 		log.Warnf("missing client for leader: %s", identity)
 	}
-	// if identity == r.name {
-	// 	r.mu.Lock()
-	// 	defer r.mu.Unlock()
-	// 	for k, v := range r.ccs {
-	// 		if v.GetState() != connectivity.Ready {
-	// 			log.Warnf("client %s not ready, deleting", k)
-	// 			if err := v.Close(); err != nil {
-	// 				log.Errorf("failed to close connection: %v", err)
-	// 			}
-	// 			delete(r.ccs, k)
-	// 			delete(r.cs, k)
-	// 		}
-	// 	}
-	// 	// 	if err := r.db.load(ctx); err != nil {
-	// 	// 		log.Errorf("failed to load protobuf schemas: %v", err)
-	// 	// 		return
-	// 	// 	}
-	// }
 	r.setReady()
 }
 

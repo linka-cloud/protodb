@@ -71,14 +71,14 @@ type Repl struct {
 	name string
 	mode Mode
 
-	leading    bool
-	leaderName string
-	version    uint64
-	db         DB
-	nodes      map[string]*node
+	// we use atomic to avoid locking as these values are read very often
+	leading    *Atomic[bool]
+	leaderName *Atomic[string]
+	meta       Atomic[*pb2.Meta]
 
-	meta *pb2.Meta
-	mmu  sync.RWMutex
+	version uint64
+	db      DB
+	nodes   Map[*node]
 
 	svc       service.Service
 	h         pb.ProtoDBServer
@@ -109,18 +109,18 @@ func New(ctx context.Context, db DB, opts ...Option) (*Repl, error) {
 	}
 
 	r := &Repl{
-		mode:      o.mode,
-		leading:   false,
-		db:        db,
-		name:      o.name,
-		ready:     make(chan struct{}),
-		events:    make(chan memberlist.NodeEvent, 10),
-		converged: make(chan struct{}),
-		nodes:     make(map[string]*node),
-		version:   db.MaxVersion(),
-		pub:       pubsub.NewPublisher[string](time.Second, 2),
+		mode:       o.mode,
+		leading:    NewAtomic(false),
+		leaderName: NewAtomic(""),
+		db:         db,
+		name:       o.name,
+		ready:      make(chan struct{}),
+		events:     make(chan memberlist.NodeEvent, 10),
+		converged:  make(chan struct{}),
+		version:    db.MaxVersion(),
+		pub:        pubsub.NewPublisher[string](time.Second, 2),
 	}
-	r.meta = &pb2.Meta{GRPCPort: uint32(o.grpcPort), LocalVersion: r.version}
+	r.meta.Store(&pb2.Meta{GRPCPort: uint32(o.grpcPort), LocalVersion: r.version})
 	r.ctx, r.cancel = context.WithCancel(ctx)
 
 	if len(o.addrs) == 0 {
@@ -188,7 +188,7 @@ func New(ctx context.Context, db DB, opts ...Option) (*Repl, error) {
 	c.Events = &memberlist.ChannelEventDelegate{Ch: r.events}
 	c.DeadNodeReclaimTime = time.Second
 	c.GossipToTheDeadTime = time.Second
-	m, err := r.meta.MarshalVT()
+	m, err := r.meta.Load().CloneVT().MarshalVT()
 	if err != nil {
 		return nil, err
 	}
@@ -263,23 +263,16 @@ func (r *Repl) Subscribe() <-chan string {
 }
 
 func (r *Repl) clients() []*node {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	var nodes []*node
-	for _, v := range r.nodes {
-		nodes = append(nodes, v)
-	}
+	nodes := r.nodes.Values()
 	logger.StandardLogger().Debugf("replication clients: %d", len(nodes))
 	return nodes
 }
 
 func (r *Repl) leaderClient() (pb2.ReplicationServiceClient, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	if r.leading {
+	if r.leading.Load() {
 		return nil, false
 	}
-	c, ok := r.nodes[r.leaderName]
+	c, ok := r.nodes.Load(r.leaderName.Load())
 	if !ok {
 		return nil, false
 	}
@@ -287,12 +280,10 @@ func (r *Repl) leaderClient() (pb2.ReplicationServiceClient, bool) {
 }
 
 func (r *Repl) LeaderConn() (grpc.ClientConnInterface, bool) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	if r.leading {
+	if r.leading.Load() {
 		return nil, false
 	}
-	c, ok := r.nodes[r.leaderName]
+	c, ok := r.nodes.Load(r.leaderName.Load())
 	if !ok {
 		return nil, false
 	}
@@ -300,21 +291,15 @@ func (r *Repl) LeaderConn() (grpc.ClientConnInterface, bool) {
 }
 
 func (r *Repl) IsLeader() bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.leading
+	return r.leading.Load()
 }
 
 func (r *Repl) HasLeader() bool {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.leaderName != ""
+	return r.leaderName.Load() != ""
 }
 
 func (r *Repl) CurrentLeader() string {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.leaderName
+	return r.leaderName.Load()
 }
 
 func (r *Repl) Mode() Mode {

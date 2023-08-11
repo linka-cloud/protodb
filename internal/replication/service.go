@@ -20,6 +20,7 @@ import (
 	"io"
 	"net"
 	"strings"
+	"time"
 
 	"github.com/dgraph-io/badger/v3"
 	gerrs "go.linka.cloud/grpc-toolkit/errors"
@@ -46,10 +47,16 @@ func (r *Repl) Init(req *pb2.InitRequest, ss pb2.ReplicationService_InitServer) 
 		return gerrs.Internalf("failed to split host port: %v", err)
 	}
 	var found bool
-	for _, v := range r.clients() {
-		if found = addr == v.addr.String(); found {
+	for i := 0; i < 100; i++ {
+		for _, v := range r.clients() {
+			if found = addr == v.addr.String(); found {
+				break
+			}
+		}
+		if found {
 			break
 		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	if !found {
 		return gerrs.Abortedf("node %s is not in the cluster", addr)
@@ -151,13 +158,11 @@ func (r *Repl) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 				return gerrs.Internalf("failed to send response: %v", err)
 			}
 			r.db.SetVersion(a.Commit.At)
-			r.mmu.Lock()
-			r.meta.LocalVersion = a.Commit.At
-			r.mmu.Unlock()
+			m := r.meta.Load().CloneVT()
+			m.LocalVersion = a.Commit.At
+			r.meta.Store(m)
 			go func() {
-				r.mmu.RLock()
-				defer r.mmu.RUnlock()
-				b, err := r.meta.MarshalVT()
+				b, err := r.meta.Load().CloneVT().MarshalVT()
 				if err != nil {
 					log.Errorf("failed to marshal meta: %v", err)
 					return
@@ -277,12 +282,10 @@ func (r *Repl) FileDescriptors(ctx context.Context, req *pb.FileDescriptorsReque
 }
 
 func (r *Repl) maybeLeaderProxy(ctx context.Context, read bool) (pb.ProtoDBServer, bool, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	if r.leading || (read && r.mode == ModeSync) {
+	if r.leading.Load() || (read && r.mode == ModeSync) {
 		return nil, false, nil
 	}
-	n, ok := r.nodes[r.leaderName]
+	n, ok := r.nodes.Load(r.leaderName.Load())
 	if !ok {
 		return nil, false, gerrs.Internalf("no leader connection")
 	}

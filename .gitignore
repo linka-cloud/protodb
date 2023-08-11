@@ -2,7 +2,6 @@
 .bin
 /test.*
 /tests/server/external_test.go
-/tests/embed/Test*
 /cmd/protodb*
 protodbd
 protodbctl
@@ -15,3 +14,4 @@ prom.yml
 /tests/index
 /tests/server/*.yaml
 /pdbc
+/tests/testdata

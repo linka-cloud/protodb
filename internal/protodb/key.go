@@ -72,30 +72,31 @@ func KeyFor(m proto.Message) (string, error) {
 	}
 	switch i := interface{}(m).(type) {
 	case *dynamicpb.Message:
-		var k string
+		var fd protoreflect.FieldDescriptor
 		i.Range(func(descriptor protoreflect.FieldDescriptor, value protoreflect.Value) bool {
 			switch strings.ToLower(string(descriptor.FullName().Name())) {
-			case "id":
-				if id := value.String(); id != "" && id != "0" {
-					k = id
-					return false
-				}
-			case "key":
-				if key := value.String(); key != "" && key != "0" {
-					k = key
-					return false
-				}
-			case "name":
-				if n := value.String(); n != "" && n != "0" {
-					k = n
-					return false
-				}
+			case "id", "key", "name":
+				fd = descriptor
+				return false
 			}
 			return true
 		})
-		if k != "" {
-			return k, nil
+		if fd == nil {
+			break
 		}
+		switch fd.Kind() {
+		case protoreflect.MessageKind:
+			return "", fmt.Errorf("key %s is a message", fd.FullName())
+		case protoreflect.GroupKind:
+			return "", fmt.Errorf("key %s is a group", fd.FullName())
+		}
+		if fd.Cardinality() == protoreflect.Repeated {
+			return "", fmt.Errorf("key %s is repeated", fd.FullName())
+		}
+		if !i.Has(fd) {
+			break
+		}
+		return i.Get(fd).String(), nil
 	case interface{ Key() string }:
 		if k := i.Key(); k != "" {
 			return k, nil

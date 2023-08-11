@@ -17,7 +17,7 @@ require (
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.3.0
 	github.com/stretchr/testify v1.8.4
-	go.linka.cloud/grpc-toolkit v0.4.3
+	go.linka.cloud/grpc-toolkit v0.4.4-0.20230811173442-b52ae2c670e4
 	go.linka.cloud/leaderelection/gossip v0.0.0-00010101000000-000000000000
 	go.linka.cloud/protoc-gen-defaults v0.4.0
 	go.linka.cloud/protoc-gen-go-fields v0.3.1
