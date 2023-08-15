@@ -94,7 +94,7 @@ func (r *Repl) handleEvent(ctx context.Context, e memberlist.NodeEvent) {
 		if m.LocalVersion >= r.maxVersion {
 			r.maxVersion = m.LocalVersion
 		}
-		if r.maxVersion > r.version && len(r.bootNodes) == 0 {
+		if r.maxVersion > r.version && len(r.bootNodes) == 0 && !r.HasLeader() {
 			log.Infof("local version %d is behind max version %d: waiting for leader", r.version, r.maxVersion)
 		}
 		if (r.maxVersion <= r.version && len(r.bootNodes) == 0) || m.IsLeader {
