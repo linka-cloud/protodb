@@ -40,13 +40,12 @@ func (r *Repl) NewTx(ctx context.Context) (*Tx, error) {
 		cs = append(cs, c)
 		log.Infof("Started replicated transaction with %v", v.name)
 	}
-	return &Tx{mode: r.mode, cs: cs, sync: make(chan struct{}, 1)}, nil
+	return &Tx{mode: r.mode, cs: cs}, nil
 }
 
 type Tx struct {
 	mode Mode
 	cs   []pb.ReplicationService_ReplicateClient
-	sync chan struct{}
 }
 
 func (r *Tx) New(ctx context.Context, at uint64) error {

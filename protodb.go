@@ -101,12 +101,14 @@ var (
 	WithWriteFieldMask      = protodb.WithWriteFieldMask
 )
 
-type ReplicationOption = replication.Option
+type ReplicationMode = replication.Mode
 
 var (
 	ReplicationModeSync  = replication.ModeSync
 	ReplicationModeAsync = replication.ModeAsync
 )
+
+type ReplicationOption = replication.Option
 
 var (
 	WithMode       = replication.WithMode

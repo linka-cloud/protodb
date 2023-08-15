@@ -31,6 +31,7 @@ import (
 var offset = 0
 
 type Cluster struct {
+	mode  protodb.ReplicationMode
 	path  string
 	addrs []string
 	ports []int
@@ -39,7 +40,7 @@ type Cluster struct {
 	opts  []protodb.Option
 }
 
-func NewCluster(path string, count int, opts ...protodb.Option) *Cluster {
+func NewCluster(path string, count int, mode protodb.ReplicationMode, opts ...protodb.Option) *Cluster {
 	var addrs []string
 	var ports []int
 	for i := 0; i < count; i++ {
@@ -47,7 +48,7 @@ func NewCluster(path string, count int, opts ...protodb.Option) *Cluster {
 		ports = append(ports, 18800+offset)
 		addrs = append(addrs, fmt.Sprintf("127.0.0.1:%d", ports[i]))
 	}
-	return &Cluster{path: path, addrs: addrs, ports: ports, dbs: make([]protodb.DB, count), opts: opts}
+	return &Cluster{mode: mode, path: path, addrs: addrs, ports: ports, dbs: make([]protodb.DB, count), opts: opts}
 }
 
 func (c *Cluster) StartAll(ctx context.Context) error {
@@ -81,7 +82,7 @@ func (c *Cluster) Start(ctx context.Context, i int) error {
 		protodb.WithPath(p),
 		// protodb.WithInMemory(true),
 		protodb.WithReplication(
-			protodb.WithMode(protodb.ReplicationModeSync),
+			protodb.WithMode(c.mode),
 			protodb.WithName(fmt.Sprintf("db-%d", i)),
 			protodb.WithAddrs(c.addrs...),
 			protodb.WithGossipPort(c.ports[i]),
