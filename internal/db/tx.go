@@ -207,11 +207,11 @@ func (tx *tx) getRaw(key []byte) ([]byte, error) {
 
 func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOption) (proto.Message, error) {
 	defer metrics.Tx.Set.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
-	m, err := tx.set(ctx, m, opts...)
-	if err != nil && m != nil {
+	out, err := tx.set(ctx, m, opts...)
+	if err != nil {
 		metrics.Tx.Set.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 	}
-	return m, err
+	return out, err
 }
 func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOption) (proto.Message, error) {
 	if tx.closed() {
