@@ -15,6 +15,8 @@
 package replication
 
 import (
+	"crypto/tls"
+	"errors"
 	"time"
 )
 
@@ -22,7 +24,7 @@ var defaultOptions = options{
 	addrs:      []string{"localhost"},
 	gossipPort: 7080,
 	grpcPort:   7081,
-	tick:       500 * time.Millisecond,
+	tick:       250 * time.Millisecond,
 }
 
 type Option func(o *options)
@@ -35,9 +37,11 @@ type options struct {
 	grpcPort   int
 	tick       time.Duration
 
-	// TODO(adphi): replication service.Options, e.g. peer tls, server tls, etc.
-	// TODO(adphi): protodb service.Options, e.g. peer tls, server tls, etc.
-	// TODO(adphi): gossip encryption key & verification
+	serverCert []byte
+	serverKey  []byte
+	tlsConfig  *tls.Config
+
+	encryptionKey string
 }
 
 func WithMode(mode Mode) Option {
@@ -76,4 +80,50 @@ func WithTick(ms int) Option {
 			o.tick = time.Duration(ms) * time.Millisecond
 		}
 	}
+}
+
+func WithServerCert(cert []byte) Option {
+	return func(o *options) {
+		o.serverCert = cert
+	}
+}
+
+func WithServerKey(key []byte) Option {
+	return func(o *options) {
+		o.serverKey = key
+	}
+}
+
+func WithTLSConfig(config *tls.Config) Option {
+	return func(o *options) {
+		o.tlsConfig = config
+	}
+}
+
+func WithEncryptionKey(key string) Option {
+	return func(o *options) {
+		o.encryptionKey = key
+	}
+}
+
+func (o *options) tls() (*tls.Config, error) {
+	if o.tlsConfig != nil {
+		return o.tlsConfig, nil
+	}
+	if o.serverKey == nil && o.serverCert == nil {
+		return nil, nil
+	}
+	if o.serverKey == nil {
+		return nil, errors.New("missing server key")
+	}
+	if o.serverCert == nil {
+		return nil, errors.New("missing server certificate")
+	}
+	cert, err := tls.X509KeyPair(o.serverCert, o.serverKey)
+	if err != nil {
+		return nil, err
+	}
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+	}, nil
 }

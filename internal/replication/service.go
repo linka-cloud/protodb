@@ -162,12 +162,12 @@ func (r *Repl) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 			m.LocalVersion = a.Commit.At
 			r.meta.Store(m)
 			go func() {
-				b, err := r.meta.Load().CloneVT().MarshalVT()
+				b, err := m.CloneVT().MarshalVT()
 				if err != nil {
 					log.Errorf("failed to marshal meta: %v", err)
 					return
 				}
-				if err := r.g.UpdateMeta(r.ctx, b); err != nil {
+				if err := r.updateMeta(r.ctx, b); err != nil {
 					log.Errorf("failed to update meta: %v", err)
 				}
 			}()

@@ -16,6 +16,7 @@ package replication
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"math/rand"
@@ -27,10 +28,11 @@ import (
 	"go.linka.cloud/grpc-toolkit/interceptors/validation"
 	"go.linka.cloud/grpc-toolkit/logger"
 	"go.linka.cloud/grpc-toolkit/service"
-	"go.linka.cloud/leaderelection/gossip"
 	pubsub "go.linka.cloud/pubsub/typed"
+	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 
+	"go.linka.cloud/protodb/internal/dns"
 	pb2 "go.linka.cloud/protodb/internal/replication/pb"
 	"go.linka.cloud/protodb/internal/server"
 	"go.linka.cloud/protodb/pb"
@@ -85,7 +87,8 @@ type Repl struct {
 	events    chan memberlist.NodeEvent
 	once      sync.Once
 	ready     chan struct{}
-	g         gossip.Lock
+	list      *memberlist.Memberlist
+	d         *delegate
 	co        sync.Once
 	pub       pubsub.Publisher[string]
 	converged chan struct{}
@@ -135,7 +138,7 @@ func New(ctx context.Context, db DB, opts ...Option) (*Repl, error) {
 		return nil, errors.New("replication: missing gossip port")
 	}
 
-	log := logger.C(ctx).WithFields("name", "protodb-replication", "node", r.name)
+	log := logger.C(ctx).WithFields("name", "replication", "node", r.name)
 
 	r.ctx = logger.Set(r.ctx, log)
 	ctx = logger.Set(ctx, log)
@@ -146,10 +149,15 @@ func New(ctx context.Context, db DB, opts ...Option) (*Repl, error) {
 	}
 
 	serverStarted := make(chan struct{})
+	tls, err := o.tls()
+	if err != nil {
+		return nil, err
+	}
 	r.svc, err = service.New(
 		service.WithContext(ctx),
 		service.WithName("protodb-replication"),
 		service.WithAddress(fmt.Sprintf(":%d", o.grpcPort)),
+		service.WithTLSConfig(tls),
 		service.WithInterceptors(validation.NewInterceptors(true)),
 		service.WithAfterStart(func() error {
 			close(serverStarted)
@@ -178,6 +186,12 @@ func New(ctx context.Context, db DB, opts ...Option) (*Repl, error) {
 		}
 	}()
 
+	m, err := r.meta.Load().CloneVT().MarshalVT()
+	if err != nil {
+		return nil, err
+	}
+	r.d = &delegate{meta: m}
+
 	c := memberlist.DefaultLocalConfig()
 	c.Name = r.name
 	c.BindPort = o.gossipPort
@@ -188,9 +202,23 @@ func New(ctx context.Context, db DB, opts ...Option) (*Repl, error) {
 	c.Events = &memberlist.ChannelEventDelegate{Ch: r.events}
 	c.DeadNodeReclaimTime = time.Second
 	c.GossipToTheDeadTime = time.Second
-	m, err := r.meta.Load().CloneVT().MarshalVT()
-	if err != nil {
+	c.Delegate = r.d
+	c.Logger = newLogger(ctx)
+	if o.encryptionKey != "" {
+		h := sha256.New()
+		if _, err := h.Write([]byte(o.encryptionKey)); err != nil {
+			return nil, err
+		}
+		c.SecretKey = h.Sum(nil)
+	}
+	log.Infof("starting memberlist: %v", o.addrs)
+	p := dns.NewProvider(ctx, dns.MiekgdnsResolverType)
+	if err := p.Resolve(ctx, o.addrs); err != nil {
 		return nil, err
+	}
+	o.addrs = p.Addresses()
+	if c.RetransmitMult < len(o.addrs) {
+		c.RetransmitMult = len(o.addrs)
 	}
 
 	select {
@@ -198,9 +226,12 @@ func New(ctx context.Context, db DB, opts ...Option) (*Repl, error) {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
-	log.Infof("starting memberlist: %v", o.addrs)
-	r.g, err = gossip.New(ctx, c, "protodb", r.name, m, o.addrs...)
+	r.list, err = memberlist.Create(c)
 	if err != nil {
+		return nil, err
+	}
+	r.list.LocalNode().Meta = m
+	if _, err := r.list.Join(o.addrs); err != nil {
 		return nil, err
 	}
 
@@ -244,7 +275,7 @@ func (r *Repl) init(ctx context.Context) error {
 
 func (r *Repl) run(ctx context.Context) {
 	log := logger.C(ctx)
-	if len(r.bootNodes) == 0 && len(r.g.Memberlist().Members()) == 0 {
+	if len(r.bootNodes) == 0 && len(r.list.Members()) == 0 {
 		close(r.converged)
 	}
 	go r.handleEvents(ctx)
@@ -279,6 +310,11 @@ func (r *Repl) leaderClient() (pb2.ReplicationServiceClient, bool) {
 	return c.repl, true
 }
 
+func (r *Repl) updateMeta(_ context.Context, b []byte) error {
+	r.d.SetMeta(b)
+	return r.list.UpdateNode(time.Second)
+}
+
 func (r *Repl) LeaderConn() (grpc.ClientConnInterface, bool) {
 	if r.leading.Load() {
 		return nil, false
@@ -309,8 +345,11 @@ func (r *Repl) Mode() Mode {
 func (r *Repl) Close() (err error) {
 	r.co.Do(func() {
 		r.cancel()
-		r.g.Close()
-		err = r.svc.Stop()
+		err = multierr.Combine(
+			r.svc.Stop(),
+			r.list.Leave(time.Second),
+			r.list.Shutdown(),
+		)
 	})
 	return
 }

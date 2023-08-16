@@ -13,5 +13,5 @@ prom.yml
 *.pprof
 /tests/index
 /tests/server/*.yaml
-/pdbc
+/pdb*
 /tests/testdata

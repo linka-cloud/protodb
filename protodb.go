@@ -111,12 +111,16 @@ var (
 type ReplicationOption = replication.Option
 
 var (
-	WithMode       = replication.WithMode
-	WithName       = replication.WithName
-	WithAddrs      = replication.WithAddrs
-	WithGossipPort = replication.WithGossipPort
-	WithGRPCPort   = replication.WithGRPCPort
-	WithTick       = replication.WithTick
+	WithMode          = replication.WithMode
+	WithName          = replication.WithName
+	WithAddrs         = replication.WithAddrs
+	WithGossipPort    = replication.WithGossipPort
+	WithGRPCPort      = replication.WithGRPCPort
+	WithTick          = replication.WithTick
+	WithEncryptionKey = replication.WithEncryptionKey
+	WithServerCert    = replication.WithServerCert
+	WithServerKey     = replication.WithServerKey
+	WithTLSConfig     = replication.WithTLSConfig
 )
 
 type (

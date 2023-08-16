@@ -203,14 +203,13 @@ func (r *Repl) onStoppedLeading(ctx context.Context) {
 	r.meta.Store(meta)
 	b, err := meta.MarshalVT()
 	if err != nil {
-		logger.C(ctx).Errorf("failed to marshal meta: %v", err)
+		logger.C(ctx).Errorf("failed to marshal meta: %w", err)
 	}
-	// it may be an empty meta...
-	if err := r.g.UpdateMeta(ctx, b); err != nil {
+	if err := r.updateMeta(ctx, b); err != nil {
 		logger.C(ctx).Errorf("failed to update meta: %v", err)
 	}
-	if err := r.g.Memberlist().Leave(time.Second); err != nil {
-		logger.C(ctx).Errorf("failed to leave memberlist: %v", err)
+	if err := r.list.Leave(time.Second); err != nil {
+		logger.C(ctx).Errorf("failed to leave: %v", err)
 	}
 	if err := r.db.Close(); err != nil {
 		logger.C(ctx).Errorf("failed to close db: %v", err)
@@ -237,7 +236,7 @@ func (r *Repl) onNewLeader(ctx context.Context, identity string) {
 			return
 		}
 		log.Infof("broadcasting leadership")
-		if err := r.g.UpdateMeta(ctx, b); err != nil {
+		if err := r.updateMeta(ctx, b); err != nil {
 			log.Errorf("failed to update node: %v", err)
 		}
 		if err := r.db.LoadDescriptors(ctx); err != nil {
@@ -260,7 +259,7 @@ func (r *Repl) setReady() {
 
 func (r *Repl) writeNodes() error {
 	var nodes []string
-	for _, v := range r.g.Memberlist().Members() {
+	for _, v := range r.list.Members() {
 		nodes = append(nodes, v.Name)
 	}
 	if r.db.InMemory() {
