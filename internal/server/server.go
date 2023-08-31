@@ -170,6 +170,10 @@ func (s *server) Watch(req *pb.WatchRequest, stream pb.ProtoDB_WatchServer) erro
 	if err != nil {
 		return err
 	}
+	// we send an empty event for clients that cannot create streams before receiving first from the server
+	if err := stream.Send(&pb.WatchEvent{}); err != nil {
+		return err
+	}
 	for e := range ch {
 		if err := e.Err(); err != nil {
 			return err

@@ -39,14 +39,26 @@ option (go.lint).all = true;
 
 
 service ProtoDB {
+  // Get returns a list of results for the given search.
   rpc Get(GetRequest) returns (GetResponse);
+  // Set store the given Message in the Database applying the given field mask.
+  // It returns the stored message.
   rpc Set(SetRequest) returns (SetResponse);
+  // Delete deletes the given Message.
   rpc Delete(DeleteRequest) returns (DeleteResponse);
+  // Tx creates a transaction.
   rpc Tx(stream TxRequest) returns (stream TxResponse);
+  // Watch returns a stream of events for the given search.
+  // A first empty event is sent to indicate that the watch is ready.
+  // This is needed by clients that cannot create a stream before receiving
+  // a first message from the server, e.g. rust's tonic.
   rpc Watch(WatchRequest) returns (stream WatchEvent);
 
+  // Register registers the given file descriptor.
   rpc Register(RegisterRequest) returns (RegisterResponse);
+  // Descriptors returns the current schema Descriptors.
   rpc Descriptors(DescriptorsRequest) returns (DescriptorsResponse);
+  // FileDescriptors returns the current schema FileDescriptors.
   rpc FileDescriptors(FileDescriptorsRequest) returns (FileDescriptorsResponse);
 }
 

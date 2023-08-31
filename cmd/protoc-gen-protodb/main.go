@@ -220,6 +220,9 @@ func (s *_{{ name . }}DB) Watch(ctx context.Context, m *{{ name . }}, opts ...pr
 	go func() {
 		defer close(out)
 		for e := range ch {
+			if e.Type() == 0 {
+				continue
+			}
 			ev := &_{{ name . }}Event{typ: e.Type(), err: e.Err()}
 			if n := e.New(); n != nil {
 				v, ok := n.(*{{ name . }})

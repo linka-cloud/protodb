@@ -112,6 +112,9 @@ func (s *store[T, PT]) Watch(ctx context.Context, m PT, opts ...protodb.GetOptio
 	go func() {
 		defer close(out)
 		for e := range ch {
+			if e.Type() == 0 {
+				continue
+			}
 			ev := &event[T, PT]{typ: e.Type(), err: e.Err()}
 			if n := e.New(); n != nil {
 				v, ok := n.(PT)

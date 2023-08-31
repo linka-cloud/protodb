@@ -109,6 +109,9 @@ func (s *_MessageWithKeyOptionDB) Watch(ctx context.Context, m *MessageWithKeyOp
 	go func() {
 		defer close(out)
 		for e := range ch {
+			if e.Type() == 0 {
+				continue
+			}
 			ev := &_MessageWithKeyOptionEvent{typ: e.Type(), err: e.Err()}
 			if n := e.New(); n != nil {
 				v, ok := n.(*MessageWithKeyOption)
@@ -317,6 +320,9 @@ func (s *_InterfaceDB) Watch(ctx context.Context, m *Interface, opts ...protodb.
 	go func() {
 		defer close(out)
 		for e := range ch {
+			if e.Type() == 0 {
+				continue
+			}
 			ev := &_InterfaceEvent{typ: e.Type(), err: e.Err()}
 			if n := e.New(); n != nil {
 				v, ok := n.(*Interface)
