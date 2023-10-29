@@ -33,30 +33,32 @@ const data = "testdata"
 
 func TestServerReplicated(t *testing.T) {
 	for _, mode := range []protodb.ReplicationMode{protodb.ReplicationModeAsync, protodb.ReplicationModeSync} {
-		for _, v := range Tests {
-			t.Run(v.Name, func(t *testing.T) {
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-				defer cancel()
+		t.Run(mode.String(), func(t *testing.T) {
+			for _, v := range Tests {
+				t.Run(v.Name, func(t *testing.T) {
+					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+					defer cancel()
 
-				path := filepath.Join(data, v.Name)
-				defer os.RemoveAll(path)
-				c := NewCluster(path, 3, mode, protodb.WithApplyDefaults(true))
-				require.NoError(t, c.StartAll(ctx))
-				defer func() {
-					require.NoError(t, c.StopAll())
-				}()
+					path := filepath.Join(data, v.Name)
+					defer os.RemoveAll(path)
+					c := NewCluster(path, 3, mode, protodb.WithApplyDefaults(true))
+					require.NoError(t, c.StartAll(ctx))
+					defer func() {
+						require.NoError(t, c.StopAll())
+					}()
 
-				srv, err := protodb.NewServer(c.Get(1))
-				require.NoError(t, err)
+					srv, err := protodb.NewServer(c.Get(1))
+					require.NoError(t, err)
 
-				tr := &inprocgrpc.Channel{}
-				srv.RegisterService(tr)
+					tr := &inprocgrpc.Channel{}
+					srv.RegisterService(tr)
 
-				db, err := protodb.NewClient(tr)
-				require.NoError(t, err)
-				v.Run(t, db)
-			})
-		}
+					db, err := protodb.NewClient(tr)
+					require.NoError(t, err)
+					v.Run(t, db)
+				})
+			}
+		})
 	}
 }
 

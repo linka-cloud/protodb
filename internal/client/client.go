@@ -158,6 +158,11 @@ func (c *client) Watch(ctx context.Context, m proto.Message, opts ...protodb.Get
 				logger.C(ctx).Errorf("watch %s: %v", m.ProtoReflect().Descriptor().FullName(), err)
 				return
 			}
+			// we expect an empty event for clients that cannot create streams before receiving first from the server,
+			// but we can ignore unknown events anyway
+			if e.Type == protodb.EventTypeUnknown {
+				continue
+			}
 			ch <- newEvent(e, err)
 		}
 	}()

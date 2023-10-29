@@ -93,6 +93,13 @@ type Resolverer interface {
 
 type EventType = pb.WatchEventType
 
+const (
+	EventTypeUnknown = pb.WatchEventUnknown
+	EventTypeEnter   = pb.WatchEventEnter
+	EventTypeLeave   = pb.WatchEventLeave
+	EventTypeUpdate  = pb.WatchEventUpdate
+)
+
 type Event interface {
 	Type() EventType
 	Old() proto.Message
