@@ -38,11 +38,11 @@ var ProtoDBMethods = struct {
 
 var SetRequestFields = struct {
 	Payload   string
-	Ttl       string
+	TTL       string
 	FieldMask string
 }{
 	Payload:   "payload",
-	Ttl:       "ttl",
+	TTL:       "ttl",
 	FieldMask: "field_mask",
 }
 

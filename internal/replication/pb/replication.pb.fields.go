@@ -96,11 +96,11 @@ var MessageFields = struct {
 }
 
 var MetaFields = struct {
-	GrpcPort     string
+	GRPCPort     string
 	LocalVersion string
 	IsLeader     string
 }{
-	GrpcPort:     "grpc_port",
+	GRPCPort:     "grpc_port",
 	LocalVersion: "local_version",
 	IsLeader:     "is_leader",
 }

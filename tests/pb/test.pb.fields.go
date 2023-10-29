@@ -43,11 +43,11 @@ var InterfaceFields = struct {
 }
 
 var IPAddressFields = struct {
-	Ipv4 string
-	Ipv6 string
+	IPV4 string
+	IPV6 string
 }{
-	Ipv4: "ipv4",
-	Ipv6: "ipv6",
+	IPV4: "ipv4",
+	IPV6: "ipv6",
 }
 
 var KVFields = struct {
