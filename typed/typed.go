@@ -237,3 +237,32 @@ func (e *event[T, PT]) New() PT {
 func (e *event[T, PT]) Err() error {
 	return e.err
 }
+
+func WithTypedTx[T any, PT message[T]](ctx context.Context, db protodb.TxProvider, fn func(ctx context.Context, tx Tx[T, PT]) error, opts ...protodb.TxOption) error {
+	tx, err := db.Tx(ctx, opts...)
+	if err != nil {
+		return err
+	}
+	defer tx.Close()
+	if err := fn(ctx, NewTx[T, PT](tx)); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func WithTypedTx2[T any, PT message[T], R any](ctx context.Context, db protodb.TxProvider, fn func(ctx context.Context, tx Tx[T, PT]) (R, error), opts ...protodb.TxOption) (R, error) {
+	var o R
+	tx, err := db.Tx(ctx, opts...)
+	if err != nil {
+		return o, err
+	}
+	defer tx.Close()
+	o, err = fn(ctx, NewTx[T, PT](tx))
+	if err != nil {
+		return o, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return o, err
+	}
+	return o, nil
+}

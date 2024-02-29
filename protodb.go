@@ -15,6 +15,8 @@
 package protodb
 
 import (
+	"context"
+
 	"go.linka.cloud/protofilters/filters"
 
 	"go.linka.cloud/protodb/internal/client"
@@ -137,3 +139,32 @@ var NewClient = client.NewClient
 type Server = server.Server
 
 var NewServer = server.NewServer
+
+func WithTx(ctx context.Context, db TxProvider, fn func(ctx context.Context, tx Tx) error, opts ...TxOption) error {
+	tx, err := db.Tx(ctx, opts...)
+	if err != nil {
+		return err
+	}
+	defer tx.Close()
+	if err := fn(ctx, tx); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func WithTx2[R any](ctx context.Context, db TxProvider, fn func(ctx context.Context, tx Tx) (R, error), opts ...TxOption) (R, error) {
+	var o R
+	tx, err := db.Tx(ctx, opts...)
+	if err != nil {
+		return o, err
+	}
+	defer tx.Close()
+	o, err = fn(ctx, tx)
+	if err != nil {
+		return o, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return o, err
+	}
+	return o, nil
+}
