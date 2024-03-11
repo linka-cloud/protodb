@@ -28,6 +28,7 @@ import (
 	pf "go.linka.cloud/protofilters"
 	"google.golang.org/protobuf/proto"
 
+	"go.linka.cloud/protodb/internal/db/pending"
 	"go.linka.cloud/protodb/internal/protodb"
 	"go.linka.cloud/protodb/internal/replication"
 	"go.linka.cloud/protodb/internal/token"
@@ -44,16 +45,17 @@ func newTx(ctx context.Context, db *db, opts ...protodb.TxOption) (*tx, error) {
 		opt(&o)
 	}
 	update := !o.ReadOnly
-	var (
-		txr *replication.Tx
-		err error
-	)
 	if update && db.replicated() {
 		if !db.repl.IsLeader() {
 			return nil, protodb.ErrNotLeader
 		}
-		txr, err = db.repl.NewTx(ctx)
-		if err != nil {
+	}
+	var (
+		txr *replication.Tx
+		err error
+	)
+	if db.replicated() && update {
+		if txr, err = db.repl.NewTx(ctx); err != nil {
 			return nil, err
 		}
 		if err := txr.New(ctx, readTs); err != nil {
@@ -61,14 +63,16 @@ func newTx(ctx context.Context, db *db, opts ...protodb.TxOption) (*tx, error) {
 		}
 	}
 	return &tx{
-		ctx:          ctx,
-		txn:          db.bdb.NewTransactionAt(readTs, update),
-		readTs:       readTs,
-		db:           db,
-		me:           end,
-		update:       update,
-		conflictKeys: make(map[uint64]struct{}),
-		txr:          txr,
+		ctx:           ctx,
+		txn:           db.bdb.NewTransactionAt(readTs, false),
+		b:             db.bdb.NewWriteBatchAt(readTs),
+		txr:           txr,
+		readTs:        readTs,
+		db:            db,
+		me:            end,
+		update:        update,
+		pendingWrites: pending.NewWithDB(db.bdb),
+		conflictKeys:  make(map[uint64]struct{}),
 	}, nil
 }
 
@@ -78,13 +82,15 @@ type tx struct {
 	db       *db
 	update   bool
 	txn      *badger.Txn
+	b        *badger.WriteBatch
 	readTs   uint64
 	doneRead bool
 
 	reads []uint64 // contains fingerprints of keys read.
 	// contains fingerprints of keys written. This is used for conflict detection.
-	conflictKeys map[uint64]struct{}
-	readsLock    sync.Mutex // guards the reads slice. See addReadKey.
+	conflictKeys  map[uint64]struct{}
+	readsLock     sync.Mutex // guards the reads slice. See addReadKey.
+	pendingWrites pending.IterableMergedWrites
 
 	applyDefaults bool
 
@@ -96,6 +102,13 @@ type tx struct {
 	done bool
 
 	txr *replication.Tx
+}
+
+func (tx *tx) newIterator(opt badger.IteratorOptions) pending.Iterator {
+	if !tx.update {
+		return pending.TxIterator(tx.txn.NewIterator(opt))
+	}
+	return tx.pendingWrites.MergedIterator(tx.txn, tx.readTs, opt)
 }
 
 func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (out []proto.Message, info *protodb.PagingInfo, err error) {
@@ -112,8 +125,9 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 		return nil, nil, badger.ErrDBClosed
 	}
 	o := makeGetOpts(opts...)
+
 	prefix, field, key, _ := protodb.DataPrefix(m)
-	it := tx.txn.NewIterator(badger.IteratorOptions{Prefix: prefix, PrefetchValues: false})
+	it := tx.newIterator(badger.IteratorOptions{Prefix: prefix, PrefetchValues: false})
 	defer it.Close()
 	hasContinuationToken := o.Paging.GetToken() != ""
 	inToken := &token.Token{}
@@ -155,7 +169,6 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 		v := m.ProtoReflect().New().Interface()
 
 		if o.Filter == nil || !keyOnly {
-			tx.addReadKey(item.Key())
 			if err := item.Value(func(val []byte) error {
 				if err := tx.db.unmarshal(val, v); err != nil {
 					return err
@@ -272,27 +285,16 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 	if err != nil {
 		return nil, err
 	}
-	// TODO(adphi): store that for replication
 	e := badger.NewEntry(k, b)
 	if o.TTL != 0 {
 		e = e.WithTTL(o.TTL)
 	}
-	if err := tx.checkSize(e); err != nil {
-		return nil, err
-	}
-	// The txn.conflictKeys is used for conflict detection.
-	fp := z.MemHash(e.Key) // Avoid dealing with byte arrays.
-	tx.conflictKeys[fp] = struct{}{}
 	if err := ctx.Err(); err != nil {
 		tx.close()
 		return nil, err
 	}
-	if err := tx.txn.SetEntry(e); err != nil {
-		return nil, err
-	}
-	if tx.txr == nil {
-		return m, nil
-	}
+	tx.addConflictKey(e.Key)
+	tx.pendingWrites.Set(e)
 	return m, tx.txr.Set(ctx, e.Key, e.Value, e.ExpiresAt)
 }
 
@@ -300,12 +302,12 @@ func (tx *tx) setRaw(ctx context.Context, key, val []byte) error {
 	if tx.closed() {
 		return badger.ErrDBClosed
 	}
-	if err := tx.txn.Set(key, val); err != nil {
+	if err := ctx.Err(); err != nil {
+		tx.close()
 		return err
 	}
-	if tx.txr == nil {
-		return nil
-	}
+	tx.addConflictKey(key)
+	tx.pendingWrites.Set(badger.NewEntry(key, val))
 	return tx.txr.Set(ctx, key, val, 0)
 }
 
@@ -333,42 +335,30 @@ func (tx *tx) delete(ctx context.Context, m proto.Message) error {
 	if err != nil {
 		return err
 	}
-	if err := tx.checkSize(badger.NewEntry(k, nil)); err != nil {
-		return err
-	}
-	// The txn.conflictKeys is used for conflict detection.
-	fp := z.MemHash(k) // Avoid dealing with byte arrays.
-	tx.conflictKeys[fp] = struct{}{}
+
 	if err := ctx.Err(); err != nil {
 		tx.close()
 		return err
 	}
-	if err := tx.txn.Delete(k); err != nil {
-		return err
-	}
-	if tx.txr == nil {
-		return nil
-	}
+	tx.addConflictKey(k)
+	tx.pendingWrites.Delete(k)
 	return tx.txr.Delete(ctx, k)
 }
 
-func (tx *tx) deleteRaw(key []byte) error {
+func (tx *tx) deleteRaw(ctx context.Context, key []byte) error {
 	if tx.closed() {
 		return badger.ErrDBClosed
 	}
-	return tx.txn.Delete(key)
-}
-
-func (tx *tx) Count() (int64, error) {
-	tx.m.RLock()
-	defer tx.m.RUnlock()
-	return tx.count, nil
-}
-
-func (tx *tx) Size() (int64, error) {
-	tx.m.RLock()
-	defer tx.m.RUnlock()
-	return tx.size, nil
+	if err := ctx.Err(); err != nil {
+		tx.close()
+		return err
+	}
+	tx.addConflictKey(key)
+	tx.pendingWrites.Delete(key)
+	if err := tx.txn.Delete(key); err != nil {
+		return err
+	}
+	return tx.txr.Delete(ctx, key)
 }
 
 func (tx *tx) Commit(ctx context.Context) error {
@@ -376,6 +366,9 @@ func (tx *tx) Commit(ctx context.Context) error {
 		return badger.ErrDBClosed
 	}
 	defer tx.close()
+	if !tx.update {
+		return nil
+	}
 	tx.db.orc.writeChLock.Lock()
 	defer tx.db.orc.writeChLock.Unlock()
 
@@ -384,19 +377,27 @@ func (tx *tx) Commit(ctx context.Context) error {
 		return badger.ErrConflict
 	}
 	defer tx.db.orc.doneCommit(ts)
-	// TODO(adphi): we may need to import more checks from badger txn commit method
-	// TODO(adphi): replicate the txn
-	if err := tx.txn.CommitAt(ts, nil); err != nil {
+
+	if err := tx.pendingWrites.Replay(func(e *badger.Entry) error {
+		if e.UserMeta != 0 {
+			if err := tx.b.DeleteAt(e.Key, ts); err != nil {
+				return err
+			}
+		}
+		return tx.b.SetEntryAt(e, ts)
+	}); err != nil {
 		metrics.Tx.ErrorsCounter.WithLabelValues("").Inc()
 		return err
 	}
-	if tx.txr == nil {
-		return nil
+	if err := tx.b.Flush(); err != nil {
+		metrics.Tx.ErrorsCounter.WithLabelValues("").Inc()
+		return err
 	}
 	return tx.txr.Commit(ctx, ts)
 }
 
 func (tx *tx) Close() {
+	tx.b.Cancel()
 	tx.txn.Discard()
 	tx.close()
 }
@@ -416,20 +417,9 @@ func (tx *tx) close() {
 	metrics.Tx.OpCountHist.Observe(float64(tx.count))
 	metrics.Tx.SizeHist.Observe(float64(tx.size))
 	tx.db.orc.doneRead(tx)
+	tx.pendingWrites.Close()
 	tx.done = true
 	tx.m.Unlock()
-}
-
-func (tx *tx) checkSize(e *badger.Entry) error {
-	tx.m.Lock()
-	defer tx.m.Unlock()
-	count := tx.count + 1
-	size := tx.size + int64(estimateSize(e, int(tx.db.bopts.ValueThreshold)))
-	if count >= tx.db.bdb.MaxBatchCount() || size >= tx.db.bdb.MaxBatchSize() {
-		return badger.ErrTxnTooBig
-	}
-	tx.count, tx.size = count, size
-	return nil
 }
 
 func (tx *tx) addReadKey(key []byte) {
@@ -446,6 +436,14 @@ func (tx *tx) addReadKey(key []byte) {
 	}
 }
 
+func (tx *tx) addConflictKey(key []byte) {
+	if !tx.update {
+		return
+	}
+	fp := z.MemHash(key)
+	tx.conflictKeys[fp] = struct{}{}
+}
+
 func hash(f protodb.Filter) (hash string, err error) {
 	var b []byte
 	if f != nil {
@@ -458,11 +456,4 @@ func hash(f protodb.Filter) (hash string, err error) {
 	sha.Write(b)
 	h := sha.Sum(nil)
 	return base64.StdEncoding.EncodeToString(h), nil
-}
-
-func estimateSize(e *badger.Entry, threshold int) int {
-	if len(e.Value) < threshold {
-		return len(e.Key) + len(e.Value) + 2 // Meta, UserMeta
-	}
-	return len(e.Key) + 12 + 2 // 12 for ValuePointer, 2 for metas.
 }

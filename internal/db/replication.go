@@ -60,8 +60,8 @@ func (db *db) LoadDescriptors(ctx context.Context) error {
 	return db.loadDescriptors(ctx)
 }
 
-func (db *db) NewTransactionAt(readTs uint64, update bool) *badger.Txn {
-	return db.bdb.NewTransactionAt(readTs, update)
+func (db *db) NewWriteBatchAt(readTs uint64) *badger.WriteBatch {
+	return db.bdb.NewWriteBatchAt(readTs)
 }
 
 func (db *db) Path() string {
@@ -70,4 +70,16 @@ func (db *db) Path() string {
 
 func (db *db) InMemory() bool {
 	return db.opts.inMemory
+}
+
+func (db *db) ValueThreshold() int64 {
+	return db.bdb.Opts().ValueThreshold
+}
+
+func (db *db) MaxBatchCount() int64 {
+	return db.bdb.MaxBatchCount()
+}
+
+func (db *db) MaxBatchSize() int64 {
+	return db.bdb.MaxBatchSize()
 }

@@ -42,7 +42,6 @@ type MessageWithKeyOptionStore interface {
 
 type MessageWithKeyOptionTx interface {
 	protodb.Committer
-	protodb.Sizer
 	MessageWithKeyOptionReader
 	MessageWithKeyOptionWriter
 	Raw() protodb.Tx
@@ -204,14 +203,6 @@ func (s *_MessageWithKeyOptionTx) Close() {
 	s.txn.Close()
 }
 
-func (s *_MessageWithKeyOptionTx) Count() (int64, error) {
-	return s.txn.Count()
-}
-
-func (s *_MessageWithKeyOptionTx) Size() (int64, error) {
-	return s.txn.Size()
-}
-
 type _MessageWithKeyOptionEvent struct {
 	typ protodb.EventType
 	old *MessageWithKeyOption
@@ -253,7 +244,6 @@ type InterfaceStore interface {
 
 type InterfaceTx interface {
 	protodb.Committer
-	protodb.Sizer
 	InterfaceReader
 	InterfaceWriter
 	Raw() protodb.Tx
@@ -413,14 +403,6 @@ func (s *_InterfaceTx) Commit(ctx context.Context) error {
 
 func (s *_InterfaceTx) Close() {
 	s.txn.Close()
-}
-
-func (s *_InterfaceTx) Count() (int64, error) {
-	return s.txn.Count()
-}
-
-func (s *_InterfaceTx) Size() (int64, error) {
-	return s.txn.Size()
 }
 
 type _InterfaceEvent struct {

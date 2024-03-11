@@ -27,6 +27,7 @@ import (
 	"go.linka.cloud/grpc-toolkit/logger"
 	"google.golang.org/grpc/peer"
 
+	"go.linka.cloud/protodb/internal/db/pending"
 	"go.linka.cloud/protodb/internal/protodb"
 	pb2 "go.linka.cloud/protodb/internal/replication/pb"
 	"go.linka.cloud/protodb/pb"
@@ -81,11 +82,17 @@ func (r *Repl) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 		return gerrs.Internalf("cannot get peer from context")
 	}
 	log.Infof("Replicating from %s", p.Addr)
-	var tx *badger.Txn
-	var reload bool
+	var (
+		batch  *badger.WriteBatch
+		reload bool
+		w      pending.Writes
+	)
 	defer func() {
-		if tx != nil {
-			tx.Discard()
+		if batch != nil {
+			batch.Cancel()
+		}
+		if w != nil {
+			w.Close()
 		}
 		if !reload {
 			return
@@ -104,10 +111,10 @@ func (r *Repl) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 		switch a := op.Action.(type) {
 		case *pb2.Op_New:
 			log.Debugf("new transaction at %d", a.New.At)
-			if tx != nil {
+			if w != nil {
 				return gerrs.InvalidArgumentf("transaction already started")
 			}
-			tx = r.db.NewTransactionAt(a.New.At, true)
+			w = pending.New(r.db.Path(), r.db.MaxBatchCount(), r.db.MaxBatchSize(), int(r.db.ValueThreshold()))
 			if err := ss.Send(&pb2.Ack{}); err != nil {
 				return gerrs.Internalf("failed to send ack: %v", err)
 			}
@@ -116,43 +123,43 @@ func (r *Repl) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 			if strings.HasPrefix(string(a.Set.Key), protodb.Descriptors) {
 				reload = true
 			}
-			if tx == nil {
+			if w == nil {
 				return gerrs.InvalidArgumentf("transaction not started")
 			}
-			if err := tx.SetEntry(&badger.Entry{
+			w.Set(&badger.Entry{
 				Key:       a.Set.Key,
 				Value:     a.Set.Value,
 				ExpiresAt: a.Set.ExpiresAt,
-			}); err != nil {
-				return gerrs.Internalf("failed to set key %s: %v", a.Set.Key, err)
-			}
+			})
 			if err := ss.Send(&pb2.Ack{}); err != nil {
 				return gerrs.Internalf("failed to send ack: %v", err)
 			}
 		case *pb2.Op_Delete:
 			log.WithField("key", string(a.Delete.Key)).Tracef("delete key")
-			if tx == nil {
+			if w == nil {
 				return gerrs.InvalidArgumentf("transaction not started")
 			}
-			if err := tx.Delete(a.Delete.Key); err != nil {
-				return gerrs.Internalf("failed to delete key %s: %v", a.Delete.Key, err)
-			}
+			w.Delete(a.Delete.Key)
 			if err := ss.Send(&pb2.Ack{}); err != nil {
 				return gerrs.Internalf("failed to send ack: %v", err)
 			}
 		case *pb2.Op_Commit:
 			log.Debugf("commit transaction at %d", a.Commit.At)
-			if tx == nil {
+			if w == nil {
 				return gerrs.InvalidArgumentf("transaction not started")
 			}
-			errs := make(chan error, 1)
-			if err := tx.CommitAt(a.Commit.At, func(err error) {
-				errs <- err
-			}); err != nil {
-				return gerrs.Internalf("failed to commit transaction: %v", err)
+			batch = r.db.NewWriteBatchAt(a.Commit.At)
+			err := w.Replay(func(e *badger.Entry) error {
+				if e.UserMeta != 0 {
+					return batch.DeleteAt(e.Key, a.Commit.At)
+				}
+				return batch.SetEntry(e)
+			})
+			if err != nil {
+				return gerrs.Internalf("failed to write transaction: %v", err)
 			}
-			if err := <-errs; err != nil {
-				return gerrs.Internalf("failed to commit transaction: %v", err)
+			if err := batch.Flush(); err != nil {
+				return gerrs.Internalf("failed to flush transaction: %v", err)
 			}
 			if err := ss.Send(&pb2.Ack{}); err != nil {
 				return gerrs.Internalf("failed to send response: %v", err)

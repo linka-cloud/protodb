@@ -86,15 +86,11 @@ var TxRequestFields = struct {
 	Set    string
 	Delete string
 	Commit string
-	Count  string
-	Size   string
 }{
 	Get:    "get",
 	Set:    "set",
 	Delete: "delete",
 	Commit: "commit",
-	Count:  "count",
-	Size:   "size",
 }
 
 var TxResponseFields = struct {
@@ -102,39 +98,17 @@ var TxResponseFields = struct {
 	Set    string
 	Delete string
 	Commit string
-	Count  string
-	Size   string
 }{
 	Get:    "get",
 	Set:    "set",
 	Delete: "delete",
 	Commit: "commit",
-	Count:  "count",
-	Size:   "size",
 }
 
 var CommitResponseFields = struct {
 	Error string
 }{
 	Error: "error",
-}
-
-var CountRequestFields = struct {
-}{}
-
-var CountResponseFields = struct {
-	Count string
-}{
-	Count: "count",
-}
-
-var SizeRequestFields = struct {
-}{}
-
-var SizeResponseFields = struct {
-	Size string
-}{
-	Size: "size",
 }
 
 var PagingFields = struct {

@@ -43,7 +43,6 @@ type Store[T any, PT message[T]] interface {
 
 type Tx[T any, PT message[T]] interface {
 	protodb.Committer
-	protodb.Sizer
 	Reader[T, PT]
 	Writer[T, PT]
 	Raw() protodb.Tx
@@ -205,14 +204,6 @@ func (t *tx[T, PT]) Commit(ctx context.Context) error {
 
 func (t *tx[T, PT]) Close() {
 	t.txn.Close()
-}
-
-func (t *tx[T, PT]) Count() (int64, error) {
-	return t.txn.Count()
-}
-
-func (t *tx[T, PT]) Size() (int64, error) {
-	return t.txn.Size()
 }
 
 type event[T any, PT message[T]] struct {

@@ -72,6 +72,7 @@ var Tests = []Case{
 	{Name: "TestWatchWithFilter", Run: TestWatchWithFilter},
 	{Name: "TestRegister", Run: TestRegister},
 	{Name: "TestBatchInsertAndQuery", Run: TestBatchInsertAndQuery},
+	{Name: "TestOversizeBatchInsert", Run: TestOversizeBatchInsert},
 	{Name: "TestFieldMask", Run: TestFieldMask},
 	{Name: "TestMessageWithKeyOption", Run: TestMessageWithKeyOption},
 	{Name: "TestStaticKey", Run: TestStaticKey},
@@ -400,6 +401,34 @@ func TestBatchInsertAndQuery(t *testing.T, db protodb.Client) {
 			assert.Len(ms, 0)
 		}
 	}
+}
+
+func TestOversizeBatchInsert(t *testing.T, db protodb.Client) {
+	require := require2.New(t)
+
+	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	tx, err := db.Tx(ctx)
+	require.NoError(err)
+	defer tx.Close()
+	max := 1_000_000
+	for i := 0; i < max; i++ {
+		n := fmt.Sprintf("eth%d", i)
+		iface := &testpb.Interface{
+			Name: n,
+		}
+		_, err := tx.Set(ctx, iface, protodb.WithTTL(10*time.Minute))
+		require.NoError(err)
+
+		if (i % (max / 100)) == 0 {
+			p := int(float64(i) / float64(max) * 100)
+			t.Logf("%d%%: inserted %d items", p, i)
+		}
+	}
+	err = tx.Commit(ctx)
+	require.NoError(err)
 }
 
 func TestFieldMask(t *testing.T, db protodb.Client) {

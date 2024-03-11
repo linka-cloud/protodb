@@ -78,6 +78,9 @@ func (r *Tx) cancel(_ context.Context) error {
 }
 
 func (r *Tx) do(ctx context.Context, msg *pb.Op) error {
+	if r == nil {
+		return nil
+	}
 	log := logger.C(ctx)
 	switch r.mode {
 	case ModeAsync:

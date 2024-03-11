@@ -45,8 +45,6 @@ type TxProvider = protodb.TxProvider
 
 type Committer = protodb.Committer
 
-type Sizer = protodb.Sizer
-
 type Registerer = protodb.Registerer
 
 type Leader = protodb.Leader

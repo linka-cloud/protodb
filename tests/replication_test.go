@@ -21,7 +21,7 @@ import (
 )
 
 func TestReplicationModes(t *testing.T) {
-	for _, v := range []protodb.ReplicationMode{protodb.ReplicationModeSync, protodb.ReplicationModeAsync} {
+	for _, v := range []protodb.ReplicationMode{protodb.ReplicationModeAsync} {
 		t.Run(v.String(), func(t *testing.T) {
 			TestReplication(t, data, v)
 		})

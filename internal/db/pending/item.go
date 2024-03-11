@@ -12,30 +12,48 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package replication
+package pending
 
 import (
-	"context"
-	"io"
+	"time"
 
 	"github.com/dgraph-io/badger/v3"
-
-	"go.linka.cloud/protodb/internal/protodb"
+	"github.com/dgraph-io/badger/v3/y"
 )
 
-type DB interface {
-	protodb.DB
-	Path() string
-	InMemory() bool
-	MaxVersion() uint64
-	SetVersion(v uint64)
-	Load(ctx context.Context, r io.Reader) error
-	Stream(ctx context.Context, at, since uint64, w io.Writer) error
-	LoadDescriptors(ctx context.Context) error
-	NewWriteBatchAt(readTs uint64) *badger.WriteBatch
+var _ Item = (*item)(nil)
 
-	ValueThreshold() int64
-	MaxBatchCount() int64
-	MaxBatchSize() int64
-	Close() error
+type item struct {
+	e      *badger.Entry
+	readTs uint64
+}
+
+func (i *item) Key() []byte {
+	return i.e.Key
+}
+
+func (i *item) KeyCopy(dst []byte) []byte {
+	return y.SafeCopy(dst, i.e.Key)
+}
+
+func (i *item) Value(fn func(val []byte) error) error {
+	return fn(i.e.Value)
+}
+
+func (i *item) IsDeletedOrExpired() bool {
+	if i.e.UserMeta&bitDelete > 0 {
+		return true
+	}
+	if i.e.ExpiresAt == 0 {
+		return false
+	}
+	return i.e.ExpiresAt <= uint64(time.Now().Unix())
+}
+
+func (i *item) ExpiresAt() uint64 {
+	return i.e.ExpiresAt
+}
+
+func (i *item) Version() uint64 {
+	return i.readTs
 }

@@ -153,7 +153,6 @@ type {{ name . }}Store interface {
 
 type {{ name . }}Tx interface {
 	protodb.Committer
-	protodb.Sizer
 	{{ name . }}Reader
 	{{ name . }}Writer
 	Raw() protodb.Tx
@@ -313,14 +312,6 @@ func (s *_{{ name . }}Tx) Commit(ctx context.Context) error {
 
 func (s *_{{ name . }}Tx) Close() {
 	s.txn.Close()
-}
-
-func (s *_{{ name . }}Tx) Count() (int64, error) {
-	return s.txn.Count()
-}
-
-func (s *_{{ name . }}Tx) Size() (int64, error) {
-	return s.txn.Size()
 }
 
 type _{{ name . }}Event struct {
