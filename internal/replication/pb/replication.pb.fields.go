@@ -47,11 +47,13 @@ var OpFields = struct {
 	Set    string
 	Delete string
 	Commit string
+	ID     string
 }{
 	New:    "new",
 	Set:    "set",
 	Delete: "delete",
 	Commit: "commit",
+	ID:     "id",
 }
 
 var NewFields = struct {

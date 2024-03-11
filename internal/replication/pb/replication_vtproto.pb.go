@@ -63,6 +63,7 @@ func (m *Op) CloneVT() *Op {
 		return (*Op)(nil)
 	}
 	r := new(Op)
+	r.ID = m.ID
 	if m.Action != nil {
 		r.Action = m.Action.(interface{ CloneVT() isOp_Action }).CloneVT()
 	}
@@ -305,6 +306,9 @@ func (this *Op) EqualVT(that *Op) bool {
 		if !this.Action.(interface{ EqualVT(isOp_Action) bool }).EqualVT(that.Action) {
 			return false
 		}
+	}
+	if this.ID != that.ID {
+		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
 }
@@ -685,6 +689,11 @@ func (m *Op) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 			return 0, err
 		}
 		i -= size
+	}
+	if m.ID != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ID))
+		i--
+		dAtA[i] = 0x28
 	}
 	return len(dAtA) - i, nil
 }
@@ -1112,6 +1121,9 @@ func (m *Op) SizeVT() (n int) {
 	_ = l
 	if vtmsg, ok := m.Action.(interface{ SizeVT() int }); ok {
 		n += vtmsg.SizeVT()
+	}
+	if m.ID != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ID))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -1643,6 +1655,25 @@ func (m *Op) UnmarshalVT(dAtA []byte) error {
 				m.Action = &Op_Commit{Commit: v}
 			}
 			iNdEx = postIndex
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+			}
+			m.ID = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ID |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

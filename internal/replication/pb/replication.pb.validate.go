@@ -260,6 +260,8 @@ func (m *Op) validate(all bool) error {
 
 	var errors []error
 
+	// no validation rules for Id
+
 	switch v := m.Action.(type) {
 	case *Op_New:
 		if v == nil {

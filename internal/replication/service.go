@@ -85,14 +85,12 @@ func (r *Repl) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 	var (
 		batch  *badger.WriteBatch
 		reload bool
-		w      pending.Writes
 	)
+	w := pending.New(r.db.Path(), r.db.MaxBatchCount(), r.db.MaxBatchSize(), int(r.db.ValueThreshold()))
 	defer func() {
+		w.Close()
 		if batch != nil {
 			batch.Cancel()
-		}
-		if w != nil {
-			w.Close()
 		}
 		if !reload {
 			return
@@ -103,6 +101,46 @@ func (r *Repl) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 			}
 		}()
 	}()
+	// message can come in any order in async replication mode, so we need to keep track of the commit message
+	var (
+		cmsg *pb2.Op_Commit
+		cid  uint64
+	)
+	commit := func() error {
+		log.Infof("commit transaction at %d", cmsg.Commit.At)
+		batch = r.db.NewWriteBatchAt(cmsg.Commit.At)
+		err := w.Replay(func(e *badger.Entry) error {
+			if e.UserMeta != 0 {
+				return batch.DeleteAt(e.Key, cmsg.Commit.At)
+			}
+			return batch.SetEntry(e)
+		})
+		if err != nil {
+			return gerrs.Internalf("failed to write transaction: %v", err)
+		}
+		if err := batch.Flush(); err != nil {
+			return gerrs.Internalf("failed to flush transaction: %v", err)
+		}
+		if err := ss.Send(&pb2.Ack{}); err != nil {
+			return gerrs.Internalf("failed to send response: %v", err)
+		}
+		r.db.SetVersion(cmsg.Commit.At)
+		m := r.meta.Load().CloneVT()
+		m.LocalVersion = cmsg.Commit.At
+		r.meta.Store(m)
+		go func() {
+			b, err := m.CloneVT().MarshalVT()
+			if err != nil {
+				log.Errorf("failed to marshal meta: %v", err)
+				return
+			}
+			if err := r.updateMeta(r.ctx, b); err != nil {
+				log.Errorf("failed to update meta: %v", err)
+			}
+		}()
+		return nil
+	}
+	count := uint64(0)
 	for {
 		op, err := ss.Recv()
 		if err != nil {
@@ -111,20 +149,16 @@ func (r *Repl) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 		switch a := op.Action.(type) {
 		case *pb2.Op_New:
 			log.Debugf("new transaction at %d", a.New.At)
-			if w != nil {
-				return gerrs.InvalidArgumentf("transaction already started")
-			}
-			w = pending.New(r.db.Path(), r.db.MaxBatchCount(), r.db.MaxBatchSize(), int(r.db.ValueThreshold()))
 			if err := ss.Send(&pb2.Ack{}); err != nil {
 				return gerrs.Internalf("failed to send ack: %v", err)
+			}
+			if cmsg != nil && count == cid {
+				return commit()
 			}
 		case *pb2.Op_Set:
 			log.WithField("key", string(a.Set.Key)).Tracef("set key")
 			if strings.HasPrefix(string(a.Set.Key), protodb.Descriptors) {
 				reload = true
-			}
-			if w == nil {
-				return gerrs.InvalidArgumentf("transaction not started")
 			}
 			w.Set(&badger.Entry{
 				Key:       a.Set.Key,
@@ -134,52 +168,26 @@ func (r *Repl) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 			if err := ss.Send(&pb2.Ack{}); err != nil {
 				return gerrs.Internalf("failed to send ack: %v", err)
 			}
+			if cmsg != nil && count == cid {
+				return commit()
+			}
 		case *pb2.Op_Delete:
 			log.WithField("key", string(a.Delete.Key)).Tracef("delete key")
-			if w == nil {
-				return gerrs.InvalidArgumentf("transaction not started")
-			}
 			w.Delete(a.Delete.Key)
 			if err := ss.Send(&pb2.Ack{}); err != nil {
 				return gerrs.Internalf("failed to send ack: %v", err)
 			}
+			if cmsg != nil && count == cid {
+				return commit()
+			}
 		case *pb2.Op_Commit:
-			log.Debugf("commit transaction at %d", a.Commit.At)
-			if w == nil {
-				return gerrs.InvalidArgumentf("transaction not started")
+			cmsg = a
+			cid = op.ID
+			if op.ID == count {
+				return commit()
 			}
-			batch = r.db.NewWriteBatchAt(a.Commit.At)
-			err := w.Replay(func(e *badger.Entry) error {
-				if e.UserMeta != 0 {
-					return batch.DeleteAt(e.Key, a.Commit.At)
-				}
-				return batch.SetEntry(e)
-			})
-			if err != nil {
-				return gerrs.Internalf("failed to write transaction: %v", err)
-			}
-			if err := batch.Flush(); err != nil {
-				return gerrs.Internalf("failed to flush transaction: %v", err)
-			}
-			if err := ss.Send(&pb2.Ack{}); err != nil {
-				return gerrs.Internalf("failed to send response: %v", err)
-			}
-			r.db.SetVersion(a.Commit.At)
-			m := r.meta.Load().CloneVT()
-			m.LocalVersion = a.Commit.At
-			r.meta.Store(m)
-			go func() {
-				b, err := m.CloneVT().MarshalVT()
-				if err != nil {
-					log.Errorf("failed to marshal meta: %v", err)
-					return
-				}
-				if err := r.updateMeta(r.ctx, b); err != nil {
-					log.Errorf("failed to update meta: %v", err)
-				}
-			}()
-			return nil
 		}
+		count++
 	}
 }
 

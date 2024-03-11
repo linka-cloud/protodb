@@ -18,6 +18,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sync"
+	"sync/atomic"
 
 	"go.linka.cloud/grpc-toolkit/logger"
 	"go.uber.org/multierr"
@@ -28,7 +30,7 @@ import (
 func (r *Repl) NewTx(ctx context.Context) (*Tx, error) {
 	log := logger.C(ctx)
 	var cs []pb.ReplicationService_ReplicateClient
-	if r.mode < ModeSync {
+	if r.mode > ModeSync {
 		ctx = context.Background()
 	}
 	for _, v := range r.clients() {
@@ -44,8 +46,28 @@ func (r *Repl) NewTx(ctx context.Context) (*Tx, error) {
 }
 
 type Tx struct {
-	mode Mode
-	cs   []pb.ReplicationService_ReplicateClient
+	mode  Mode
+	cs    []pb.ReplicationService_ReplicateClient
+	cmu   sync.RWMutex
+	count atomic.Uint64
+}
+
+func (r *Tx) streams() []pb.ReplicationService_ReplicateClient {
+	r.cmu.RLock()
+	defer r.cmu.RUnlock()
+	return append([]pb.ReplicationService_ReplicateClient{}, r.cs...)
+}
+
+func (r *Tx) removeSteam(s pb.ReplicationService_ReplicateClient) {
+	r.cmu.Lock()
+	defer r.cmu.Unlock()
+	for i, v := range r.cs {
+		if v != s {
+			continue
+		}
+		r.cs = append(r.cs[:i], r.cs[i+1:]...)
+		break
+	}
 }
 
 func (r *Tx) New(ctx context.Context, at uint64) error {
@@ -81,6 +103,8 @@ func (r *Tx) do(ctx context.Context, msg *pb.Op) error {
 	if r == nil {
 		return nil
 	}
+	msg.ID = r.count.Load()
+	defer r.count.Add(1)
 	log := logger.C(ctx)
 	switch r.mode {
 	case ModeAsync:
@@ -101,17 +125,22 @@ func (r *Tx) do(ctx context.Context, msg *pb.Op) error {
 }
 
 func (r *Tx) send(_ context.Context, msg *pb.Op, cb func(err error)) error {
-	serrs := make(chan error, len(r.cs))
-	aerrs := make(chan error, len(r.cs))
-	for _, v := range r.cs {
+	cs := r.streams()
+	serrs := make(chan error, len(cs))
+	aerrs := make(chan error, len(cs))
+	for _, v := range cs {
 		go func(v pb.ReplicationService_ReplicateClient) {
-			serrs <- v.Send(msg.CloneVT())
-			_, err := v.Recv()
+			err := v.Send(msg.CloneVT())
+			serrs <- err
+			_, err = v.Recv()
 			aerrs <- err
+			if err != nil {
+				r.removeSteam(v)
+			}
 		}(v)
 	}
 	var err error
-	for range r.cs {
+	for range cs {
 		err = multierr.Append(err, <-serrs)
 	}
 	if err != nil {
@@ -119,7 +148,7 @@ func (r *Tx) send(_ context.Context, msg *pb.Op, cb func(err error)) error {
 	}
 	go func() {
 		var err error
-		for range r.cs {
+		for range cs {
 			err = multierr.Append(err, <-aerrs)
 		}
 		if cb != nil {

@@ -45,6 +45,7 @@ message Op {
     Delete delete = 3;
     Commit commit = 4;
   }
+  uint64 id = 5;
 }
 
 message New {
