@@ -24,21 +24,24 @@ import (
 
 const bitDelete byte = 1 << 0 // Set if the key has been deleted.
 
-func newMem() *mem {
+func newMem(addReadKey func(key []byte)) *mem {
 	return &mem{
-		m: make(map[string]*badger.Entry),
+		m:          make(map[string]*badger.Entry),
+		addReadKey: addReadKey,
 	}
 }
 
 type mem struct {
-	m map[string]*badger.Entry
+	m          map[string]*badger.Entry
+	addReadKey func(key []byte)
 }
 
 func (m *mem) Iterator(readTs uint64, reversed bool) Iterator {
 	if m.empty() {
 		return &memIterator{
-			readTs:   readTs,
-			reversed: reversed,
+			readTs:     readTs,
+			reversed:   reversed,
+			addReadKey: m.addReadKey,
 		}
 	}
 	entries := m.slice()
@@ -51,9 +54,10 @@ func (m *mem) Iterator(readTs uint64, reversed bool) Iterator {
 		return cmp > 0
 	})
 	return &memIterator{
-		readTs:   readTs,
-		entries:  entries,
-		reversed: reversed,
+		readTs:     readTs,
+		entries:    entries,
+		reversed:   reversed,
+		addReadKey: m.addReadKey,
 	}
 }
 
@@ -94,10 +98,11 @@ func (p *mem) empty() bool {
 }
 
 type memIterator struct {
-	entries  []*badger.Entry
-	nextIdx  int
-	readTs   uint64
-	reversed bool
+	entries    []*badger.Entry
+	nextIdx    int
+	readTs     uint64
+	reversed   bool
+	addReadKey func(key []byte)
 }
 
 func (i *memIterator) Next() {
@@ -105,7 +110,7 @@ func (i *memIterator) Next() {
 }
 
 func (i *memIterator) skip() bool {
-	return !i.Valid() || i.entries[i.nextIdx].UserMeta&bitDelete == 0
+	return i.entries[i.nextIdx].UserMeta&bitDelete != 0
 }
 
 func (i *memIterator) Rewind() {
@@ -113,7 +118,7 @@ func (i *memIterator) Rewind() {
 }
 
 func (i *memIterator) Seek(key []byte) {
-	key = y.ParseKey(key)
+	i.addReadKey(key)
 	i.nextIdx = sort.Search(len(i.entries), func(idx int) bool {
 		cmp := bytes.Compare(i.entries[idx].Key, key)
 		if !i.reversed {
@@ -131,6 +136,7 @@ func (i *memIterator) Key() []byte {
 func (i *memIterator) Item() Item {
 	y.AssertTrue(i.Valid())
 	entry := i.entries[i.nextIdx]
+	i.addReadKey(entry.Key)
 	return &item{
 		readTs: i.readTs,
 		e: &badger.Entry{

@@ -37,8 +37,8 @@ type Item interface {
 	Version() uint64
 }
 
-func TxIterator(i *badger.Iterator) Iterator {
-	return &txIterator{i: i}
+func TxIterator(i *badger.Iterator, addReadKey func(key []byte)) Iterator {
+	return &txIterator{i: i, addReadKey: addReadKey}
 }
 
 type iterator interface {
@@ -47,7 +47,8 @@ type iterator interface {
 }
 
 type txIterator struct {
-	i *badger.Iterator
+	i          *badger.Iterator
+	addReadKey func(key []byte)
 }
 
 func (t *txIterator) Next() {
@@ -55,6 +56,7 @@ func (t *txIterator) Next() {
 }
 
 func (t *txIterator) Seek(key []byte) {
+	t.addReadKey(key)
 	t.i.Seek(key)
 }
 
@@ -71,7 +73,9 @@ func (t *txIterator) Key() []byte {
 }
 
 func (t *txIterator) Item() Item {
-	return t.i.Item()
+	item := t.i.Item()
+	t.addReadKey(item.Key())
+	return item
 }
 
 func (t *txIterator) skip() bool {

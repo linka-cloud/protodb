@@ -86,7 +86,7 @@ func (r *Repl) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 		batch  *badger.WriteBatch
 		reload bool
 	)
-	w := pending.New(r.db.Path(), r.db.MaxBatchCount(), r.db.MaxBatchSize(), int(r.db.ValueThreshold()))
+	w := pending.New(r.db.Path(), r.db.MaxBatchCount(), r.db.MaxBatchSize(), int(r.db.ValueThreshold()), func(key []byte) {})
 	defer func() {
 		w.Close()
 		if batch != nil {

@@ -31,16 +31,16 @@ type Writes interface {
 	Close() error
 }
 
-func NewWithDB(db *badger.DB) IterableMergedWrites {
-	return newWrites(db.Opts().Dir, db.MaxBatchCount(), db.MaxBatchSize(), int(db.Opts().ValueThreshold))
+func NewWithDB(db *badger.DB, addReadKey func(key []byte)) IterableMergedWrites {
+	return newWrites(db.Opts().Dir, db.MaxBatchCount(), db.MaxBatchSize(), int(db.Opts().ValueThreshold), addReadKey)
 }
 
-func New(path string, maxCount, maxSize int64, threshold int) IterableMergedWrites {
-	return newWrites(path, maxCount, maxSize, threshold)
+func New(path string, maxCount, maxSize int64, threshold int, addReadKey func(key []byte)) IterableMergedWrites {
+	return newWrites(path, maxCount, maxSize, threshold, addReadKey)
 }
 
-func newWrites(path string, maxCount, maxSize int64, threshold int) *writes {
-	w := newMem()
+func newWrites(path string, maxCount, maxSize int64, threshold int, addReadKey func(key []byte)) *writes {
+	w := newMem(addReadKey)
 	return &writes{
 		path:           path,
 		m:              w,
@@ -48,6 +48,7 @@ func newWrites(path string, maxCount, maxSize int64, threshold int) *writes {
 		maxCount:       maxCount,
 		maxSize:        maxSize,
 		valueThreshold: threshold,
+		addReadKey:     addReadKey,
 	}
 }
 
@@ -64,10 +65,12 @@ type writes struct {
 	maxCount       int64
 	maxSize        int64
 	valueThreshold int
+
+	addReadKey func(key []byte)
 }
 
 func (w *writes) MergedIterator(tx *badger.Txn, readTs uint64, opt badger.IteratorOptions) Iterator {
-	return newMergeIterator(&txIterator{tx.NewIterator(opt)}, w.iterator(readTs, opt.Reverse), opt.Reverse)
+	return newMergeIterator(&txIterator{tx.NewIterator(opt), w.addReadKey}, w.iterator(readTs, opt.Reverse), opt.Reverse)
 }
 
 func (w *writes) Iterator(readTs uint64, reversed bool) Iterator {

@@ -52,6 +52,7 @@ func genEntries(count int, size int64) []*badger.Entry {
 
 func TestWal(t *testing.T) {
 	w := newWal(os.TempDir(), nil)
+	w.addReadKey = func(key []byte) {}
 	defer w.Close()
 
 	const count = 1_000

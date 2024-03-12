@@ -38,7 +38,7 @@ func TestIterator(t *testing.T) {
 	require.NoError(t, tx.Commit())
 	tx.Discard()
 
-	w := NewWithDB(db)
+	w := NewWithDB(db, func(key []byte) {})
 	defer w.Close()
 	tx = db.NewTransaction(false)
 	defer tx.Discard()

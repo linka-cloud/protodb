@@ -77,7 +77,7 @@ func newWal(path string, p *mem) *wal {
 	if p == nil {
 		return &wal{f: f, m: make(map[uint32]*pointer)}
 	}
-	w := &wal{f: f, m: make(map[uint32]*pointer, len(p.m))}
+	w := &wal{f: f, m: make(map[uint32]*pointer, len(p.m)), addReadKey: p.addReadKey}
 	for _, e := range p.m {
 		y.Check(w.append(e))
 	}
@@ -86,9 +86,10 @@ func newWal(path string, p *mem) *wal {
 }
 
 type wal struct {
-	f   *os.File
-	m   map[uint32]*pointer
-	pos int64
+	f          *os.File
+	m          map[uint32]*pointer
+	pos        int64
+	addReadKey func(key []byte)
 }
 
 func (w *wal) Iterator(readTs uint64, reversed bool) Iterator {
@@ -194,7 +195,7 @@ func (w *wal) newIterator(readTs uint64, reversed bool) Iterator {
 		}
 		return cmp > 0
 	})
-	return &walIterator{w: w, items: items, reversed: reversed, readTs: readTs}
+	return &walIterator{w: w, items: items, reversed: reversed, readTs: readTs, addReadKey: w.addReadKey}
 }
 
 type entry struct {
@@ -203,11 +204,12 @@ type entry struct {
 }
 
 type walIterator struct {
-	w        *wal
-	items    []*entry
-	nextIdx  int
-	readTs   uint64
-	reversed bool
+	w          *wal
+	items      []*entry
+	nextIdx    int
+	readTs     uint64
+	reversed   bool
+	addReadKey func(key []byte)
 }
 
 func (i *walIterator) Next() {
@@ -215,7 +217,7 @@ func (i *walIterator) Next() {
 }
 
 func (i *walIterator) skip() bool {
-	return !i.Valid() || !i.items[i.nextIdx].p.deleted
+	return !i.items[i.nextIdx].p.deleted
 }
 
 func (i *walIterator) Rewind() {
@@ -223,7 +225,7 @@ func (i *walIterator) Rewind() {
 }
 
 func (i *walIterator) Seek(key []byte) {
-	key = y.ParseKey(key)
+	i.addReadKey(key)
 	i.nextIdx = sort.Search(len(i.items), func(idx int) bool {
 		cmp := bytes.Compare(i.items[idx].key, key)
 		if !i.reversed {
@@ -242,6 +244,7 @@ func (i *walIterator) Item() Item {
 	y.AssertTrue(i.Valid())
 	e := i.items[i.nextIdx]
 	entry, err := i.w.read(e.key)
+	i.addReadKey(e.key)
 	y.Check(err)
 	return &item{
 		readTs: i.readTs,

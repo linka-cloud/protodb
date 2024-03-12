@@ -119,6 +119,7 @@ func (mi *mergeIterator) swapSmall() {
 // Next returns the next element. If it is the same as the current key, ignore it.
 func (mi *mergeIterator) Next() {
 	for mi.Valid() {
+		// TODO(adphi): find a way that do not mark item as read
 		if !bytes.Equal(mi.small.key, mi.curKey) && !mi.small.iter.Item().IsDeletedOrExpired() {
 			break
 		}
@@ -139,7 +140,8 @@ func (mi *mergeIterator) Rewind() {
 	mi.fix()
 	mi.setCurrent()
 	for mi.Valid() {
-		if mi.Item().IsDeletedOrExpired() {
+		// TODO(adphi): find a way that do not mark item as read
+		if mi.skip() {
 			mi.Next()
 		}
 		break
@@ -173,6 +175,10 @@ func (mi *mergeIterator) Item() Item {
 func (mi *mergeIterator) Close() {
 	mi.left.iter.Close()
 	mi.right.iter.Close()
+}
+
+func (mi *mergeIterator) skip() bool {
+	return mi.small.iter.skip()
 }
 
 // NewMergeIterator creates a merge iterator.

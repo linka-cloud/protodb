@@ -62,18 +62,19 @@ func newTx(ctx context.Context, db *db, opts ...protodb.TxOption) (*tx, error) {
 			return nil, err
 		}
 	}
-	return &tx{
-		ctx:           ctx,
-		txn:           db.bdb.NewTransactionAt(readTs, false),
-		b:             db.bdb.NewWriteBatchAt(readTs),
-		txr:           txr,
-		readTs:        readTs,
-		db:            db,
-		me:            end,
-		update:        update,
-		pendingWrites: pending.NewWithDB(db.bdb),
-		conflictKeys:  make(map[uint64]struct{}),
-	}, nil
+	tx := &tx{
+		ctx:          ctx,
+		txn:          db.bdb.NewTransactionAt(readTs, false),
+		b:            db.bdb.NewWriteBatchAt(readTs),
+		txr:          txr,
+		readTs:       readTs,
+		db:           db,
+		me:           end,
+		update:       update,
+		conflictKeys: make(map[uint64]struct{}),
+	}
+	tx.pendingWrites = pending.NewWithDB(db.bdb, tx.addReadKey)
+	return tx, nil
 }
 
 type tx struct {
@@ -106,7 +107,7 @@ type tx struct {
 
 func (tx *tx) newIterator(opt badger.IteratorOptions) pending.Iterator {
 	if !tx.update {
-		return pending.TxIterator(tx.txn.NewIterator(opt))
+		return pending.TxIterator(tx.txn.NewIterator(opt), tx.addReadKey)
 	}
 	return tx.pendingWrites.MergedIterator(tx.txn, tx.readTs, opt)
 }
