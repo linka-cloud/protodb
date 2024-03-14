@@ -17,14 +17,19 @@ package db
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/mennanov/fmutils"
 	"go.linka.cloud/grpc-toolkit/logger"
+	"go.linka.cloud/protofilters/filters"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
+
+	"go.linka.cloud/protodb/internal/protodb"
 )
 
 func FilterFieldMask(m proto.Message, fm *fieldmaskpb.FieldMask) error {
@@ -87,4 +92,64 @@ func (l *lock) RLock() {
 func (l *lock) RUnlock() {
 	logger.C(context.Background()).Warnf("runlock")
 	l.m.RUnlock()
+}
+
+func IsKeyOnlyFilter(f protodb.Filter, field string) bool {
+	if f == nil {
+		return false
+	}
+	if f.Expr().GetCondition().GetField() != field {
+		return false
+	}
+	for _, v := range f.Expr().GetAndExprs() {
+		if !IsKeyOnlyFilter(v, field) {
+			return false
+		}
+	}
+	for _, v := range f.Expr().GetOrExprs() {
+		if !IsKeyOnlyFilter(v, field) {
+			return false
+		}
+	}
+	return true
+}
+
+func MatchKey(filter filters.FieldFilterer, value string) (bool, error) {
+	ok, err := doMatchKey(filter.Expr().GetCondition().GetFilter(), value)
+	if err != nil {
+		return false, err
+	}
+	for _, v := range filter.Expr().GetAndExprs() {
+		and, err := doMatchKey(v.GetCondition().GetFilter(), value)
+		if err != nil {
+			return false, err
+		}
+		ok = ok && and
+	}
+	for _, v := range filter.Expr().GetOrExprs() {
+		or, err := doMatchKey(v.GetCondition().GetFilter(), value)
+		if err != nil {
+			return false, err
+		}
+		ok = ok || or
+	}
+	return ok, nil
+}
+
+func doMatchKey(filter *filters.Filter, value string) (bool, error) {
+	if filter == nil {
+		return true, nil
+	}
+	switch f := filter.Match.(type) {
+	case *filters.Filter_String_:
+		return f.String_.Match(&value)
+	case *filters.Filter_Number:
+		v, err := strconv.ParseFloat(value, 64)
+		if err != nil {
+			return false, err
+		}
+		return f.Number.Match(&v)
+	default:
+		return false, fmt.Errorf("unsupported filter type for key: %T", f)
+	}
 }

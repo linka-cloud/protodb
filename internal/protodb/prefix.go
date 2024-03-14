@@ -27,12 +27,12 @@ const (
 	Descriptors = "_schema"
 )
 
-func DataPrefix(m proto.Message) ([]byte, error) {
-	k, err := KeyFor(m)
+func DataPrefix(m proto.Message) (key []byte, field string, value string, err error) {
+	k, field, err := KeyFor(m)
 	if err != nil {
-		return []byte(fmt.Sprintf("%s/%s/", Data, m.ProtoReflect().Descriptor().FullName())), fmt.Errorf("key: %w", err)
+		return []byte(fmt.Sprintf("%s/%s/", Data, m.ProtoReflect().Descriptor().FullName())), field, k, fmt.Errorf("key: %w", err)
 	}
-	return []byte(fmt.Sprintf("%s/%s/%s", Data, m.ProtoReflect().Descriptor().FullName(), k)), nil
+	return []byte(fmt.Sprintf("%s/%s/%s", Data, m.ProtoReflect().Descriptor().FullName(), k)), field, k, nil
 }
 
 func DescriptorPrefix(d *descriptorpb.FileDescriptorProto) []byte {

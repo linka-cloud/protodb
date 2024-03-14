@@ -112,7 +112,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 		return nil, nil, badger.ErrDBClosed
 	}
 	o := makeGetOpts(opts...)
-	prefix, _ := protodb.DataPrefix(m)
+	prefix, field, key, _ := protodb.DataPrefix(m)
 	it := tx.txn.NewIterator(badger.IteratorOptions{Prefix: prefix, PrefetchValues: false})
 	defer it.Close()
 	hasContinuationToken := o.Paging.GetToken() != ""
@@ -132,6 +132,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 	if err := outToken.ValidateFor(inToken); err != nil {
 		return nil, nil, err
 	}
+	keyOnly := IsKeyOnlyFilter(o.Filter, field)
 	var (
 		count   = uint64(0)
 		match   = true
@@ -142,30 +143,54 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 			return nil, nil, err
 		}
 		item := it.Item()
-		tx.addReadKey(item.Key())
+		key := key
+		if key == "" {
+			key = string(item.Key()[len(prefix):])
+		}
 		if item.Version() <= inToken.Ts &&
 			count < o.Paging.GetOffset() &&
 			bytes.Compare(item.Key(), inToken.GetLastPrefix()) <= 0 {
 			continue
 		}
 		v := m.ProtoReflect().New().Interface()
-		if err := item.Value(func(val []byte) error {
-			if err := tx.db.unmarshal(val, v); err != nil {
-				return err
-			}
-			if o.Filter != nil {
-				match, err = pf.Match(v, o.Filter)
-				if err != nil {
+
+		if o.Filter == nil || !keyOnly {
+			tx.addReadKey(item.Key())
+			if err := item.Value(func(val []byte) error {
+				if err := tx.db.unmarshal(val, v); err != nil {
 					return err
 				}
-				if match {
-					count++
+				if o.Filter != nil {
+					match, err = pf.Match(v, o.Filter)
+					if err != nil {
+						return err
+					}
 				}
+				return nil
+			}); err != nil {
+				return nil, nil, err
 			}
-			return nil
-		}); err != nil {
-			return nil, nil, err
+			if !match {
+				continue
+			}
+		} else {
+			match, err = MatchKey(o.Filter, key)
+			if err != nil {
+				return nil, nil, err
+			}
+			if !match {
+				continue
+			}
+			if err := item.Value(func(val []byte) error {
+				if err := tx.db.unmarshal(val, v); err != nil {
+					return err
+				}
+				return nil
+			}); err != nil {
+				return nil, nil, err
+			}
 		}
+		count++
 		if max := o.Paging.GetOffset() + o.Paging.GetLimit(); max != 0 {
 			if count == max+1 || (hasContinuationToken && count == o.Paging.GetLimit()+1) {
 				hasNext = true
@@ -175,11 +200,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 				continue
 			}
 		}
-		if !match {
-			continue
-		}
-		outToken.LastPrefix = make([]byte, len(item.Key()))
-		copy(outToken.LastPrefix, item.Key())
+		outToken.LastPrefix = item.KeyCopy(outToken.LastPrefix)
 		if o.FieldMask != nil {
 			if err := FilterFieldMask(v, o.FieldMask); err != nil {
 				return nil, nil, err
@@ -227,7 +248,7 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 		applyDefaults(m)
 	}
 	o := makeSetOpts(opts...)
-	k, err := protodb.DataPrefix(m)
+	k, _, _, err := protodb.DataPrefix(m)
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +329,7 @@ func (tx *tx) delete(ctx context.Context, m proto.Message) error {
 		return badger.ErrReadOnlyTxn
 	}
 	// TODO(adphi): should we check / read for key first ?
-	k, err := protodb.DataPrefix(m)
+	k, _, _, err := protodb.DataPrefix(m)
 	if err != nil {
 		return err
 	}

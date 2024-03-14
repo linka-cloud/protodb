@@ -26,10 +26,16 @@ import (
 	"go.linka.cloud/protodb/protodb"
 )
 
-func KeyFromOpts(m proto.Message) (string, bool) {
+const (
+	fieldID   = "id"
+	fieldKey  = "key"
+	fieldName = "name"
+)
+
+func KeyFromOpts(m proto.Message) (key string, field string, ok bool) {
 	sk := proto.GetExtension(m.ProtoReflect().Descriptor().Options(), protodb.E_StaticKey)
 	if sk != nil && sk.(string) != "" {
-		return sk.(string), true
+		return sk.(string), "", true
 	}
 	var kf protoreflect.FieldDescriptor
 	fields := m.ProtoReflect().Type().Descriptor().Fields()
@@ -50,24 +56,25 @@ func KeyFromOpts(m proto.Message) (string, bool) {
 		}
 	}
 	if kf == nil {
-		return "", false
+		return "", "", false
 	}
+	field = string(kf.Name())
 	v := m.ProtoReflect().Get(kf)
 	if !v.IsValid() {
-		return "", true
+		return "", field, true
 	}
 	if k := v.String(); k != "" && k != "0" {
-		return k, true
+		return k, field, true
 	}
-	return "", true
+	return "", field, true
 }
 
-func KeyFor(m proto.Message) (string, error) {
-	if k, ok := KeyFromOpts(m); ok {
+func KeyFor(m proto.Message) (key string, field string, err error) {
+	if k, field, ok := KeyFromOpts(m); ok {
 		if k != "" {
-			return k, nil
+			return k, field, nil
 		}
-		return "", fmt.Errorf("key / id not found in %s", m.ProtoReflect().Type().Descriptor().FullName())
+		return "", field, fmt.Errorf("key / id not found in %s", m.ProtoReflect().Type().Descriptor().FullName())
 
 	}
 	switch i := interface{}(m).(type) {
@@ -86,161 +93,185 @@ func KeyFor(m proto.Message) (string, error) {
 		}
 		switch fd.Kind() {
 		case protoreflect.MessageKind:
-			return "", fmt.Errorf("key %s is a message", fd.FullName())
+			return "", "", fmt.Errorf("key %s is a message", fd.FullName())
 		case protoreflect.GroupKind:
-			return "", fmt.Errorf("key %s is a group", fd.FullName())
+			return "", "", fmt.Errorf("key %s is a group", fd.FullName())
 		}
 		if fd.Cardinality() == protoreflect.Repeated {
-			return "", fmt.Errorf("key %s is repeated", fd.FullName())
+			return "", "", fmt.Errorf("key %s is repeated", fd.FullName())
 		}
 		if !i.Has(fd) {
 			break
 		}
-		return i.Get(fd).String(), nil
+		return i.Get(fd).String(), string(fd.Name()), nil
 	case interface{ Key() string }:
+		field = fieldID
 		if k := i.Key(); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ GetKey() string }:
+		field = fieldID
 		if k := i.GetKey(); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ ID() string }:
+		field = fieldID
 		if k := i.ID(); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ GetID() string }:
+		field = fieldID
 		if k := i.GetID(); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ Id() string }:
+		field = fieldID
 		if k := i.Id(); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ GetId() string }:
+		field = fieldID
 		if k := i.GetId(); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ ID() int64 }:
+		field = fieldID
 		if i.ID() == 0 {
 			break
 		}
 		if k := fmt.Sprintf("%d", i.ID()); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ GetID() int64 }:
+		field = fieldID
 		if i.GetID() == 0 {
 			break
 		}
 		if k := fmt.Sprintf("%d", i.GetID()); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ Id() int64 }:
+		field = fieldID
 		if i.Id() == 0 {
 			break
 		}
 		if k := fmt.Sprintf("%d", i.Id()); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ GetId() int64 }:
+		field = fieldID
 		if i.GetId() == 0 {
 			break
 		}
 		if k := fmt.Sprintf("%d", i.GetId()); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ ID() int32 }:
+		field = fieldID
 		if i.ID() == 0 {
 			break
 		}
 		if k := fmt.Sprintf("%d", i.ID()); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ GetID() int32 }:
+		field = fieldID
 		if i.GetID() == 0 {
 			break
 		}
 		if k := fmt.Sprintf("%d", i.GetID()); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ Id() int32 }:
+		field = fieldID
 		if i.Id() == 0 {
 			break
 		}
 		if k := fmt.Sprintf("%d", i.Id()); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ GetId() int32 }:
+		field = fieldID
 		if i.GetId() == 0 {
 			break
 		}
 		if k := fmt.Sprintf("%d", i.GetId()); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ ID() uint32 }:
+		field = fieldID
 		if i.ID() == 0 {
 			break
 		}
 		if k := fmt.Sprintf("%d", i.ID()); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ GetID() uint32 }:
+		field = fieldID
 		if i.GetID() == 0 {
 			break
 		}
 		if k := fmt.Sprintf("%d", i.GetID()); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ Id() uint32 }:
+		field = fieldID
 		if i.Id() == 0 {
 			break
 		}
 		if k := fmt.Sprintf("%d", i.Id()); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ GetId() uint32 }:
+		field = fieldID
 		if i.GetId() == 0 {
 			break
 		}
 		if k := fmt.Sprintf("%d", i.GetId()); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ ID() uint64 }:
+		field = fieldID
 		if i.ID() == 0 {
 			break
 		}
 		if k := fmt.Sprintf("%d", i.ID()); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ GetID() uint64 }:
+		field = fieldID
 		if i.GetID() == 0 {
 			break
 		}
 		if k := fmt.Sprintf("%d", i.GetID()); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ Id() uint64 }:
+		field = fieldID
 		if i.Id() == 0 {
 			break
 		}
 		if k := fmt.Sprintf("%d", i.Id()); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ GetId() uint64 }:
+		field = fieldID
 		if i.GetId() == 0 {
 			break
 		}
 		if k := fmt.Sprintf("%d", i.GetId()); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ Name() string }:
+		field = fieldName
 		if k := i.Name(); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	case interface{ GetName() string }:
+		field = fieldName
 		if k := i.GetName(); k != "" {
-			return k, nil
+			return k, field, nil
 		}
 	}
-	return "", fmt.Errorf("key / id not found in %s", m.ProtoReflect().Type().Descriptor().FullName())
+	return "", field, fmt.Errorf("key / id not found in %s", m.ProtoReflect().Type().Descriptor().FullName())
 }
