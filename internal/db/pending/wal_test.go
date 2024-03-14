@@ -74,7 +74,7 @@ func TestWal(t *testing.T) {
 
 	t.Run("Delete", func(t *testing.T) {
 		w.Delete(e.Key)
-		assert.Equal(t, &pointer{key: e.Key, offset: s, len: uint32(headerSize + len(e.Key)), deleted: true}, w.m[y.Hash(e.Key)])
+		assert.Equal(t, &pointer{key: e.Key, offset: s + s%4096, len: uint32(headerSize + len(e.Key)), deleted: true}, w.m[y.Hash(e.Key)])
 		require.NoError(t, w.Replay(func(e *badger.Entry) error {
 			assert.Equal(t, entries[0].Key, e.Key)
 			assert.Equal(t, bitDelete, e.UserMeta)

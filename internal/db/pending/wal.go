@@ -17,13 +17,20 @@ package pending
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
+	"sync/atomic"
 
 	"github.com/dgraph-io/badger/v3"
 	"github.com/dgraph-io/badger/v3/y"
 	"go.uber.org/multierr"
 )
+
+var counter = struct {
+	n atomic.Uint64
+}{}
 
 type pointer struct {
 	key     []byte
@@ -72,7 +79,15 @@ func (h *header) decode(buf []byte) int {
 }
 
 func newWal(path string, p *mem) *wal {
-	f, err := os.CreateTemp(path, "tx-wal-")
+	var fp string
+	for {
+		n := counter.n.Add(1)
+		fp = filepath.Join(path, fmt.Sprintf("tx-%04d.wal", n))
+		if err := os.Remove(fp); os.IsNotExist(err) {
+			break
+		}
+	}
+	f, err := os.Create(fp)
 	y.Check(err)
 	if p == nil {
 		return &wal{f: f, m: make(map[uint32]*pointer)}
@@ -139,7 +154,7 @@ func (w *wal) append(e *badger.Entry) error {
 		return err
 	}
 	w.m[y.Hash(e.Key)] = p
-	w.pos += int64(p.len)
+	w.pos += int64(p.len + p.len%4096)
 	return nil
 }
 
