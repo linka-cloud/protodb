@@ -17,6 +17,7 @@ package replication
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -27,9 +28,14 @@ import (
 	"go.linka.cloud/protodb/internal/replication/pb"
 )
 
+type stream struct {
+	c pb.ReplicationService_ReplicateClient
+	n string
+}
+
 func (r *Repl) NewTx(ctx context.Context) (*Tx, error) {
 	log := logger.C(ctx)
-	var cs []pb.ReplicationService_ReplicateClient
+	var cs []*stream
 	if r.mode > ModeSync {
 		ctx = context.Background()
 	}
@@ -39,7 +45,7 @@ func (r *Repl) NewTx(ctx context.Context) (*Tx, error) {
 		if err != nil {
 			return nil, err
 		}
-		cs = append(cs, c)
+		cs = append(cs, &stream{n: v.name, c: c})
 		log.Infof("Started replicated transaction with %v", v.name)
 	}
 	return &Tx{mode: r.mode, cs: cs}, nil
@@ -47,18 +53,18 @@ func (r *Repl) NewTx(ctx context.Context) (*Tx, error) {
 
 type Tx struct {
 	mode  Mode
-	cs    []pb.ReplicationService_ReplicateClient
+	cs    []*stream
 	cmu   sync.RWMutex
 	count atomic.Uint64
 }
 
-func (r *Tx) streams() []pb.ReplicationService_ReplicateClient {
+func (r *Tx) streams() []*stream {
 	r.cmu.RLock()
 	defer r.cmu.RUnlock()
-	return append([]pb.ReplicationService_ReplicateClient{}, r.cs...)
+	return append([]*stream{}, r.cs...)
 }
 
-func (r *Tx) removeSteam(s pb.ReplicationService_ReplicateClient) {
+func (r *Tx) removeSteam(s *stream) {
 	r.cmu.Lock()
 	defer r.cmu.Unlock()
 	for i, v := range r.cs {
@@ -68,6 +74,17 @@ func (r *Tx) removeSteam(s pb.ReplicationService_ReplicateClient) {
 		r.cs = append(r.cs[:i], r.cs[i+1:]...)
 		break
 	}
+}
+
+func (r *Tx) hasStreams(s *stream) bool {
+	r.cmu.RLock()
+	defer r.cmu.RUnlock()
+	for _, v := range r.cs {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Tx) New(ctx context.Context, at uint64) error {
@@ -91,8 +108,8 @@ func (r *Tx) Commit(ctx context.Context, at uint64) error {
 
 func (r *Tx) cancel(_ context.Context) error {
 	var merr error
-	for _, c := range r.cs {
-		if err := c.CloseSend(); err != nil {
+	for _, v := range r.cs {
+		if err := v.c.CloseSend(); err != nil {
 			merr = multierr.Append(merr, err)
 		}
 	}
@@ -124,24 +141,27 @@ func (r *Tx) do(ctx context.Context, msg *pb.Op) error {
 	return nil
 }
 
+type result struct {
+	s   *stream
+	err error
+}
+
 func (r *Tx) send(_ context.Context, msg *pb.Op, cb func(err error)) error {
 	cs := r.streams()
-	serrs := make(chan error, len(cs))
-	aerrs := make(chan error, len(cs))
+	sres := make(chan *result, len(cs))
+	ares := make(chan *result, len(cs))
 	for _, v := range cs {
-		go func(v pb.ReplicationService_ReplicateClient) {
-			err := v.Send(msg.CloneVT())
-			serrs <- err
-			_, err = v.Recv()
-			aerrs <- err
-			if err != nil {
-				r.removeSteam(v)
-			}
+		go func(v *stream) {
+			err := v.c.Send(msg.CloneVT())
+			sres <- &result{err: err, s: v}
+			_, err = v.c.Recv()
+			ares <- &result{err: err, s: v}
 		}(v)
 	}
 	var err error
 	for range cs {
-		err = multierr.Append(err, <-serrs)
+		res := <-sres
+		err = r.handleErr(res, err)
 	}
 	if err != nil {
 		return err
@@ -149,7 +169,8 @@ func (r *Tx) send(_ context.Context, msg *pb.Op, cb func(err error)) error {
 	go func() {
 		var err error
 		for range cs {
-			err = multierr.Append(err, <-aerrs)
+			res := <-ares
+			err = r.handleErr(res, err)
 		}
 		if cb != nil {
 			cb(err)
@@ -167,4 +188,12 @@ func cb(log logger.Logger, errs chan<- error) func(err error) {
 			log.WithError(err).Errorf("failed to send replication message")
 		}
 	}
+}
+
+func (r *Tx) handleErr(res *result, err error) error {
+	if res.err != nil && r.hasStreams(res.s) {
+		r.removeSteam(res.s)
+		return multierr.Append(err, fmt.Errorf("%s: %w", res.s.n, res.err))
+	}
+	return err
 }
