@@ -65,7 +65,6 @@ func newTx(ctx context.Context, db *db, opts ...protodb.TxOption) (*tx, error) {
 	tx := &tx{
 		ctx:          ctx,
 		txn:          db.bdb.NewTransactionAt(readTs, false),
-		b:            db.bdb.NewWriteBatchAt(readTs),
 		txr:          txr,
 		readTs:       readTs,
 		db:           db,
@@ -83,7 +82,6 @@ type tx struct {
 	db       *db
 	update   bool
 	txn      *badger.Txn
-	b        *badger.WriteBatch
 	readTs   uint64
 	doneRead bool
 
@@ -379,18 +377,20 @@ func (tx *tx) Commit(ctx context.Context) error {
 	}
 	defer tx.db.orc.doneCommit(ts)
 
+	b := tx.db.bdb.NewWriteBatchAt(ts)
+	defer b.Cancel()
 	if err := tx.pendingWrites.Replay(func(e *badger.Entry) error {
 		if e.UserMeta != 0 {
-			if err := tx.b.DeleteAt(e.Key, ts); err != nil {
+			if err := b.DeleteAt(e.Key, ts); err != nil {
 				return err
 			}
 		}
-		return tx.b.SetEntryAt(e, ts)
+		return b.SetEntryAt(e, ts)
 	}); err != nil {
 		metrics.Tx.ErrorsCounter.WithLabelValues("").Inc()
 		return err
 	}
-	if err := tx.b.Flush(); err != nil {
+	if err := b.Flush(); err != nil {
 		metrics.Tx.ErrorsCounter.WithLabelValues("").Inc()
 		return err
 	}
@@ -398,7 +398,6 @@ func (tx *tx) Commit(ctx context.Context) error {
 }
 
 func (tx *tx) Close() {
-	tx.b.Cancel()
 	tx.txn.Discard()
 	tx.close()
 }

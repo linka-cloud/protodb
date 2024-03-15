@@ -427,6 +427,7 @@ func TestOversizeBatchInsert(t *testing.T, db protodb.Client) {
 			t.Logf("%d%%: inserted %d items", p, i)
 		}
 	}
+	t.Logf("100%%: inserted %d items", max)
 	err = tx.Commit(ctx)
 	require.NoError(err)
 }

@@ -60,8 +60,8 @@ func (db *db) LoadDescriptors(ctx context.Context) error {
 	return db.loadDescriptors(ctx)
 }
 
-func (db *db) NewWriteBatchAt(readTs uint64) *badger.WriteBatch {
-	return db.bdb.NewWriteBatchAt(readTs)
+func (db *db) NewWriteBatchAt(commitTs uint64) *badger.WriteBatch {
+	return db.bdb.NewWriteBatchAt(commitTs)
 }
 
 func (db *db) Path() string {

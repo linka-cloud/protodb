@@ -113,7 +113,7 @@ func (r *Repl) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 			if e.UserMeta != 0 {
 				return batch.DeleteAt(e.Key, cmsg.Commit.At)
 			}
-			return batch.SetEntry(e)
+			return batch.SetEntryAt(e, cmsg.Commit.At)
 		})
 		if err != nil {
 			return gerrs.Internalf("failed to write transaction: %v", err)
