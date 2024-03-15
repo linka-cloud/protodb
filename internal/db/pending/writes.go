@@ -83,7 +83,7 @@ func (w *writes) iterator(readTs uint64, reversed bool) iterator {
 
 func (w *writes) Set(e *badger.Entry) {
 	if w.w == nil && !w.checkSize(e) {
-		w.w = newWal(w.path, w.m)
+		w.w = newWal(w.path, w.m, w.maxSize)
 		w.c = w.w
 	}
 	w.c.Set(e)
@@ -94,7 +94,7 @@ func (w *writes) Delete(key []byte) {
 		Key: key,
 	}
 	if w.w == nil && !w.checkSize(e) {
-		w.w = newWal(w.path, w.m)
+		w.w = newWal(w.path, w.m, w.maxSize)
 		w.c = w.w
 	}
 	w.c.Delete(key)

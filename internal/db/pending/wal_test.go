@@ -51,7 +51,7 @@ func genEntries(count int, size int64) []*badger.Entry {
 }
 
 func TestWal(t *testing.T) {
-	w := newWal(os.TempDir(), nil)
+	w := newWal(os.TempDir(), nil, 0)
 	w.addReadKey = func(key []byte) {}
 	defer w.Close()
 
@@ -74,7 +74,8 @@ func TestWal(t *testing.T) {
 
 	t.Run("Delete", func(t *testing.T) {
 		w.Delete(e.Key)
-		assert.Equal(t, &pointer{key: e.Key, offset: s + s%4096, len: uint32(headerSize + len(e.Key)), deleted: true}, w.m[y.Hash(e.Key)])
+		// memfile.AllocateSlice add 4 bytes where it stores the slice length
+		assert.Equal(t, &pointer{key: e.Key, offset: s + 4, len: uint32(headerSize + len(e.Key)), deleted: true}, w.m[y.Hash(e.Key)])
 		require.NoError(t, w.Replay(func(e *badger.Entry) error {
 			assert.Equal(t, entries[0].Key, e.Key)
 			assert.Equal(t, bitDelete, e.UserMeta)
@@ -145,7 +146,52 @@ func TestWal(t *testing.T) {
 
 		require.NoError(t, w.Close())
 
-		_, err := os.Stat(w.f.Name())
+		_, err := os.Stat(w.f.Fd.Name())
 		assert.ErrorIs(t, err, os.ErrNotExist)
 	})
+}
+
+func writeWal(entries []*badger.Entry) *wal {
+	w := newWal(os.TempDir(), nil, 0)
+	defer w.Close()
+	for _, v := range entries {
+		w.Set(v)
+	}
+	return w
+}
+
+func BenchmarkWallWrite(b *testing.B) {
+	sizes := []int{10, 100, 1_000, 10_000, 100_000, 1_000_000}
+	entries := genEntries(sizes[len(sizes)-1], 1024)
+	for _, size := range sizes {
+		b.Run(fmt.Sprintf("%d", size), func(b *testing.B) {
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				writeWal(entries[:size])
+			}
+			b.ReportAllocs()
+		})
+	}
+}
+
+func BenchmarkWalReplay(b *testing.B) {
+	sizes := []int{10, 100, 1_000, 10_000, 100_000, 1_000_000}
+	entries := genEntries(sizes[len(sizes)-1], 1024)
+	for _, size := range sizes {
+		b.Run(fmt.Sprintf("%d", size), func(b *testing.B) {
+			w := newWal(os.TempDir(), nil, 0)
+			defer w.Close()
+			for _, v := range entries[:size] {
+				w.Set(v)
+			}
+			defer w.Close()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				require.NoError(b, w.Replay(func(e *badger.Entry) error {
+					return nil
+				}))
+			}
+			b.ReportAllocs()
+		})
+	}
 }

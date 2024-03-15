@@ -17,6 +17,7 @@ package pending
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,7 +26,7 @@ import (
 
 	"github.com/dgraph-io/badger/v3"
 	"github.com/dgraph-io/badger/v3/y"
-	"go.uber.org/multierr"
+	"github.com/dgraph-io/ristretto/z"
 )
 
 var counter = struct {
@@ -54,31 +55,24 @@ type walEntry struct {
 	v []byte
 }
 
-func (h *header) encode(out []byte) int {
+func (h *header) encode(out []byte) {
 	out[0] = h.userMeta
-	index := 1
-	index += binary.PutUvarint(out[index:], uint64(h.klen))
-	index += binary.PutUvarint(out[index:], uint64(h.vlen))
-	index += binary.PutUvarint(out[index:], h.expiresAt)
-	return index
+	binary.BigEndian.PutUint32(out[1:], h.klen)
+	binary.BigEndian.PutUint32(out[5:], h.vlen)
+	binary.BigEndian.PutUint64(out[9:], h.expiresAt)
+	return
 }
 
 // decode decodes the given header from the provided byte slice.
 // Returns the number of bytes read.
-func (h *header) decode(buf []byte) int {
+func (h *header) decode(buf []byte) {
 	h.userMeta = buf[0]
-	index := 1
-	klen, count := binary.Uvarint(buf[index:])
-	h.klen = uint32(klen)
-	index += count
-	vlen, count := binary.Uvarint(buf[index:])
-	h.vlen = uint32(vlen)
-	index += count
-	h.expiresAt, count = binary.Uvarint(buf[index:])
-	return index + count
+	h.klen = binary.BigEndian.Uint32(buf[1:])
+	h.vlen = binary.BigEndian.Uint32(buf[5:])
+	h.expiresAt = binary.BigEndian.Uint64(buf[9:])
 }
 
-func newWal(path string, p *mem) *wal {
+func newWal(path string, p *mem, size int64) *wal {
 	var fp string
 	for {
 		n := counter.n.Add(1)
@@ -87,8 +81,13 @@ func newWal(path string, p *mem) *wal {
 			break
 		}
 	}
-	f, err := os.Create(fp)
-	y.Check(err)
+	if size == 0 {
+		size = 1024 * 1024
+	}
+	f, err := z.OpenMmapFile(fp, os.O_RDWR|os.O_CREATE|os.O_TRUNC, int(size))
+	if !errors.Is(err, z.NewFile) {
+		y.Check(err)
+	}
 	if p == nil {
 		return &wal{f: f, m: make(map[uint32]*pointer)}
 	}
@@ -101,7 +100,7 @@ func newWal(path string, p *mem) *wal {
 }
 
 type wal struct {
-	f          *os.File
+	f          *z.MmapFile
 	m          map[uint32]*pointer
 	pos        int64
 	addReadKey func(key []byte)
@@ -123,17 +122,19 @@ func (w *wal) Delete(key []byte) {
 }
 
 func (w *wal) Close() error {
-	return multierr.Combine(w.f.Close(), os.Remove(w.f.Name()))
+	return w.f.Delete()
 }
 
 func (w *wal) append(e *badger.Entry) error {
-	if _, err := w.f.Seek(w.pos, 0); err != nil {
+	l := uint32(headerSize + len(e.Key) + len(e.Value))
+	buf, pos, err := w.f.AllocateSlice(int(l), int(w.pos))
+	if err != nil {
 		return err
 	}
 	p := &pointer{
 		key:     e.Key,
 		offset:  uint32(w.pos),
-		len:     uint32(headerSize + len(e.Key) + len(e.Value)),
+		len:     l,
 		deleted: e.UserMeta&bitDelete > 0,
 	}
 	h := header{
@@ -142,19 +143,11 @@ func (w *wal) append(e *badger.Entry) error {
 		vlen:      uint32(len(e.Value)),
 		expiresAt: e.ExpiresAt,
 	}
-	hb := make([]byte, headerSize)
-	h.encode(hb)
-	if _, err := w.f.Write(hb[:]); err != nil {
-		return err
-	}
-	if _, err := w.f.Write(e.Key); err != nil {
-		return err
-	}
-	if _, err := w.f.Write(e.Value); err != nil {
-		return err
-	}
+	h.encode(buf)
+	copy(buf[headerSize:], e.Key)
+	copy(buf[headerSize+int(h.klen):], e.Value)
 	w.m[y.Hash(e.Key)] = p
-	w.pos += int64(p.len + p.len%4096)
+	w.pos = int64(pos)
 	return nil
 }
 
@@ -163,17 +156,11 @@ func (w *wal) read(key []byte) (*badger.Entry, error) {
 	if !ok {
 		return nil, badger.ErrKeyNotFound
 	}
-	if _, err := w.f.Seek(int64(p.offset), 0); err != nil {
-		return nil, err
-	}
-	buf := make([]byte, p.len)
-	if _, err := w.f.Read(buf); err != nil {
-		return nil, err
-	}
+	buf := w.f.Slice(int(p.offset))
 	var e walEntry
 	e.h.decode(buf)
 	e.k = buf[headerSize : headerSize+e.h.klen]
-	e.v = buf[headerSize+e.h.klen:]
+	e.v = buf[headerSize+e.h.klen : headerSize+e.h.klen+e.h.vlen]
 	return &badger.Entry{
 		Key:       e.k,
 		Value:     e.v,
