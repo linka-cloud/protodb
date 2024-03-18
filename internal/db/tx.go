@@ -45,16 +45,14 @@ func newTx(ctx context.Context, db *db, opts ...protodb.TxOption) (*tx, error) {
 		opt(&o)
 	}
 	update := !o.ReadOnly
-	if update && db.replicated() {
-		if !db.repl.IsLeader() {
-			return nil, protodb.ErrNotLeader
-		}
-	}
 	var (
 		txr *replication.Tx
 		err error
 	)
-	if db.replicated() && update {
+	if update && db.replicated() {
+		if !db.repl.IsLeader() {
+			return nil, protodb.ErrNotLeader
+		}
 		if txr, err = db.repl.NewTx(ctx); err != nil {
 			return nil, err
 		}
@@ -124,10 +122,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 		return nil, nil, badger.ErrDBClosed
 	}
 	o := makeGetOpts(opts...)
-
 	prefix, field, key, _ := protodb.DataPrefix(m)
-	it := tx.newIterator(badger.IteratorOptions{Prefix: prefix, PrefetchValues: false})
-	defer it.Close()
 	hasContinuationToken := o.Paging.GetToken() != ""
 	inToken := &token.Token{}
 	if err := inToken.Decode(o.Paging.GetToken()); err != nil {
@@ -146,6 +141,11 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 		return nil, nil, err
 	}
 	keyOnly := IsKeyOnlyFilter(o.Filter, field)
+	if keyOnly && o.Filter.Expr().GetCondition().GetFilter().GetString_().GetHasPrefix() != "" {
+		prefix = []byte(o.Filter.Expr().GetCondition().GetFilter().GetString_().GetHasPrefix())
+	}
+	it := tx.newIterator(badger.IteratorOptions{Prefix: prefix, PrefetchValues: false})
+	defer it.Close()
 	var (
 		count   = uint64(0)
 		match   = true
@@ -256,9 +256,6 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 	if m == nil {
 		return nil, errors.New("empty message")
 	}
-	if tx.db.opts.applyDefaults {
-		applyDefaults(m)
-	}
 	o := makeSetOpts(opts...)
 	k, _, _, err := protodb.DataPrefix(m)
 	if err != nil {
@@ -279,6 +276,9 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 			return nil, err
 		}
 		m = old
+	}
+	if tx.db.opts.applyDefaults {
+		applyDefaults(m)
 	}
 	b, err := tx.db.marshal(m)
 	if err != nil {
