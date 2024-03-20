@@ -49,18 +49,19 @@ func newTx(ctx context.Context, db *db, opts ...protodb.TxOption) (*tx, error) {
 		opt(&o)
 	}
 	update := !o.ReadOnly
-	var (
-		txr *replication.Tx
-		err error
-	)
-	if update && db.replicated() {
-		if !db.repl.IsLeader() {
-			return nil, protodb.ErrNotLeader
+	var txr replication.Maybe
+	if update {
+		txr = replication.Maybe{DB: db}
+		var err error
+		if db.replicated() {
+			if !db.repl.IsLeader() {
+				return nil, protodb.ErrNotLeader
+			}
+			if txr.Tx, err = db.repl.NewTx(ctx); err != nil {
+				return nil, err
+			}
 		}
-		if txr, err = db.repl.NewTx(ctx); err != nil {
-			return nil, err
-		}
-		if err := txr.New(ctx, readTs); err != nil {
+		if err = txr.New(ctx, readTs); err != nil {
 			return nil, err
 		}
 	}
@@ -74,7 +75,6 @@ func newTx(ctx context.Context, db *db, opts ...protodb.TxOption) (*tx, error) {
 		update:       update,
 		conflictKeys: make(map[uint64]struct{}),
 	}
-	tx.pendingWrites = pending.NewWithDB(db.bdb, tx.addReadKey)
 	return tx, nil
 }
 
@@ -89,9 +89,8 @@ type tx struct {
 
 	reads []uint64 // contains fingerprints of keys read.
 	// contains fingerprints of keys written. This is used for conflict detection.
-	conflictKeys  map[uint64]struct{}
-	readsLock     sync.Mutex // guards the reads slice. See addReadKey.
-	pendingWrites pending.IterableMergedWrites
+	conflictKeys map[uint64]struct{}
+	readsLock    sync.Mutex // guards the reads slice. See addReadKey.
 
 	applyDefaults bool
 
@@ -102,14 +101,14 @@ type tx struct {
 	m    sync.RWMutex
 	done bool
 
-	txr *replication.Tx
+	txr replication.Maybe
 }
 
 func (tx *tx) newIterator(opt badger.IteratorOptions) pending.Iterator {
 	if !tx.update {
 		return pending.TxIterator(tx.txn.NewIterator(opt), tx.addReadKey)
 	}
-	return tx.pendingWrites.MergedIterator(tx.txn, tx.readTs, opt)
+	return tx.txr.Iterator(tx.txn, tx.readTs, opt)
 }
 
 func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (out []proto.Message, info *protodb.PagingInfo, err error) {
@@ -317,7 +316,6 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 	}
 	tx.db.opts.logger.Tracef("set key %q", string(k))
 	tx.addConflictKey(e.Key)
-	tx.pendingWrites.Set(e)
 	return m, tx.txr.Set(ctx, e.Key, e.Value, e.ExpiresAt)
 }
 
@@ -330,7 +328,6 @@ func (tx *tx) setRaw(ctx context.Context, key, val []byte) error {
 		return err
 	}
 	tx.addConflictKey(key)
-	tx.pendingWrites.Set(badger.NewEntry(key, val))
 	tx.db.opts.logger.Tracef("raw set key %q", string(key))
 	return tx.txr.Set(ctx, key, val, 0)
 }
@@ -365,7 +362,6 @@ func (tx *tx) delete(ctx context.Context, m proto.Message) error {
 		return err
 	}
 	tx.addConflictKey(k)
-	tx.pendingWrites.Delete(k)
 	tx.db.opts.logger.Tracef("delete key %q", k)
 	return tx.txr.Delete(ctx, k)
 }
@@ -380,7 +376,6 @@ func (tx *tx) deleteRaw(ctx context.Context, key []byte) error {
 	}
 	tx.addConflictKey(key)
 	tx.db.opts.logger.Tracef("delete key %q", string(key))
-	tx.pendingWrites.Delete(key)
 	return tx.txr.Delete(ctx, key)
 }
 
@@ -402,23 +397,11 @@ func (tx *tx) Commit(ctx context.Context) error {
 	defer tx.db.orc.doneCommit(ts)
 
 	tx.db.opts.logger.Debugf("committing at %d", ts)
-	b := tx.db.bdb.NewWriteBatchAt(ts)
-	defer b.Cancel()
-	if err := tx.pendingWrites.Replay(func(e *badger.Entry) error {
-		if e.UserMeta != 0 {
-			return b.DeleteAt(e.Key, ts)
-		}
-		return b.SetEntryAt(e, ts)
-	}); err != nil {
+	if err := tx.txr.Commit(ctx, ts); err != nil {
 		metrics.Tx.ErrorsCounter.WithLabelValues("").Inc()
 		return err
 	}
-	if err := b.Flush(); err != nil {
-		metrics.Tx.ErrorsCounter.WithLabelValues("").Inc()
-		return err
-	}
-	tx.db.opts.logger.Tracef("commit at %d done", ts)
-	return tx.txr.Commit(ctx, ts)
+	return nil
 }
 
 func (tx *tx) Close() {
@@ -441,7 +424,7 @@ func (tx *tx) close() {
 	metrics.Tx.OpCountHist.Observe(float64(tx.count))
 	metrics.Tx.SizeHist.Observe(float64(tx.size))
 	tx.db.orc.doneRead(tx)
-	tx.pendingWrites.Close()
+	tx.txr.Close(context.Background())
 	tx.done = true
 	tx.m.Unlock()
 }

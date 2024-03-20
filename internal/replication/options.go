@@ -16,97 +16,124 @@ package replication
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"time"
+
+	"github.com/shaj13/raft"
 )
 
-var defaultOptions = options{
-	addrs:      []string{"localhost"},
-	gossipPort: 7080,
-	grpcPort:   7081,
-	tick:       250 * time.Millisecond,
-}
+type Option func(o *Options)
 
-type Option func(o *options)
+type Options struct {
+	Mode     Mode
+	Name     string
+	Addrs    []string
+	GRPCPort int
+	Tick     time.Duration
 
-type options struct {
-	mode       Mode
-	name       string
-	addrs      []string
-	gossipPort int
-	grpcPort   int
-	tick       time.Duration
+	GossipPort    int
+	EncryptionKey string
+
+	StartOptions []raft.StartOption
 
 	serverCert []byte
 	serverKey  []byte
-	tlsConfig  *tls.Config
 
-	encryptionKey string
+	clientCert []byte
+	clientKey  []byte
+	clientCA   []byte
+
+	tlsConfig *tls.Config
 }
 
 func WithMode(mode Mode) Option {
-	return func(o *options) {
-		o.mode = mode
+	return func(o *Options) {
+		o.Mode = mode
 	}
 }
 
 func WithName(name string) Option {
-	return func(o *options) {
-		o.name = name
+	return func(o *Options) {
+		o.Name = name
 	}
 }
 
 func WithAddrs(addrs ...string) Option {
-	return func(o *options) {
-		o.addrs = addrs
+	return func(o *Options) {
+		o.Addrs = addrs
 	}
 }
 
 func WithGossipPort(port int) Option {
-	return func(o *options) {
-		o.gossipPort = port
+	return func(o *Options) {
+		o.GossipPort = port
 	}
 }
 
 func WithGRPCPort(port int) Option {
-	return func(o *options) {
-		o.grpcPort = port
+	return func(o *Options) {
+		o.GRPCPort = port
 	}
 }
 
 func WithTick(ms int) Option {
-	return func(o *options) {
+	return func(o *Options) {
 		if ms > 100 {
-			o.tick = time.Duration(ms) * time.Millisecond
+			o.Tick = time.Duration(ms) * time.Millisecond
 		}
 	}
 }
 
+func WithRaftStartOptions(opts ...raft.StartOption) Option {
+	return func(o *Options) {
+		o.StartOptions = append(o.StartOptions, opts...)
+	}
+}
+
 func WithServerCert(cert []byte) Option {
-	return func(o *options) {
+	return func(o *Options) {
 		o.serverCert = cert
 	}
 }
 
 func WithServerKey(key []byte) Option {
-	return func(o *options) {
+	return func(o *Options) {
 		o.serverKey = key
 	}
 }
 
+func WithClientCert(cert []byte) Option {
+	return func(o *Options) {
+		o.clientCert = cert
+	}
+}
+
+func WithClientKey(key []byte) Option {
+	return func(o *Options) {
+		o.clientKey = key
+	}
+}
+
+func WithClientCA(ca []byte) Option {
+	return func(o *Options) {
+		o.clientCA = ca
+	}
+}
+
 func WithTLSConfig(config *tls.Config) Option {
-	return func(o *options) {
+	return func(o *Options) {
 		o.tlsConfig = config
 	}
 }
 
 func WithEncryptionKey(key string) Option {
-	return func(o *options) {
-		o.encryptionKey = key
+	return func(o *Options) {
+		o.EncryptionKey = key
 	}
 }
 
-func (o *options) tls() (*tls.Config, error) {
+func (o *Options) TLS() (*tls.Config, error) {
 	if o.tlsConfig != nil {
 		return o.tlsConfig, nil
 	}
@@ -123,7 +150,26 @@ func (o *options) tls() (*tls.Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	var (
+		clientCA   *x509.CertPool
+		clientCert tls.Certificate
+		auth       tls.ClientAuthType
+	)
+	if o.clientCA != nil {
+		clientCA = x509.NewCertPool()
+		clientCA.AppendCertsFromPEM(o.clientCA)
+		auth = tls.RequireAndVerifyClientCert
+	}
+	if o.clientCert != nil && o.clientKey != nil {
+		clientCert, err = tls.X509KeyPair(o.clientCert, o.clientKey)
+		if err != nil {
+			return nil, err
+		}
+	}
+	// TODO(adphi): client certs
 	return &tls.Config{
-		Certificates: []tls.Certificate{cert},
+		Certificates: []tls.Certificate{cert, clientCert},
+		ClientCAs:    clientCA,
+		ClientAuth:   auth,
 	}, nil
 }

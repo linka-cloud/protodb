@@ -16,7 +16,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             v4.25.3
-// source: internal/replication/pb/replication.proto
+// source: internal/replication/gossip/pb/gossip.proto
 
 package pb
 
@@ -33,10 +33,10 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	ReplicationService_Init_FullMethodName      = "/linka.cloud.protodb.internal.replication.ReplicationService/Init"
-	ReplicationService_Replicate_FullMethodName = "/linka.cloud.protodb.internal.replication.ReplicationService/Replicate"
-	ReplicationService_Alive_FullMethodName     = "/linka.cloud.protodb.internal.replication.ReplicationService/Alive"
-	ReplicationService_Election_FullMethodName  = "/linka.cloud.protodb.internal.replication.ReplicationService/Election"
+	ReplicationService_Init_FullMethodName      = "/linka.cloud.protodb.internal.replication.gossip.ReplicationService/Init"
+	ReplicationService_Replicate_FullMethodName = "/linka.cloud.protodb.internal.replication.gossip.ReplicationService/Replicate"
+	ReplicationService_Alive_FullMethodName     = "/linka.cloud.protodb.internal.replication.gossip.ReplicationService/Alive"
+	ReplicationService_Election_FullMethodName  = "/linka.cloud.protodb.internal.replication.gossip.ReplicationService/Election"
 )
 
 // ReplicationServiceClient is the client API for ReplicationService service.
@@ -295,7 +295,7 @@ func _ReplicationService_Election_Handler(srv interface{}, ctx context.Context, 
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var ReplicationService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "linka.cloud.protodb.internal.replication.ReplicationService",
+	ServiceName: "linka.cloud.protodb.internal.replication.gossip.ReplicationService",
 	HandlerType: (*ReplicationServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -322,5 +322,5 @@ var ReplicationService_ServiceDesc = grpc.ServiceDesc{
 			ClientStreams: true,
 		},
 	},
-	Metadata: "internal/replication/pb/replication.proto",
+	Metadata: "internal/replication/gossip/pb/gossip.proto",
 }

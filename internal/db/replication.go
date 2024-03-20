@@ -33,6 +33,10 @@ func (db *db) SetVersion(v uint64) {
 	db.orc.Unlock()
 }
 
+func (db *db) Drop() error {
+	return db.bdb.DropAll()
+}
+
 func (db *db) Load(_ context.Context, reader io.Reader) (uint64, error) {
 	db.mu.Lock()
 	defer db.mu.Unlock()

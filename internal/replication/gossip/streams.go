@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package replication
+package gossip
 
 import (
-	pb2 "go.linka.cloud/protodb/internal/replication/pb"
+	"go.linka.cloud/protodb/internal/replication"
+	pb2 "go.linka.cloud/protodb/internal/replication/gossip/pb"
 )
 
 type writer struct {
@@ -27,9 +28,9 @@ func (w *writer) Write(p []byte) (n int, err error) {
 	copy(b, p)
 	for len(b) > 0 {
 		d := &pb2.InitResponse{}
-		if len(b) > maxMsgSize {
-			d.Data = b[:maxMsgSize]
-			b = b[maxMsgSize:]
+		if len(b) > replication.MaxMsgSize {
+			d.Data = b[:replication.MaxMsgSize]
+			b = b[replication.MaxMsgSize:]
 		} else {
 			d.Data = b
 			b = nil

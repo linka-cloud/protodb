@@ -14,9 +14,9 @@
 
 syntax = "proto3";
 
-package linka.cloud.protodb.internal.replication;
+package linka.cloud.protodb.internal.replication.gossip;
 
-option go_package = "go.linka.cloud/protodb/internal/replication/pb;pb";
+option go_package = "go.linka.cloud/protodb/internal/replication/gossip/pb;pb";
 
 import "patch/go.proto";
 option (go.lint).all = true;
@@ -39,13 +39,13 @@ message InitResponse {
 }
 
 message Op {
+  uint64 id = 1;
   oneof action {
-    New new = 1;
-    Set set = 2;
-    Delete delete = 3;
-    Commit commit = 4;
+    New new = 2;
+    Set set = 3;
+    Delete delete = 4;
+    Commit commit = 5;
   }
-  uint64 id = 5;
 }
 
 message New {

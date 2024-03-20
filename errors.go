@@ -78,4 +78,6 @@ var (
 	ErrDBClosed = badger.ErrDBClosed
 
 	ErrNotLeader = protodb.ErrNotLeader
+
+	ErrNoLeaderConn = protodb.ErrNoLeaderConn
 )
