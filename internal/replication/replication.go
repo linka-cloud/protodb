@@ -24,6 +24,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dgraph-io/badger/v3/y"
+	"github.com/dgraph-io/ristretto/z"
 	"github.com/hashicorp/memberlist"
 	"go.linka.cloud/grpc-toolkit/interceptors/validation"
 	"go.linka.cloud/grpc-toolkit/logger"
@@ -95,6 +97,9 @@ type Repl struct {
 
 	bootNodes  []string
 	maxVersion uint64
+
+	txnMark   *y.WaterMark
+	txnCloser *z.Closer
 }
 
 func New(ctx context.Context, db DB, opts ...Option) (*Repl, error) {
@@ -122,7 +127,10 @@ func New(ctx context.Context, db DB, opts ...Option) (*Repl, error) {
 		converged:  make(chan struct{}),
 		version:    db.MaxVersion(),
 		pub:        pubsub.NewPublisher[string](time.Second, 2),
+		txnMark:    &y.WaterMark{Name: "gossip.TxnReplicationTimestamp"},
+		txnCloser:  z.NewCloser(1),
 	}
+	r.txnMark.Init(r.txnCloser)
 	r.meta.Store(&pb2.Meta{GRPCPort: uint32(o.grpcPort), LocalVersion: r.version})
 	r.ctx, r.cancel = context.WithCancel(ctx)
 
@@ -267,9 +275,12 @@ func (r *Repl) init(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := r.db.Load(ctx, &reader{ss: ss}); err != nil {
+	v, err := r.db.Load(ctx, &reader{ss: ss})
+	if err != nil {
 		return err
 	}
+	r.txnMark.Done(v)
+	logger.C(ctx).Infof("initial replication from leader to %d done", v)
 	return nil
 }
 
@@ -345,6 +356,7 @@ func (r *Repl) Mode() Mode {
 func (r *Repl) Close() (err error) {
 	r.co.Do(func() {
 		r.cancel()
+		r.txnCloser.Done()
 		err = multierr.Combine(
 			r.svc.Stop(),
 			r.list.Leave(time.Second),

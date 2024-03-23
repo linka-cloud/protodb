@@ -29,7 +29,7 @@ type DB interface {
 	InMemory() bool
 	MaxVersion() uint64
 	SetVersion(v uint64)
-	Load(ctx context.Context, r io.Reader) error
+	Load(ctx context.Context, r io.Reader) (uint64, error)
 	Stream(ctx context.Context, at, since uint64, w io.Writer) error
 	LoadDescriptors(ctx context.Context) error
 	NewWriteBatchAt(readTs uint64) *badger.WriteBatch

@@ -25,6 +25,7 @@ import (
 
 	"github.com/dgraph-io/badger/v3"
 	"github.com/dgraph-io/ristretto/z"
+	"go.linka.cloud/grpc-toolkit/logger"
 	pf "go.linka.cloud/protofilters"
 	"google.golang.org/protobuf/proto"
 
@@ -40,6 +41,9 @@ func newTx(ctx context.Context, db *db, opts ...protodb.TxOption) (*tx, error) {
 	}
 	end := metrics.Tx.Start("")
 	readTs := db.orc.readTs()
+	if db.replicated() {
+		logger.C(ctx).Tracef("starting transaction with readTs %d", readTs)
+	}
 	var o protodb.TxOpts
 	for _, opt := range opts {
 		opt(&o)

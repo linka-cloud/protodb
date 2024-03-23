@@ -76,7 +76,7 @@ func (r *Repl) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 	if r.IsLeader() {
 		return gerrs.FailedPreconditionf("cannot replicate to leader")
 	}
-	log := logger.C(ss.Context())
+	log := logger.C(ss.Context()).WithField("node", r.name)
 	p, ok := peer.FromContext(ss.Context())
 	if !ok {
 		return gerrs.Internalf("cannot get peer from context")
@@ -107,6 +107,14 @@ func (r *Repl) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 		cid  uint64
 	)
 	commit := func() error {
+		if r.txnMark.DoneUntil() < cmsg.Commit.At-1 {
+			log.Infof("waiting for transaction %d to be done", cmsg.Commit.At-1)
+		}
+		if err := r.txnMark.WaitForMark(ss.Context(), cmsg.Commit.At-1); err != nil {
+			return err
+		}
+		r.txnMark.Begin(cmsg.Commit.At)
+		defer r.txnMark.Done(cmsg.Commit.At)
 		log.Infof("commit transaction at %d", cmsg.Commit.At)
 		batch = r.db.NewWriteBatchAt(cmsg.Commit.At)
 		err := w.Replay(func(e *badger.Entry) error {
@@ -121,10 +129,10 @@ func (r *Repl) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 		if err := batch.Flush(); err != nil {
 			return gerrs.Internalf("failed to flush transaction: %v", err)
 		}
+		r.db.SetVersion(cmsg.Commit.At)
 		if err := ss.Send(&pb2.Ack{}); err != nil {
 			return gerrs.Internalf("failed to send response: %v", err)
 		}
-		r.db.SetVersion(cmsg.Commit.At)
 		m := r.meta.Load().CloneVT()
 		m.LocalVersion = cmsg.Commit.At
 		r.meta.Store(m)

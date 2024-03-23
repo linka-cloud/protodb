@@ -18,7 +18,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 
+	gerrs "go.linka.cloud/grpc-toolkit/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
@@ -100,11 +102,16 @@ func (s *server) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteR
 
 func (s *server) Tx(stream pb.ProtoDB_TxServer) error {
 	ctx := stream.Context()
+	readOnly := false
 	var opts []protodb.TxOption
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
-		if v := md.Get(pb.ReadOnlyTxKey); len(v) > 0 {
+		if readOnly = len(md.Get(pb.ReadOnlyTxKey)) > 0; readOnly {
 			opts = append(opts, protodb.WithReadOnly())
 		}
+	}
+	// send dummy headers for clients that cannot create streams before receiving first from the server
+	if err := grpc.SendHeader(ctx, metadata.Pairs(pb.ReadOnlyTxKey, strconv.FormatBool(readOnly))); err != nil {
+		return gerrs.Internalf("failed to send headers: %v", err)
 	}
 	tx, err := s.db.Tx(stream.Context(), opts...)
 	if err != nil {

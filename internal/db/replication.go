@@ -19,7 +19,6 @@ import (
 	"io"
 
 	"github.com/dgraph-io/badger/v3"
-	"go.linka.cloud/grpc-toolkit/logger"
 )
 
 func (db *db) MaxVersion() uint64 {
@@ -29,23 +28,22 @@ func (db *db) MaxVersion() uint64 {
 func (db *db) SetVersion(v uint64) {
 	db.orc.Lock()
 	db.orc.txnMark.Done(v)
-	db.orc.readMark.Done(v)
+	// we do not set the read mark here
 	db.orc.nextTxnTs = v + 1
 	db.orc.Unlock()
 }
 
-func (db *db) Load(ctx context.Context, reader io.Reader) error {
+func (db *db) Load(_ context.Context, reader io.Reader) (uint64, error) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	if err := db.bdb.Load(reader, 1024); err != nil {
-		return err
+		return 0, err
 	}
 	v := db.bdb.MaxVersion()
 	db.orc.txnMark.Done(v)
 	db.orc.readMark.Done(v)
 	db.orc.nextTxnTs = v + 1
-	logger.C(ctx).Infof("initial replication from leader to %d done", v)
-	return nil
+	return v, nil
 }
 
 func (db *db) Stream(_ context.Context, at, since uint64, w io.Writer) error {

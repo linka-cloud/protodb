@@ -248,7 +248,7 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...protodb.GetOpt
 			}
 			return nil
 		}, []bpb.Match{{Prefix: k}})
-		if err != nil {
+		if err != nil && !errors.Is(err, context.Canceled) {
 			metrics.Watch.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 			log.Errorf("failed to watch prefix %s: %v", string(k), err)
 		}
