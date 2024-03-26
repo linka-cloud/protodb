@@ -140,6 +140,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 		Ts:          tx.txn.ReadTs(),
 		Type:        string(m.ProtoReflect().Descriptor().FullName()),
 		FiltersHash: hash,
+		Reverse:     o.Reverse,
 	}
 	if err := outToken.ValidateFor(inToken); err != nil {
 		return nil, nil, err
@@ -148,14 +149,19 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 	if keyOnly && o.Filter.Expr().GetCondition().GetFilter().GetString_().GetHasPrefix() != "" {
 		prefix = []byte(o.Filter.Expr().GetCondition().GetFilter().GetString_().GetHasPrefix())
 	}
-	it := tx.newIterator(badger.IteratorOptions{Prefix: prefix, PrefetchValues: false})
+	it := tx.newIterator(badger.IteratorOptions{Prefix: prefix, PrefetchValues: false, Reverse: o.Reverse})
 	defer it.Close()
 	var (
 		count   = uint64(0)
 		match   = true
 		hasNext = false
 	)
-	for it.Rewind(); it.Valid(); it.Next() {
+	if o.Reverse {
+		seekLast(it, prefix)
+	} else {
+		it.Rewind()
+	}
+	for ; it.Valid(); it.Next() {
 		if err := ctx.Err(); err != nil {
 			return nil, nil, err
 		}
@@ -165,9 +171,14 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 			key = string(item.Key()[len(prefix):])
 		}
 		if item.Version() <= inToken.Ts &&
-			count < o.Paging.GetOffset() &&
-			bytes.Compare(item.Key(), inToken.GetLastPrefix()) <= 0 {
-			continue
+			count < o.Paging.GetOffset() {
+			// could be inlined, but it is easier to read this way
+			if !o.Reverse && bytes.Compare(item.Key(), inToken.GetLastPrefix()) <= 0 {
+				continue
+			}
+			if o.Reverse && bytes.Compare(item.Key(), inToken.GetLastPrefix()) >= 0 {
+				continue
+			}
 		}
 		v := m.ProtoReflect().New().Interface()
 
@@ -458,4 +469,26 @@ func hash(f protodb.Filter) (hash string, err error) {
 	sha.Write(b)
 	h := sha.Sum(nil)
 	return base64.StdEncoding.EncodeToString(h), nil
+}
+
+func incrementPrefix(prefix []byte) []byte {
+	result := make([]byte, len(prefix))
+	copy(result, prefix)
+	var len = len(prefix)
+	for len > 0 {
+		if result[len-1] != 0xFF {
+			result[len-1] += 1
+			break
+		}
+		len -= 1
+	}
+	return result[0:len]
+}
+
+func seekLast(it pending.Iterator, prefix []byte) {
+	i := incrementPrefix(prefix)
+	it.Seek(i)
+	if it.Valid() && bytes.Equal(i, it.Item().Key()) {
+		it.Next()
+	}
 }

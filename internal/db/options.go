@@ -84,7 +84,7 @@ func WithApplyDefaults(b bool) Option {
 	}
 }
 
-func WithIgnoreProtoRegisterErrors(b bool) Option {
+func WithIgnoreProtoRegisterErrors() Option {
 	return func(o *options) {
 		o.ignoreProtoRegisterErrors = true
 	}

@@ -23,4 +23,5 @@ message Token {
   string type = 2;
   bytes last_prefix = 3;
   string filters_hash = 4;
+  bool reverse = 5;
 }

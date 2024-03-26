@@ -21,9 +21,11 @@ var TokenFields = struct {
 	Type        string
 	LastPrefix  string
 	FiltersHash string
+	Reverse     string
 }{
 	Ts:          "ts",
 	Type:        "type",
 	LastPrefix:  "last_prefix",
 	FiltersHash: "filters_hash",
+	Reverse:     "reverse",
 }

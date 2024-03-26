@@ -27,6 +27,7 @@ func (m *Token) CloneVT() *Token {
 	r.Ts = m.Ts
 	r.Type = m.Type
 	r.FiltersHash = m.FiltersHash
+	r.Reverse = m.Reverse
 	if rhs := m.LastPrefix; rhs != nil {
 		tmpBytes := make([]byte, len(rhs))
 		copy(tmpBytes, rhs)
@@ -59,6 +60,9 @@ func (this *Token) EqualVT(that *Token) bool {
 		return false
 	}
 	if this.FiltersHash != that.FiltersHash {
+		return false
+	}
+	if this.Reverse != that.Reverse {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -100,6 +104,16 @@ func (m *Token) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Reverse {
+		i--
+		if m.Reverse {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x28
 	}
 	if len(m.FiltersHash) > 0 {
 		i -= len(m.FiltersHash)
@@ -150,6 +164,9 @@ func (m *Token) SizeVT() (n int) {
 	l = len(m.FiltersHash)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	}
+	if m.Reverse {
+		n += 2
 	}
 	n += len(m.unknownFields)
 	return n
@@ -301,6 +318,26 @@ func (m *Token) UnmarshalVT(dAtA []byte) error {
 			}
 			m.FiltersHash = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Reverse", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Reverse = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

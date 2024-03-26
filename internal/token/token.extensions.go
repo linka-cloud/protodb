@@ -51,11 +51,17 @@ func (x *Token) ValidateFor(prev *Token) error {
 	if x != nil && prev == nil {
 		return nil
 	}
+	if prev.EqualVT(&Token{}) {
+		return nil
+	}
 	if typ, tkType := prev.GetType(), x.GetType(); typ != "" && typ != tkType {
 		return fmt.Errorf("%w: token valid for %s, not %s", ErrInvalid, typ, tkType)
 	}
 	if prev.GetFiltersHash() != "" && x.GetFiltersHash() != prev.GetFiltersHash() {
 		return fmt.Errorf("%w: filters mismatch", ErrInvalid)
+	}
+	if x.Reverse != prev.Reverse {
+		return fmt.Errorf("%w: reverse mismatch", ErrInvalid)
 	}
 	return nil
 }

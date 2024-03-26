@@ -51,6 +51,12 @@ func WithFilter(filter Filter) GetOption {
 	}
 }
 
+func WithReverse() GetOption {
+	return func(o *GetOpts) {
+		o.Reverse = true
+	}
+}
+
 func WithReadFieldMaskPaths(paths ...string) GetOption {
 	return func(o *GetOpts) {
 		o.FieldMask = &fieldmaskpb.FieldMask{Paths: paths}
@@ -79,6 +85,7 @@ type GetOpts struct {
 	Paging    *Paging
 	Filter    Filter
 	FieldMask *fieldmaskpb.FieldMask
+	Reverse   bool
 }
 
 type SetOption func(o *SetOpts)
