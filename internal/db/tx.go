@@ -385,9 +385,7 @@ func (tx *tx) Commit(ctx context.Context) error {
 	defer b.Cancel()
 	if err := tx.pendingWrites.Replay(func(e *badger.Entry) error {
 		if e.UserMeta != 0 {
-			if err := b.DeleteAt(e.Key, ts); err != nil {
-				return err
-			}
+			return b.DeleteAt(e.Key, ts)
 		}
 		return b.SetEntryAt(e, ts)
 	}); err != nil {
