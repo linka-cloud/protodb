@@ -44,7 +44,7 @@ func TestWrites(t *testing.T) {
 			assert.NotNil(t, w.w)
 		}
 	}
-	it := w.Iterator(0, false)
+	it := w.Iterator(nil, 0, false)
 	defer it.Close()
 	i := 0
 	for it.Rewind(); it.Valid(); it.Next() {

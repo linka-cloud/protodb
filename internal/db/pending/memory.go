@@ -36,9 +36,10 @@ type mem struct {
 	addReadKey func(key []byte)
 }
 
-func (m *mem) Iterator(readTs uint64, reversed bool) Iterator {
+func (m *mem) Iterator(prefix []byte, readTs uint64, reversed bool) Iterator {
 	if m.empty() {
 		return &memIterator{
+			prefix:     prefix,
 			readTs:     readTs,
 			reversed:   reversed,
 			addReadKey: m.addReadKey,
@@ -54,6 +55,7 @@ func (m *mem) Iterator(readTs uint64, reversed bool) Iterator {
 		return cmp > 0
 	})
 	return &memIterator{
+		prefix:     prefix,
 		readTs:     readTs,
 		entries:    entries,
 		reversed:   reversed,
@@ -98,6 +100,7 @@ func (p *mem) empty() bool {
 }
 
 type memIterator struct {
+	prefix     []byte
 	entries    []*badger.Entry
 	nextIdx    int
 	readTs     uint64
@@ -110,7 +113,7 @@ func (i *memIterator) Next() {
 }
 
 func (i *memIterator) skip() bool {
-	return i.entries[i.nextIdx].UserMeta&bitDelete != 0
+	return i.entries[i.nextIdx].UserMeta&bitDelete != 0 || !bytes.HasPrefix(i.entries[i.nextIdx].Key, i.prefix)
 }
 
 func (i *memIterator) Rewind() {

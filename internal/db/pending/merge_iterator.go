@@ -120,7 +120,7 @@ func (mi *mergeIterator) swapSmall() {
 func (mi *mergeIterator) Next() {
 	for mi.Valid() {
 		// TODO(adphi): find a way that do not mark item as read
-		if !bytes.Equal(mi.small.key, mi.curKey) && !mi.small.iter.Item().IsDeletedOrExpired() {
+		if !bytes.Equal(mi.small.key, mi.curKey) && !mi.small.iter.skip() {
 			break
 		}
 		mi.small.next()

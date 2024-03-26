@@ -90,6 +90,13 @@ func TestIterator(t *testing.T) {
 		assert.Equal(t, count, i)
 	})
 
+	t.Run("start outside ou pending writes", func(t *testing.T) {
+		it := w.MergedIterator(tx, db.MaxVersion(), badger.IteratorOptions{Prefix: []byte("zzz")})
+		defer it.Close()
+		it.Rewind()
+		assert.False(t, it.Valid())
+	})
+
 	t.Run("reverse", func(t *testing.T) {
 		it := w.MergedIterator(tx, db.MaxVersion(), badger.IteratorOptions{Reverse: true})
 		defer it.Close()

@@ -106,8 +106,8 @@ type wal struct {
 	addReadKey func(key []byte)
 }
 
-func (w *wal) Iterator(readTs uint64, reversed bool) Iterator {
-	return w.newIterator(readTs, reversed)
+func (w *wal) Iterator(prefix []byte, readTs uint64, reversed bool) Iterator {
+	return w.newIterator(prefix, readTs, reversed)
 }
 
 func (w *wal) Set(e *badger.Entry) {
@@ -182,7 +182,7 @@ func (w *wal) Replay(fn func(e *badger.Entry) error) error {
 	return nil
 }
 
-func (w *wal) newIterator(readTs uint64, reversed bool) Iterator {
+func (w *wal) newIterator(prefix []byte, readTs uint64, reversed bool) Iterator {
 	if len(w.m) == 0 {
 		return nil
 	}
@@ -197,7 +197,7 @@ func (w *wal) newIterator(readTs uint64, reversed bool) Iterator {
 		}
 		return cmp > 0
 	})
-	return &walIterator{w: w, items: items, reversed: reversed, readTs: readTs, addReadKey: w.addReadKey}
+	return &walIterator{w: w, prefix: prefix, items: items, reversed: reversed, readTs: readTs, addReadKey: w.addReadKey}
 }
 
 type entry struct {
@@ -207,6 +207,7 @@ type entry struct {
 
 type walIterator struct {
 	w          *wal
+	prefix     []byte
 	items      []*entry
 	nextIdx    int
 	readTs     uint64
@@ -219,7 +220,7 @@ func (i *walIterator) Next() {
 }
 
 func (i *walIterator) skip() bool {
-	return !i.items[i.nextIdx].p.deleted
+	return !i.items[i.nextIdx].p.deleted || !bytes.HasPrefix(i.items[i.nextIdx].key, i.prefix)
 }
 
 func (i *walIterator) Rewind() {

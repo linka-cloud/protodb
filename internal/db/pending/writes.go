@@ -24,7 +24,7 @@ type IterableMergedWrites interface {
 }
 
 type Writes interface {
-	Iterator(readTs uint64, reversed bool) Iterator
+	Iterator(prefix []byte, readTs uint64, reversed bool) Iterator
 	Set(e *badger.Entry)
 	Delete(key []byte)
 	Replay(fn func(e *badger.Entry) error) error
@@ -70,15 +70,15 @@ type writes struct {
 }
 
 func (w *writes) MergedIterator(tx *badger.Txn, readTs uint64, opt badger.IteratorOptions) Iterator {
-	return newMergeIterator(&txIterator{tx.NewIterator(opt), w.addReadKey}, w.iterator(readTs, opt.Reverse), opt.Reverse)
+	return newMergeIterator(&txIterator{tx.NewIterator(opt), w.addReadKey}, w.iterator(opt.Prefix, readTs, opt.Reverse), opt.Reverse)
 }
 
-func (w *writes) Iterator(readTs uint64, reversed bool) Iterator {
-	return w.c.Iterator(readTs, reversed)
+func (w *writes) Iterator(prefix []byte, readTs uint64, reversed bool) Iterator {
+	return w.c.Iterator(prefix, readTs, reversed)
 }
 
-func (w *writes) iterator(readTs uint64, reversed bool) iterator {
-	return w.c.Iterator(readTs, reversed).(iterator)
+func (w *writes) iterator(prefix []byte, readTs uint64, reversed bool) iterator {
+	return w.c.Iterator(prefix, readTs, reversed).(iterator)
 }
 
 func (w *writes) Set(e *badger.Entry) {

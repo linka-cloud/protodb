@@ -100,7 +100,7 @@ func TestWal(t *testing.T) {
 		})
 		assert.Equal(t, entries, g)
 
-		it := w.Iterator(0, false)
+		it := w.Iterator(nil, 0, false)
 		defer it.Close()
 
 		i := 0
@@ -119,7 +119,7 @@ func TestWal(t *testing.T) {
 		assert.Equal(t, count, i)
 	})
 	t.Run(fmt.Sprintf("Batch delete %d entries and iterate", count), func(t *testing.T) {
-		it := w.Iterator(0, false)
+		it := w.Iterator(nil, 0, false)
 		defer it.Close()
 
 		for it.Rewind(); it.Valid(); it.Next() {
