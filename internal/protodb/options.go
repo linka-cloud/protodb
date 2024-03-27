@@ -35,6 +35,7 @@ type Logger interface {
 	Warningf(string, ...interface{})
 	Infof(string, ...interface{})
 	Debugf(string, ...interface{})
+	Tracef(string, ...interface{})
 }
 
 type GetOption func(o *GetOpts)

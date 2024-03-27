@@ -105,12 +105,12 @@ func KeyFor(m proto.Message) (key string, field string, err error) {
 		}
 		return i.Get(fd).String(), string(fd.Name()), nil
 	case interface{ Key() string }:
-		field = fieldID
+		field = fieldKey
 		if k := i.Key(); k != "" {
 			return k, field, nil
 		}
 	case interface{ GetKey() string }:
-		field = fieldID
+		field = fieldKey
 		if k := i.GetKey(); k != "" {
 			return k, field, nil
 		}

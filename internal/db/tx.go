@@ -126,7 +126,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 		return nil, nil, badger.ErrDBClosed
 	}
 	o := makeGetOpts(opts...)
-	prefix, field, key, _ := protodb.DataPrefix(m)
+	prefix, field, _, _ := protodb.DataPrefix(m)
 	hasContinuationToken := o.Paging.GetToken() != ""
 	inToken := &token.Token{}
 	if err := inToken.Decode(o.Paging.GetToken()); err != nil {
@@ -145,11 +145,19 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 	if err := outToken.ValidateFor(inToken); err != nil {
 		return nil, nil, err
 	}
-	keyOnly := IsKeyOnlyFilter(o.Filter, field)
-	if keyOnly && o.Filter.Expr().GetCondition().GetFilter().GetString_().GetHasPrefix() != "" {
-		prefix = []byte(o.Filter.Expr().GetCondition().GetFilter().GetString_().GetHasPrefix())
+	if o.Filter != nil {
+		tx.db.opts.logger.Tracef("starting iteration at %s with filter %v", string(prefix), o.Filter.Expr().String())
+	} else {
+		tx.db.opts.logger.Tracef("starting unfiltered iteration at %s", string(prefix))
 	}
-	it := tx.newIterator(badger.IteratorOptions{Prefix: prefix, PrefetchValues: false, Reverse: o.Reverse})
+
+	keyOnly := IsKeyOnlyFilter(o.Filter, field)
+	iterPrefix := prefix
+	if p, ok := MatchPrefixOnly(o.Filter); keyOnly && ok {
+		tx.db.opts.logger.Tracef("filtering optimized by key only filter prefix")
+		iterPrefix = append(prefix, []byte(p)...)
+	}
+	it := tx.newIterator(badger.IteratorOptions{Prefix: iterPrefix, PrefetchValues: false, Reverse: o.Reverse})
 	defer it.Close()
 	var (
 		count   = uint64(0)
@@ -166,10 +174,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 			return nil, nil, err
 		}
 		item := it.Item()
-		key := key
-		if key == "" {
-			key = string(item.Key()[len(prefix):])
-		}
+		key := string(item.Key()[len(prefix):])
 		if item.Version() <= inToken.Ts &&
 			count < o.Paging.GetOffset() {
 			// could be inlined, but it is easier to read this way
@@ -180,6 +185,8 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 				continue
 			}
 		}
+
+		tx.db.opts.logger.Tracef("checking %q", string(item.Key()))
 		v := m.ProtoReflect().New().Interface()
 
 		if o.Filter == nil || !keyOnly {
@@ -217,6 +224,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 				return nil, nil, err
 			}
 		}
+		tx.db.opts.logger.Tracef("key %q match filter", string(item.Key()))
 		count++
 		if max := o.Paging.GetOffset() + o.Paging.GetLimit(); max != 0 {
 			if count == max+1 || (hasContinuationToken && count == o.Paging.GetLimit()+1) {
@@ -307,6 +315,7 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 		tx.close()
 		return nil, err
 	}
+	tx.db.opts.logger.Tracef("set key %q", string(k))
 	tx.addConflictKey(e.Key)
 	tx.pendingWrites.Set(e)
 	return m, tx.txr.Set(ctx, e.Key, e.Value, e.ExpiresAt)
@@ -322,6 +331,7 @@ func (tx *tx) setRaw(ctx context.Context, key, val []byte) error {
 	}
 	tx.addConflictKey(key)
 	tx.pendingWrites.Set(badger.NewEntry(key, val))
+	tx.db.opts.logger.Tracef("raw set key %q", string(key))
 	return tx.txr.Set(ctx, key, val, 0)
 }
 
@@ -356,6 +366,7 @@ func (tx *tx) delete(ctx context.Context, m proto.Message) error {
 	}
 	tx.addConflictKey(k)
 	tx.pendingWrites.Delete(k)
+	tx.db.opts.logger.Tracef("delete key %q", k)
 	return tx.txr.Delete(ctx, k)
 }
 
@@ -368,10 +379,8 @@ func (tx *tx) deleteRaw(ctx context.Context, key []byte) error {
 		return err
 	}
 	tx.addConflictKey(key)
+	tx.db.opts.logger.Tracef("delete key %q", string(key))
 	tx.pendingWrites.Delete(key)
-	if err := tx.txn.Delete(key); err != nil {
-		return err
-	}
 	return tx.txr.Delete(ctx, key)
 }
 
@@ -392,6 +401,7 @@ func (tx *tx) Commit(ctx context.Context) error {
 	}
 	defer tx.db.orc.doneCommit(ts)
 
+	tx.db.opts.logger.Debugf("committing at %d", ts)
 	b := tx.db.bdb.NewWriteBatchAt(ts)
 	defer b.Cancel()
 	if err := tx.pendingWrites.Replay(func(e *badger.Entry) error {
@@ -407,6 +417,7 @@ func (tx *tx) Commit(ctx context.Context) error {
 		metrics.Tx.ErrorsCounter.WithLabelValues("").Inc()
 		return err
 	}
+	tx.db.opts.logger.Tracef("commit at %d done", ts)
 	return tx.txr.Commit(ctx, ts)
 }
 

@@ -114,26 +114,46 @@ func IsKeyOnlyFilter(f protodb.Filter, field string) bool {
 	return true
 }
 
+func MatchPrefixOnly(f protodb.Filter) (string, bool) {
+	if f == nil {
+		return "", false
+	}
+	if f.Expr().GetAndExprs() != nil {
+		return "", false
+	}
+	if f.Expr().GetOrExprs() != nil {
+		return "", false
+	}
+	p := f.Expr().GetCondition().GetFilter().GetString_().GetHasPrefix()
+	return p, p != ""
+}
+
 func MatchKey(filter filters.FieldFilterer, value string) (bool, error) {
 	ok, err := doMatchKey(filter.Expr().GetCondition().GetFilter(), value)
 	if err != nil {
 		return false, err
 	}
+	andOk := true
 	for _, v := range filter.Expr().GetAndExprs() {
-		and, err := doMatchKey(v.GetCondition().GetFilter(), value)
+		andOk, err = MatchKey(v, value)
 		if err != nil {
 			return false, err
 		}
-		ok = ok && and
+		if !andOk {
+			break
+		}
 	}
+	orOk := false
 	for _, v := range filter.Expr().GetOrExprs() {
-		or, err := doMatchKey(v.GetCondition().GetFilter(), value)
+		orOk, err = MatchKey(v, value)
 		if err != nil {
 			return false, err
 		}
-		ok = ok || or
+		if orOk {
+			break
+		}
 	}
-	return ok, nil
+	return ok && andOk || orOk, nil
 }
 
 func doMatchKey(filter *filters.Filter, value string) (bool, error) {
