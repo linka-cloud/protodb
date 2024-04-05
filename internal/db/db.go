@@ -26,6 +26,7 @@ import (
 
 	"github.com/dgraph-io/badger/v3"
 	bpb "github.com/dgraph-io/badger/v3/pb"
+	"github.com/dgraph-io/badger/v3/y"
 	"go.linka.cloud/grpc-toolkit/logger"
 	"go.linka.cloud/protoc-gen-defaults/defaults"
 	pf "go.linka.cloud/protofilters"
@@ -40,6 +41,7 @@ import (
 	"go.linka.cloud/protodb/internal/client"
 	"go.linka.cloud/protodb/internal/protodb"
 	"go.linka.cloud/protodb/internal/replication"
+	"go.linka.cloud/protodb/internal/replication/gossip"
 	"go.linka.cloud/protodb/pb"
 )
 
@@ -64,6 +66,14 @@ func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 		return nil, err
 	}
 
+	db, err := newDB(ctx, bdb, o, bopts)
+	if err != nil {
+		return nil, multierr.Combine(err, bdb.Close())
+	}
+	return db, nil
+}
+
+func newDB(ctx context.Context, bdb *badger.DB, o options, bopts badger.Options) (*db, error) {
 	orc := newOracle()
 
 	// We do increment nextTxnTs below. So, no need to do it here.
@@ -84,12 +94,18 @@ func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 	treg := preg.GlobalTypes
 
 	db := &db{bdb: bdb, orc: orc, opts: o, freg: freg, treg: treg, bopts: bopts}
-	if len(o.repl) > 0 {
-		var err error
-		db.repl, err = replication.New(ctx, db, o.repl...)
+	var ro replication.Options
+	for _, v := range o.repl {
+		v(&ro)
+	}
+	var err error
+	switch ro.Mode {
+	case replication.ModeAsync, replication.ModeSync:
+		db.repl, err = gossip.New(ctx, db, o.repl...)
 		if err != nil {
 			return nil, err
 		}
+	default:
 	}
 	if db.replicated() {
 		return db, nil
@@ -110,17 +126,19 @@ type db struct {
 	freg *preg.Files
 	treg *preg.Types
 
-	repl *replication.Repl
+	repl replication.Replication
 
 	cmu   sync.RWMutex
 	close bool
 }
 
 func (db *db) IsLeader() bool {
+	y.AssertTruef(db.repl != nil, "call IsLeader on non replicated instance")
 	return db.repl.IsLeader()
 }
 
 func (db *db) Leader() string {
+	y.AssertTruef(db.repl != nil, "call IsLeader on non replicated instance")
 	if _, ok := db.repl.LeaderConn(); ok || db.repl.IsLeader() {
 		return db.repl.CurrentLeader()
 	}
@@ -128,6 +146,7 @@ func (db *db) Leader() string {
 }
 
 func (db *db) LeaderChanges() <-chan string {
+	y.AssertTruef(db.repl != nil, "call IsLeader on non replicated instance")
 	return db.repl.Subscribe()
 }
 
@@ -569,6 +588,10 @@ func (db *db) handleRegisterErr(err error) error {
 	if errors.Is(err, protodb.ErrNotLeader) {
 		return err
 	}
+	// ignore gogoproto errors
+	if strings.Contains(err.Error(), `"gogoproto/gogo.proto"`) {
+		return nil
+	}
 	if db.opts.ignoreProtoRegisterErrors {
 		return nil
 	}
@@ -710,12 +733,12 @@ func (db *db) maybeProxy(read bool) (client.Client, bool, error) {
 	if db.repl == nil {
 		return nil, false, nil
 	}
-	if db.repl.IsLeader() || (db.repl.Mode() == replication.ModeSync && read) {
+	if db.repl.IsLeader() || (db.repl.LinearizableReads() && read) {
 		return nil, false, nil
 	}
 	cc, ok := db.repl.LeaderConn()
 	if !ok {
-		return nil, false, fmt.Errorf("no leader connection")
+		return nil, false, protodb.ErrNoLeaderConn
 	}
 	c, err := client.NewClient(cc)
 	if err != nil {

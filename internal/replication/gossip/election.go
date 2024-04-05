@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package replication
+package gossip
 
 import (
 	"context"
@@ -20,10 +20,10 @@ import (
 
 	"go.linka.cloud/grpc-toolkit/logger"
 
-	pb2 "go.linka.cloud/protodb/internal/replication/pb"
+	pb2 "go.linka.cloud/protodb/internal/replication/gossip/pb"
 )
 
-func (r *Repl) Elect(ctx context.Context) {
+func (r *Gossip) Elect(ctx context.Context) {
 	meta := r.meta.Load().CloneVT()
 	log := logger.C(ctx)
 	nodes := r.clients()
@@ -85,7 +85,7 @@ func (r *Repl) Elect(ctx context.Context) {
 	}
 }
 
-func (r *Repl) Election(_ context.Context, req *pb2.Message) (*pb2.Message, error) {
+func (r *Gossip) Election(_ context.Context, req *pb2.Message) (*pb2.Message, error) {
 	meta := r.meta.Load().CloneVT()
 	log := logger.C(r.ctx)
 	var t pb2.ElectionType

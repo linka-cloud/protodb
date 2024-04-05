@@ -16,6 +16,7 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"os"
@@ -562,10 +563,14 @@ func TestReplication(t *testing.T, data string, mode protodb.ReplicationMode) {
 	logrus.Infof("inserting %d records", insert)
 	for i := 0; i < insert; i++ {
 		name := randString(10)
+		if i%(insert/100) == 0 {
+			logrus.Infof("inserted: %d/%d", i, insert)
+		}
 		if _, err := tx.Set(ctx, &testpb.Interface{Name: name}); err != nil {
 			t.Fatal(err)
 		}
 	}
+	logrus.Infof("inserted: %d/%d", insert, insert)
 	if err := tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -578,6 +583,9 @@ func TestReplication(t *testing.T, data string, mode protodb.ReplicationMode) {
 	got, _, err := c.dbs[1].Get(ctx, &testpb.Interface{})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if len(want) != len(got) {
+		t.Fatalf("got: %v, want: %v", len(got), len(want))
 	}
 	for i := range want {
 		g, w := got[i].(*testpb.Interface), want[i].(*testpb.Interface)
@@ -596,8 +604,14 @@ func TestReplication(t *testing.T, data string, mode protodb.ReplicationMode) {
 		t.Fatal("expected error")
 	}
 	logger.C(ctx).Infof("getting from db-1")
-	if _, _, err := c.Get(1).Get(ctx, &testpb.Interface{}, protodb.WithPaging(&protodb.Paging{Limit: 1})); err != nil {
-		t.Fatal(err)
+	for {
+		if _, _, err := c.Get(1).Get(ctx, &testpb.Interface{}, protodb.WithPaging(&protodb.Paging{Limit: 1})); err != nil {
+			if !errors.Is(err, protodb.ErrNoLeaderConn) {
+				t.Fatal(err)
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		break
 	}
 	logger.C(ctx).Infof("setting in db-1")
 	if _, err := c.Get(1).Set(ctx, &testpb.Interface{Name: "test"}); err != nil {

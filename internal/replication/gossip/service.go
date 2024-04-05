@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package replication
+package gossip
 
 import (
 	"context"
@@ -29,11 +29,12 @@ import (
 
 	"go.linka.cloud/protodb/internal/db/pending"
 	"go.linka.cloud/protodb/internal/protodb"
-	pb2 "go.linka.cloud/protodb/internal/replication/pb"
+	"go.linka.cloud/protodb/internal/replication"
+	pb2 "go.linka.cloud/protodb/internal/replication/gossip/pb"
 	"go.linka.cloud/protodb/pb"
 )
 
-func (r *Repl) Init(req *pb2.InitRequest, ss pb2.ReplicationService_InitServer) error {
+func (r *Gossip) Init(req *pb2.InitRequest, ss pb2.ReplicationService_InitServer) error {
 	if !r.IsLeader() {
 		return gerrs.FailedPreconditionf("cannot initialize from non-leader")
 	}
@@ -72,7 +73,7 @@ func (r *Repl) Init(req *pb2.InitRequest, ss pb2.ReplicationService_InitServer) 
 	return r.db.Stream(ss.Context(), m, req.Since, &writer{ss: ss})
 }
 
-func (r *Repl) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
+func (r *Gossip) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 	if r.IsLeader() {
 		return gerrs.FailedPreconditionf("cannot replicate to leader")
 	}
@@ -199,7 +200,7 @@ func (r *Repl) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 	}
 }
 
-func (r *Repl) Alive(ss pb2.ReplicationService_AliveServer) error {
+func (r *Gossip) Alive(ss pb2.ReplicationService_AliveServer) error {
 	for {
 		if _, err := ss.Recv(); err != nil {
 			if errors.Is(err, io.EOF) {
@@ -216,7 +217,7 @@ func (r *Repl) Alive(ss pb2.ReplicationService_AliveServer) error {
 	}
 }
 
-func (r *Repl) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
+func (r *Gossip) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
 	p, ok, err := r.maybeLeaderProxy(ctx, true)
 	if err != nil {
 		return nil, err
@@ -227,7 +228,7 @@ func (r *Repl) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, er
 	return p.Get(ctx, req)
 }
 
-func (r *Repl) Set(ctx context.Context, req *pb.SetRequest) (*pb.SetResponse, error) {
+func (r *Gossip) Set(ctx context.Context, req *pb.SetRequest) (*pb.SetResponse, error) {
 	p, ok, err := r.maybeLeaderProxy(ctx, false)
 	if err != nil {
 		return nil, err
@@ -238,7 +239,7 @@ func (r *Repl) Set(ctx context.Context, req *pb.SetRequest) (*pb.SetResponse, er
 	return p.Set(ctx, req)
 }
 
-func (r *Repl) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
+func (r *Gossip) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
 	p, ok, err := r.maybeLeaderProxy(ctx, false)
 	if err != nil {
 		return nil, err
@@ -249,7 +250,7 @@ func (r *Repl) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteRes
 	return p.Delete(ctx, req)
 }
 
-func (r *Repl) Tx(ss pb.ProtoDB_TxServer) error {
+func (r *Gossip) Tx(ss pb.ProtoDB_TxServer) error {
 	p, ok, err := r.maybeLeaderProxy(ss.Context(), false)
 	if err != nil {
 		return err
@@ -260,7 +261,7 @@ func (r *Repl) Tx(ss pb.ProtoDB_TxServer) error {
 	return p.Tx(ss)
 }
 
-func (r *Repl) Watch(req *pb.WatchRequest, ss pb.ProtoDB_WatchServer) error {
+func (r *Gossip) Watch(req *pb.WatchRequest, ss pb.ProtoDB_WatchServer) error {
 	p, ok, err := r.maybeLeaderProxy(ss.Context(), true)
 	if err != nil {
 		return err
@@ -271,7 +272,7 @@ func (r *Repl) Watch(req *pb.WatchRequest, ss pb.ProtoDB_WatchServer) error {
 	return p.Watch(req, ss)
 }
 
-func (r *Repl) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
+func (r *Gossip) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
 	p, ok, err := r.maybeLeaderProxy(ctx, false)
 	if err != nil {
 		return nil, err
@@ -282,7 +283,7 @@ func (r *Repl) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.Regis
 	return p.Register(ctx, req)
 }
 
-func (r *Repl) Descriptors(ctx context.Context, req *pb.DescriptorsRequest) (*pb.DescriptorsResponse, error) {
+func (r *Gossip) Descriptors(ctx context.Context, req *pb.DescriptorsRequest) (*pb.DescriptorsResponse, error) {
 	p, ok, err := r.maybeLeaderProxy(ctx, true)
 	if err != nil {
 		return nil, err
@@ -293,7 +294,7 @@ func (r *Repl) Descriptors(ctx context.Context, req *pb.DescriptorsRequest) (*pb
 	return p.Descriptors(ctx, req)
 }
 
-func (r *Repl) FileDescriptors(ctx context.Context, req *pb.FileDescriptorsRequest) (*pb.FileDescriptorsResponse, error) {
+func (r *Gossip) FileDescriptors(ctx context.Context, req *pb.FileDescriptorsRequest) (*pb.FileDescriptorsResponse, error) {
 	p, ok, err := r.maybeLeaderProxy(ctx, true)
 	if err != nil {
 		return nil, err
@@ -304,8 +305,8 @@ func (r *Repl) FileDescriptors(ctx context.Context, req *pb.FileDescriptorsReque
 	return p.FileDescriptors(ctx, req)
 }
 
-func (r *Repl) maybeLeaderProxy(ctx context.Context, read bool) (pb.ProtoDBServer, bool, error) {
-	if r.leading.Load() || (read && r.mode == ModeSync) {
+func (r *Gossip) maybeLeaderProxy(ctx context.Context, read bool) (pb.ProtoDBServer, bool, error) {
+	if r.leading.Load() || (read && r.mode == replication.ModeSync) {
 		return nil, false, nil
 	}
 	n, ok := r.nodes.Load(r.leaderName.Load())

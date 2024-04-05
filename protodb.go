@@ -105,23 +105,30 @@ var (
 type ReplicationMode = replication.Mode
 
 var (
-	ReplicationModeSync  = replication.ModeSync
+	ReplicationModeNone  = replication.ModeNone
 	ReplicationModeAsync = replication.ModeAsync
+	ReplicationModeSync  = replication.ModeSync
 )
 
 type ReplicationOption = replication.Option
 
 var (
-	WithMode          = replication.WithMode
-	WithName          = replication.WithName
-	WithAddrs         = replication.WithAddrs
-	WithGossipPort    = replication.WithGossipPort
-	WithGRPCPort      = replication.WithGRPCPort
-	WithTick          = replication.WithTick
+	WithMode       = replication.WithMode
+	WithName       = replication.WithName
+	WithAddrs      = replication.WithAddrs
+	WithGossipPort = replication.WithGossipPort
+	WithGRPCPort   = replication.WithGRPCPort
+	WithTick       = replication.WithTick
+	// WithEncryptionKey set a key to encrypt gossip messages
 	WithEncryptionKey = replication.WithEncryptionKey
-	WithServerCert    = replication.WithServerCert
-	WithServerKey     = replication.WithServerKey
-	WithTLSConfig     = replication.WithTLSConfig
+	// WithRaftStartOptions are Raft start options, e.g. join, new cluster ...
+	WithRaftStartOptions = replication.WithRaftStartOptions
+	WithServerCert       = replication.WithServerCert
+	WithServerKey        = replication.WithServerKey
+	WithClientCert       = replication.WithClientCert
+	WithClientKey        = replication.WithClientKey
+	WithClientCA         = replication.WithClientCA
+	WithTLSConfig        = replication.WithTLSConfig
 )
 
 type (

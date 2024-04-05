@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"sync/atomic"
 
 	"github.com/dgraph-io/badger/v3"
@@ -104,6 +105,7 @@ type wal struct {
 	m          map[uint32]*pointer
 	pos        int64
 	addReadKey func(key []byte)
+	o          sync.Once
 }
 
 func (w *wal) Iterator(prefix []byte, readTs uint64, reversed bool) Iterator {
@@ -122,7 +124,11 @@ func (w *wal) Delete(key []byte) {
 }
 
 func (w *wal) Close() error {
-	return w.f.Delete()
+	var err error
+	w.o.Do(func() {
+		err = w.f.Delete()
+	})
+	return err
 }
 
 func (w *wal) append(e *badger.Entry) error {

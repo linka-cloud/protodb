@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package replication
+package gossip
 
 import (
 	"context"
@@ -31,7 +31,7 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 
-	pb2 "go.linka.cloud/protodb/internal/replication/pb"
+	pb2 "go.linka.cloud/protodb/internal/replication/gossip/pb"
 	"go.linka.cloud/protodb/pb"
 )
 
@@ -45,13 +45,13 @@ type node struct {
 	// elect pb2.ReplicationService_ElectionClient
 }
 
-func (r *Repl) handleEvents(ctx context.Context) {
+func (r *Gossip) handleEvents(ctx context.Context) {
 	for e := range r.events {
 		go r.handleEvent(ctx, e)
 	}
 }
 
-func (r *Repl) handleEvent(ctx context.Context, e memberlist.NodeEvent) {
+func (r *Gossip) handleEvent(ctx context.Context, e memberlist.NodeEvent) {
 	log := logger.C(ctx).WithField("component", "replication")
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -196,7 +196,7 @@ func (r *Repl) handleEvent(ctx context.Context, e memberlist.NodeEvent) {
 	}
 }
 
-func (r *Repl) onStoppedLeading(ctx context.Context) {
+func (r *Gossip) onStoppedLeading(ctx context.Context) {
 	logger.C(ctx).Info("stopped leading")
 	meta := r.meta.Load().CloneVT()
 	meta.IsLeader = false
@@ -216,7 +216,7 @@ func (r *Repl) onStoppedLeading(ctx context.Context) {
 	}
 }
 
-func (r *Repl) onNewLeader(ctx context.Context, identity string) {
+func (r *Gossip) onNewLeader(ctx context.Context, identity string) {
 	log := logger.C(ctx)
 	if identity == "" {
 		log.Warnf("empty leader")
@@ -250,14 +250,14 @@ func (r *Repl) onNewLeader(ctx context.Context, identity string) {
 	r.setReady()
 }
 
-func (r *Repl) setReady() {
+func (r *Gossip) setReady() {
 	r.once.Do(func() {
 		logger.C(r.ctx).Info("setting ready")
 		close(r.ready)
 	})
 }
 
-func (r *Repl) writeNodes() error {
+func (r *Gossip) writeNodes() error {
 	var nodes []string
 	for _, v := range r.list.Members() {
 		nodes = append(nodes, v.Name)
@@ -277,7 +277,7 @@ func (r *Repl) writeNodes() error {
 	return f.Sync()
 }
 
-func (r *Repl) loadNodes() ([]string, error) {
+func (r *Gossip) loadNodes() ([]string, error) {
 	if r.db.InMemory() {
 		return nil, nil
 	}

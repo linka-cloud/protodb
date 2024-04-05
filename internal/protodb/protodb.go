@@ -27,7 +27,10 @@ import (
 	"go.linka.cloud/protodb/pb"
 )
 
-var ErrNotLeader = errors.New("current node is not leader")
+var (
+	ErrNotLeader    = errors.New("current node is not leader")
+	ErrNoLeaderConn = errors.New("no leader connection")
+)
 
 type DB interface {
 	Registerer

@@ -7,6 +7,7 @@ toolchain go1.22.1
 require (
 	github.com/alta/protopatch v0.5.3
 	github.com/bombsimon/logrusr/v4 v4.1.0
+	github.com/cespare/xxhash v1.1.0
 	github.com/dgraph-io/badger/v3 v3.2103.5
 	github.com/dgraph-io/ristretto v0.1.1
 	github.com/efficientgo/core v1.0.0-rc.2
@@ -20,6 +21,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/planetscale/vtprotobuf v0.6.0
 	github.com/prometheus/client_golang v1.19.0
+	github.com/shaj13/raft v0.0.0-00010101000000-000000000000
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.3.0
 	github.com/stretchr/testify v1.8.4
@@ -44,7 +46,6 @@ require (
 	github.com/bufbuild/protocompile v0.9.0 // indirect
 	github.com/caitlinelfring/go-env-default v1.1.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
-	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f // indirect
@@ -89,7 +90,12 @@ require (
 	github.com/spf13/afero v1.11.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75 // indirect
+	go.etcd.io/etcd/client/pkg/v3 v3.5.12 // indirect
+	go.etcd.io/etcd/pkg/v3 v3.5.12 // indirect
+	go.etcd.io/etcd/raft/v3 v3.5.12 // indirect
+	go.etcd.io/etcd/server/v3 v3.5.12 // indirect
 	go.opencensus.io v0.24.0 // indirect
+	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/mod v0.16.0 // indirect
 	golang.org/x/net v0.22.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
@@ -103,6 +109,4 @@ require (
 
 replace github.com/grpc-ecosystem/go-grpc-prometheus => github.com/linka-cloud/go-grpc-prometheus v1.2.0-lk
 
-replace go.linka.cloud/leaderelection/gossip => github.com/linka-cloud/leaderelection/gossip v0.0.0-20230808143931-706d37a77c39
-
-replace github.com/rancher/wrangler-cli => github.com/linka-cloud/wrangler-cli v0.0.0-20230526104356-1e49d2141ed9
+replace github.com/shaj13/raft => github.com/linka-cloud/raft v0.0.0-20240320193336-fa39142bc429

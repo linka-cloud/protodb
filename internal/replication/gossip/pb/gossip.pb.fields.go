@@ -22,10 +22,10 @@ var ReplicationServiceMethods = struct {
 	Alive     string
 	Election  string
 }{
-	Init:      "/linka.cloud.protodb.internal.replication.ReplicationService/Init",
-	Replicate: "/linka.cloud.protodb.internal.replication.ReplicationService/Replicate",
-	Alive:     "/linka.cloud.protodb.internal.replication.ReplicationService/Alive",
-	Election:  "/linka.cloud.protodb.internal.replication.ReplicationService/Election",
+	Init:      "/linka.cloud.protodb.internal.replication.gossip.ReplicationService/Init",
+	Replicate: "/linka.cloud.protodb.internal.replication.gossip.ReplicationService/Replicate",
+	Alive:     "/linka.cloud.protodb.internal.replication.gossip.ReplicationService/Alive",
+	Election:  "/linka.cloud.protodb.internal.replication.gossip.ReplicationService/Election",
 }
 
 var InitRequestFields = struct {
@@ -43,17 +43,17 @@ var InitResponseFields = struct {
 }
 
 var OpFields = struct {
+	ID     string
 	New    string
 	Set    string
 	Delete string
 	Commit string
-	ID     string
 }{
+	ID:     "id",
 	New:    "new",
 	Set:    "set",
 	Delete: "delete",
 	Commit: "commit",
-	ID:     "id",
 }
 
 var NewFields = struct {
