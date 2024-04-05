@@ -7,7 +7,6 @@ toolchain go1.22.1
 require (
 	github.com/alta/protopatch v0.5.3
 	github.com/bombsimon/logrusr/v4 v4.1.0
-	github.com/cespare/xxhash v1.1.0
 	github.com/dgraph-io/badger/v3 v3.2103.5
 	github.com/dgraph-io/ristretto v0.1.1
 	github.com/efficientgo/core v1.0.0-rc.2
@@ -15,6 +14,7 @@ require (
 	github.com/fullstorydev/grpchan v1.1.2-0.20220223040110-9b5ad76b6f3d
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.19.1
 	github.com/hashicorp/memberlist v0.5.0
+	github.com/klauspost/compress v1.17.7
 	github.com/lyft/protoc-gen-star v0.6.2
 	github.com/mennanov/fmutils v0.2.1
 	github.com/miekg/dns v1.1.58
@@ -46,6 +46,7 @@ require (
 	github.com/bufbuild/protocompile v0.9.0 // indirect
 	github.com/caitlinelfring/go-env-default v1.1.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
+	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f // indirect
@@ -76,7 +77,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jhump/protoreflect v1.15.6 // indirect
 	github.com/justinas/alice v1.2.0 // indirect
-	github.com/klauspost/compress v1.17.7 // indirect
 	github.com/lyft/protoc-gen-star/v2 v2.0.3 // indirect
 	github.com/pires/go-proxyproto v0.7.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
