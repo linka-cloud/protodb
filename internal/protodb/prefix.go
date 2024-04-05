@@ -25,7 +25,6 @@ const (
 	Data        = "_data"
 	Index       = "_index"
 	Descriptors = "_schema"
-	Internal    = "_internal"
 )
 
 func DataPrefix(m proto.Message) (key []byte, field string, value string, err error) {

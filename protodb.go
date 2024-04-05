@@ -107,6 +107,7 @@ var (
 	ReplicationModeNone  = replication.ModeNone
 	ReplicationModeAsync = replication.ModeAsync
 	ReplicationModeSync  = replication.ModeSync
+	ReplicationModeRaft  = replication.ModeRaft
 )
 
 type ReplicationOption = replication.Option
