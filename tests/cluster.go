@@ -21,8 +21,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/shaj13/raft"
 	"go.linka.cloud/grpc-toolkit/logger"
+	"go.linka.cloud/raft"
 	"go.uber.org/multierr"
 	"golang.org/x/sync/errgroup"
 

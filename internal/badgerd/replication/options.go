@@ -20,7 +20,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/shaj13/raft"
+	"go.linka.cloud/raft"
 	"google.golang.org/grpc"
 )
 
