@@ -24,14 +24,12 @@ import (
 	"sync"
 
 	"github.com/dgraph-io/badger/v3"
-	"github.com/dgraph-io/ristretto/z"
-	"go.linka.cloud/grpc-toolkit/logger"
 	pf "go.linka.cloud/protofilters"
 	"google.golang.org/protobuf/proto"
 
-	"go.linka.cloud/protodb/internal/db/pending"
+	"go.linka.cloud/protodb/internal/badgerd"
+	"go.linka.cloud/protodb/internal/badgerd/pending"
 	"go.linka.cloud/protodb/internal/protodb"
-	"go.linka.cloud/protodb/internal/replication"
 	"go.linka.cloud/protodb/internal/token"
 )
 
@@ -40,40 +38,22 @@ func newTx(ctx context.Context, db *db, opts ...protodb.TxOption) (*tx, error) {
 		return nil, badger.ErrDBClosed
 	}
 	end := metrics.Tx.Start("")
-	readTs := db.orc.readTs()
-	if db.replicated() {
-		logger.C(ctx).Tracef("starting transaction with readTs %d", readTs)
-	}
 	var o protodb.TxOpts
 	for _, opt := range opts {
 		opt(&o)
 	}
 	update := !o.ReadOnly
-	var txr replication.Maybe
-	if update {
-		txr = replication.Maybe{DB: db}
-		var err error
-		if db.replicated() {
-			if !db.repl.IsLeader() {
-				return nil, protodb.ErrNotLeader
-			}
-			if txr.Tx, err = db.repl.NewTx(ctx); err != nil {
-				return nil, err
-			}
-		}
-		if err = txr.New(ctx, readTs); err != nil {
-			return nil, err
-		}
+	txn, err := db.bdb.NewTransaction(ctx, !o.ReadOnly)
+	if err != nil {
+		end.End()
+		return nil, err
 	}
 	tx := &tx{
-		ctx:          ctx,
-		txn:          db.bdb.NewTransactionAt(readTs, false),
-		txr:          txr,
-		readTs:       readTs,
-		db:           db,
-		me:           end,
-		update:       update,
-		conflictKeys: make(map[uint64]struct{}),
+		ctx:    ctx,
+		db:     db,
+		txn:    txn,
+		me:     end,
+		update: update,
 	}
 	return tx, nil
 }
@@ -81,16 +61,16 @@ func newTx(ctx context.Context, db *db, opts ...protodb.TxOption) (*tx, error) {
 type tx struct {
 	ctx context.Context
 
-	db       *db
-	update   bool
-	txn      *badger.Txn
-	readTs   uint64
-	doneRead bool
-
-	reads []uint64 // contains fingerprints of keys read.
-	// contains fingerprints of keys written. This is used for conflict detection.
-	conflictKeys map[uint64]struct{}
-	readsLock    sync.Mutex // guards the reads slice. See addReadKey.
+	db     *db
+	update bool
+	txn    badgerd.Tx
+	// readTs   uint64
+	// doneRead bool
+	//
+	// reads []uint64 // contains fingerprints of keys read.
+	// // contains fingerprints of keys written. This is used for conflict detection.
+	// conflictKeys map[uint64]struct{}
+	// readsLock    sync.Mutex // guards the reads slice. See addReadKey.
 
 	applyDefaults bool
 
@@ -100,15 +80,6 @@ type tx struct {
 
 	m    sync.RWMutex
 	done bool
-
-	txr replication.Maybe
-}
-
-func (tx *tx) newIterator(opt badger.IteratorOptions) pending.Iterator {
-	if !tx.update {
-		return pending.TxIterator(tx.txn.NewIterator(opt), tx.addReadKey)
-	}
-	return tx.txr.Iterator(tx.txn, tx.readTs, opt)
 }
 
 func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (out []proto.Message, info *protodb.PagingInfo, err error) {
@@ -156,7 +127,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 		tx.db.opts.logger.Tracef("filtering optimized by key only filter prefix")
 		iterPrefix = append(prefix, []byte(p)...)
 	}
-	it := tx.newIterator(badger.IteratorOptions{Prefix: iterPrefix, PrefetchValues: false, Reverse: o.Reverse})
+	it := tx.txn.Iterator(badger.IteratorOptions{Prefix: iterPrefix, PrefetchValues: false, Reverse: o.Reverse})
 	defer it.Close()
 	var (
 		count   = uint64(0)
@@ -249,11 +220,11 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 	return out, &protodb.PagingInfo{HasNext: hasNext, Token: tks}, nil
 }
 
-func (tx *tx) getRaw(key []byte) ([]byte, error) {
+func (tx *tx) getRaw(ctx context.Context, key []byte) ([]byte, error) {
 	if tx.closed() {
 		return nil, badger.ErrDBClosed
 	}
-	item, err := tx.txn.Get(key)
+	item, err := tx.txn.Get(ctx, key)
 	if err != nil {
 		return nil, err
 	}
@@ -284,7 +255,7 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 		return nil, err
 	}
 	if o.FieldMask != nil {
-		item, err := tx.txn.Get(k)
+		item, err := tx.txn.Get(ctx, k)
 		if err != nil {
 			return nil, err
 		}
@@ -315,8 +286,7 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 		return nil, err
 	}
 	tx.db.opts.logger.Tracef("set key %q", string(k))
-	tx.addConflictKey(e.Key)
-	return m, tx.txr.Set(ctx, e.Key, e.Value, e.ExpiresAt)
+	return m, tx.txn.Set(ctx, e.Key, e.Value, e.ExpiresAt)
 }
 
 func (tx *tx) setRaw(ctx context.Context, key, val []byte) error {
@@ -327,9 +297,8 @@ func (tx *tx) setRaw(ctx context.Context, key, val []byte) error {
 		tx.close()
 		return err
 	}
-	tx.addConflictKey(key)
 	tx.db.opts.logger.Tracef("raw set key %q", string(key))
-	return tx.txr.Set(ctx, key, val, 0)
+	return tx.txn.Set(ctx, key, val, 0)
 }
 
 func (tx *tx) Delete(ctx context.Context, m proto.Message) error {
@@ -361,9 +330,8 @@ func (tx *tx) delete(ctx context.Context, m proto.Message) error {
 		tx.close()
 		return err
 	}
-	tx.addConflictKey(k)
 	tx.db.opts.logger.Tracef("delete key %q", k)
-	return tx.txr.Delete(ctx, k)
+	return tx.txn.Delete(ctx, k)
 }
 
 func (tx *tx) deleteRaw(ctx context.Context, key []byte) error {
@@ -374,9 +342,8 @@ func (tx *tx) deleteRaw(ctx context.Context, key []byte) error {
 		tx.close()
 		return err
 	}
-	tx.addConflictKey(key)
 	tx.db.opts.logger.Tracef("delete key %q", string(key))
-	return tx.txr.Delete(ctx, key)
+	return tx.txn.Delete(ctx, key)
 }
 
 func (tx *tx) Commit(ctx context.Context) error {
@@ -387,17 +354,9 @@ func (tx *tx) Commit(ctx context.Context) error {
 	if !tx.update {
 		return nil
 	}
-	tx.db.orc.writeChLock.Lock()
-	defer tx.db.orc.writeChLock.Unlock()
 
-	ts, conflict := tx.db.orc.newCommitTs(tx)
-	if conflict {
-		return badger.ErrConflict
-	}
-	defer tx.db.orc.doneCommit(ts)
-
-	tx.db.opts.logger.Debugf("committing at %d", ts)
-	if err := tx.txr.Commit(ctx, ts); err != nil {
+	tx.db.opts.logger.Debugf("committing")
+	if err := tx.txn.Commit(ctx); err != nil {
 		metrics.Tx.ErrorsCounter.WithLabelValues("").Inc()
 		return err
 	}
@@ -405,7 +364,7 @@ func (tx *tx) Commit(ctx context.Context) error {
 }
 
 func (tx *tx) Close() {
-	tx.txn.Discard()
+	tx.txn.Close(context.Background())
 	tx.close()
 }
 
@@ -423,32 +382,9 @@ func (tx *tx) close() {
 	tx.me.End()
 	metrics.Tx.OpCountHist.Observe(float64(tx.count))
 	metrics.Tx.SizeHist.Observe(float64(tx.size))
-	tx.db.orc.doneRead(tx)
-	tx.txr.Close(context.Background())
+	tx.txn.Close(context.Background())
 	tx.done = true
 	tx.m.Unlock()
-}
-
-func (tx *tx) addReadKey(key []byte) {
-	if tx.update {
-		fp := z.MemHash(key)
-
-		// Because of the possibility of multiple iterators it is now possible
-		// for multiple threads within a read-write transaction to read keys at
-		// the same time. The reads slice is not currently thread-safe and
-		// needs to be locked whenever we mark a key as read.
-		tx.readsLock.Lock()
-		tx.reads = append(tx.reads, fp)
-		tx.readsLock.Unlock()
-	}
-}
-
-func (tx *tx) addConflictKey(key []byte) {
-	if !tx.update {
-		return
-	}
-	fp := z.MemHash(key)
-	tx.conflictKeys[fp] = struct{}{}
 }
 
 func hash(f protodb.Filter) (hash string, err error) {

@@ -116,7 +116,7 @@ func Test(t *testing.T, db protodb.Client) {
 	is, i, err := db.Get(ctx, &testpb.Interface{})
 	require.NoError(err)
 	assert.NotNil(i)
-	assert.Len(is, 1)
+	require.Len(is, 1)
 	equal(i0, is[0])
 
 	r, err = db.Set(ctx, i1)

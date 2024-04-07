@@ -26,9 +26,9 @@ import (
 	"go.linka.cloud/grpc-toolkit/logger"
 	"go.uber.org/multierr"
 
-	"go.linka.cloud/protodb/internal/db/pending"
-	"go.linka.cloud/protodb/internal/replication"
-	"go.linka.cloud/protodb/internal/replication/gossip/pb"
+	"go.linka.cloud/protodb/internal/badgerd/pending"
+	"go.linka.cloud/protodb/internal/badgerd/replication"
+	"go.linka.cloud/protodb/internal/badgerd/replication/gossip/pb"
 )
 
 type stream struct {
@@ -61,7 +61,7 @@ type tx struct {
 	cmu    sync.RWMutex
 	count  atomic.Uint64
 	readTs uint64
-	w      pending.IterableMergedWrites
+	w      pending.Writes
 	o      sync.Once
 }
 
@@ -94,17 +94,21 @@ func (r *tx) hasStreams(s *stream) bool {
 	return false
 }
 
-func (r *tx) Iterator(tx *badger.Txn, readTs uint64, opt badger.IteratorOptions) pending.Iterator {
-	return r.w.MergedIterator(tx, readTs, opt)
-}
-
-func (r *tx) New(ctx context.Context, at uint64) error {
-	if err := r.do(ctx, &pb.Op{Action: &pb.Op_New{New: &pb.New{At: at}}}); err != nil {
+func (r *tx) New(ctx context.Context, tx *badger.Txn, readTracker pending.ReadTracker) error {
+	if err := r.do(ctx, &pb.Op{Action: &pb.Op_New{New: &pb.New{At: tx.ReadTs()}}}); err != nil {
 		return err
 	}
-	r.readTs = at
-	r.w = pending.New(r.db.Path(), r.db.MaxBatchCount(), r.db.MaxBatchSize(), int(r.db.ValueThreshold()), func(key []byte) {})
+	r.readTs = tx.ReadTs()
+	r.w = pending.New(r.db.Path(), tx, r.db.MaxBatchCount(), r.db.MaxBatchSize(), int(r.db.ValueThreshold()), readTracker)
 	return nil
+}
+
+func (r *tx) Iterator(opt badger.IteratorOptions) pending.Iterator {
+	return r.w.Iterator(opt.Prefix, opt.Reverse)
+}
+
+func (r *tx) Get(ctx context.Context, key []byte) (pending.Item, error) {
+	return r.w.Get(key)
 }
 
 func (r *tx) Set(ctx context.Context, key, value []byte, expiresAt uint64) error {

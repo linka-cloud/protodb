@@ -1,4 +1,4 @@
-// Copyright 2023 Linka Cloud  All rights reserved.
+// Copyright 2024 Linka Cloud  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -40,8 +40,12 @@ func (i *item) Value(fn func(val []byte) error) error {
 	return fn(i.e.Value)
 }
 
+func (i *item) ValueCopy(dst []byte) ([]byte, error) {
+	return y.SafeCopy(dst, i.e.Value), nil
+}
+
 func (i *item) IsDeletedOrExpired() bool {
-	if i.e.UserMeta&bitDelete > 0 {
+	if i.e.UserMeta&BitDelete > 0 {
 		return true
 	}
 	if i.e.ExpiresAt == 0 {

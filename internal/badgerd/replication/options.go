@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/shaj13/raft"
+	"google.golang.org/grpc"
 )
 
 type Option func(o *Options)
@@ -36,6 +37,8 @@ type Options struct {
 	EncryptionKey string
 
 	StartOptions []raft.StartOption
+
+	ExtraServices []func(registrar grpc.ServiceRegistrar)
 
 	serverCert []byte
 	serverKey  []byte
@@ -172,4 +175,10 @@ func (o *Options) TLS() (*tls.Config, error) {
 		ClientCAs:    clientCA,
 		ClientAuth:   auth,
 	}, nil
+}
+
+func WithExtraServices(services ...func(registrar grpc.ServiceRegistrar)) Option {
+	return func(o *Options) {
+		o.ExtraServices = append(o.ExtraServices, services...)
+	}
 }

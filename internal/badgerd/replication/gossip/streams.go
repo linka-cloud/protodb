@@ -15,8 +15,8 @@
 package gossip
 
 import (
-	"go.linka.cloud/protodb/internal/replication"
-	pb2 "go.linka.cloud/protodb/internal/replication/gossip/pb"
+	"go.linka.cloud/protodb/internal/badgerd/replication"
+	pb2 "go.linka.cloud/protodb/internal/badgerd/replication/gossip/pb"
 )
 
 type writer struct {

@@ -1,4 +1,4 @@
-// Copyright 2023 Linka Cloud  All rights reserved.
+// Copyright 2024 Linka Cloud  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -73,7 +74,7 @@ func (h *header) decode(buf []byte) {
 	h.expiresAt = binary.BigEndian.Uint64(buf[9:])
 }
 
-func newWal(path string, p *mem, size int64) *wal {
+func newWal(path string, tx *badger.Txn, m *mem, size int64) *wal {
 	var fp string
 	for {
 		n := counter.n.Add(1)
@@ -89,27 +90,58 @@ func newWal(path string, p *mem, size int64) *wal {
 	if !errors.Is(err, z.NewFile) {
 		y.Check(err)
 	}
-	if p == nil {
-		return &wal{f: f, m: make(map[uint32]*pointer)}
+	if m == nil {
+		return &wal{f: f, m: make(map[uint32]*pointer), addReadKey: NoReadTracker}
 	}
-	w := &wal{f: f, m: make(map[uint32]*pointer, len(p.m)), addReadKey: p.addReadKey}
-	for _, e := range p.m {
+	w := &wal{f: f, tx: tx, m: make(map[uint32]*pointer, len(m.m)), addReadKey: m.addReadKey}
+	for _, e := range m.m {
 		y.Check(w.append(e))
 	}
-	p.m = make(map[string]*badger.Entry)
+	m.m = make(map[string]*badger.Entry)
 	return w
 }
 
 type wal struct {
+	tx         *badger.Txn
 	f          *z.MmapFile
 	m          map[uint32]*pointer
 	pos        int64
-	addReadKey func(key []byte)
+	addReadKey ReadTracker
 	o          sync.Once
 }
 
-func (w *wal) Iterator(prefix []byte, readTs uint64, reversed bool) Iterator {
-	return w.newIterator(prefix, readTs, reversed)
+func (w *wal) Iterator(prefix []byte, reversed bool) Iterator {
+	if w.tx == nil {
+		return w.newIterator(prefix, math.MaxUint64, reversed)
+	}
+	return newMergeIterator(&txIterator{w.tx.NewIterator(badger.IteratorOptions{Prefix: prefix, Reverse: reversed}), w.addReadKey}, w.newIterator(prefix, w.tx.ReadTs(), reversed), reversed)
+}
+
+func (w *wal) Get(key []byte) (Item, error) {
+	p, ok := w.m[y.Hash(key)]
+	if !ok {
+		if w.tx == nil {
+			return nil, badger.ErrKeyNotFound
+		}
+		return w.tx.Get(key)
+	}
+	if p.deleted {
+		return nil, badger.ErrKeyNotFound
+	}
+	e, err := w.read(key)
+	if err != nil {
+		return nil, err
+	}
+	w.addReadKey(key)
+	return &item{
+		readTs: 0,
+		e: &badger.Entry{
+			Key:       e.Key,
+			Value:     e.Value,
+			ExpiresAt: e.ExpiresAt,
+			UserMeta:  e.UserMeta,
+		},
+	}, nil
 }
 
 func (w *wal) Set(e *badger.Entry) {
@@ -119,7 +151,7 @@ func (w *wal) Set(e *badger.Entry) {
 func (w *wal) Delete(key []byte) {
 	y.Check(w.append(&badger.Entry{
 		Key:      key,
-		UserMeta: bitDelete,
+		UserMeta: BitDelete,
 	}))
 }
 
@@ -141,7 +173,7 @@ func (w *wal) append(e *badger.Entry) error {
 		key:     e.Key,
 		offset:  uint32(w.pos),
 		len:     l,
-		deleted: e.UserMeta&bitDelete > 0,
+		deleted: e.UserMeta&BitDelete > 0,
 	}
 	h := header{
 		userMeta:  e.UserMeta,
@@ -188,7 +220,7 @@ func (w *wal) Replay(fn func(e *badger.Entry) error) error {
 	return nil
 }
 
-func (w *wal) newIterator(prefix []byte, readTs uint64, reversed bool) Iterator {
+func (w *wal) newIterator(prefix []byte, readTs uint64, reversed bool) iterator {
 	if len(w.m) == 0 {
 		return nil
 	}
@@ -218,7 +250,7 @@ type walIterator struct {
 	nextIdx    int
 	readTs     uint64
 	reversed   bool
-	addReadKey func(key []byte)
+	addReadKey ReadTracker
 }
 
 func (i *walIterator) Next() {

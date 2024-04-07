@@ -1,4 +1,4 @@
-// Copyright 2023 Linka Cloud  All rights reserved.
+// Copyright 2024 Linka Cloud  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ func TestWrites(t *testing.T) {
 	const count = 1_000
 	entries := genEntries(count, 1024*1024)
 
-	w := newWrites(db.Opts().Dir, db.MaxBatchCount(), db.MaxBatchSize(), int(db.Opts().ValueThreshold), func(key []byte) {})
+	w := newWrites(db.Opts().Dir, nil, db.MaxBatchCount(), db.MaxBatchSize(), int(db.Opts().ValueThreshold), nil)
 	defer w.Close()
 
 	for _, v := range entries {
@@ -44,7 +44,7 @@ func TestWrites(t *testing.T) {
 			assert.NotNil(t, w.w)
 		}
 	}
-	it := w.Iterator(nil, 0, false)
+	it := w.Iterator(nil, false)
 	defer it.Close()
 	i := 0
 	for it.Rewind(); it.Valid(); it.Next() {

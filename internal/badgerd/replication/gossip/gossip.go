@@ -34,10 +34,9 @@ import (
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 
-	"go.linka.cloud/protodb/internal/dns"
-	"go.linka.cloud/protodb/internal/replication"
-	pb2 "go.linka.cloud/protodb/internal/replication/gossip/pb"
-	"go.linka.cloud/protodb/internal/server"
+	"go.linka.cloud/protodb/internal/badgerd/dns"
+	"go.linka.cloud/protodb/internal/badgerd/replication"
+	pb2 "go.linka.cloud/protodb/internal/badgerd/replication/gossip/pb"
 	"go.linka.cloud/protodb/pb"
 )
 
@@ -167,11 +166,10 @@ func New(ctx context.Context, db replication.DB, opts ...replication.Option) (re
 	}
 
 	pb2.RegisterReplicationServiceServer(r.svc, r)
-	r.h, err = server.NewServer(r.db)
-	if err != nil {
-		return nil, err
+
+	for _, v := range o.ExtraServices {
+		v(r.svc)
 	}
-	pb.RegisterProtoDBServer(r.svc, r)
 
 	go func() {
 		log.Infof("starting server")
@@ -237,9 +235,6 @@ func New(ctx context.Context, db replication.DB, opts ...replication.Option) (re
 	<-r.ready
 	log.Infof("init replication")
 	if err := r.init(ctx); err != nil {
-		return nil, err
-	}
-	if err := r.db.LoadDescriptors(ctx); err != nil {
 		return nil, err
 	}
 	return r, nil

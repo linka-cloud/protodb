@@ -19,7 +19,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"strings"
 	"time"
 
 	"github.com/dgraph-io/badger/v3"
@@ -27,10 +26,9 @@ import (
 	"go.linka.cloud/grpc-toolkit/logger"
 	"google.golang.org/grpc/peer"
 
-	"go.linka.cloud/protodb/internal/db/pending"
-	"go.linka.cloud/protodb/internal/protodb"
-	"go.linka.cloud/protodb/internal/replication"
-	pb2 "go.linka.cloud/protodb/internal/replication/gossip/pb"
+	"go.linka.cloud/protodb/internal/badgerd/pending"
+	"go.linka.cloud/protodb/internal/badgerd/replication"
+	pb2 "go.linka.cloud/protodb/internal/badgerd/replication/gossip/pb"
 	"go.linka.cloud/protodb/pb"
 )
 
@@ -83,24 +81,14 @@ func (r *Gossip) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 		return gerrs.Internalf("cannot get peer from context")
 	}
 	log.Infof("Replicating from %s", p.Addr)
-	var (
-		batch  *badger.WriteBatch
-		reload bool
-	)
-	w := pending.New(r.db.Path(), r.db.MaxBatchCount(), r.db.MaxBatchSize(), int(r.db.ValueThreshold()), func(key []byte) {})
+
+	var batch replication.WriteBatch
+	w := pending.New(r.db.Path(), nil, r.db.MaxBatchCount(), r.db.MaxBatchSize(), int(r.db.ValueThreshold()), nil)
 	defer func() {
 		w.Close()
 		if batch != nil {
 			batch.Cancel()
 		}
-		if !reload {
-			return
-		}
-		go func() {
-			if err := r.db.LoadDescriptors(context.Background()); err != nil {
-				log.Errorf("failed to reload descriptors: %v", err)
-			}
-		}()
 	}()
 	// message can come in any order in async replication mode, so we need to keep track of the commit message
 	var (
@@ -166,9 +154,6 @@ func (r *Gossip) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 			}
 		case *pb2.Op_Set:
 			log.WithField("key", string(a.Set.Key)).Tracef("set key")
-			if strings.HasPrefix(string(a.Set.Key), protodb.Descriptors) {
-				reload = true
-			}
 			w.Set(&badger.Entry{
 				Key:       a.Set.Key,
 				Value:     a.Set.Value,

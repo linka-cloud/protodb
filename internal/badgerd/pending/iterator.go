@@ -1,4 +1,4 @@
-// Copyright 2023 Linka Cloud  All rights reserved.
+// Copyright 2024 Linka Cloud  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -32,12 +32,13 @@ type Item interface {
 	Key() []byte
 	KeyCopy(dst []byte) []byte
 	Value(fn func(val []byte) error) error
+	ValueCopy(dst []byte) ([]byte, error)
 	IsDeletedOrExpired() bool
 	ExpiresAt() uint64
 	Version() uint64
 }
 
-func TxIterator(i *badger.Iterator, addReadKey func(key []byte)) Iterator {
+func TxIterator(i *badger.Iterator, addReadKey ReadTracker) Iterator {
 	return &txIterator{i: i, addReadKey: addReadKey}
 }
 
@@ -48,7 +49,7 @@ type iterator interface {
 
 type txIterator struct {
 	i          *badger.Iterator
-	addReadKey func(key []byte)
+	addReadKey ReadTracker
 }
 
 func (t *txIterator) Next() {

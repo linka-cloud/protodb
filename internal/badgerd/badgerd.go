@@ -1,4 +1,4 @@
-// Copyright 2023 Linka Cloud  All rights reserved.
+// Copyright 2024 Linka Cloud  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,54 +12,40 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package replication
+package badgerd
 
 import (
 	"context"
 
 	"github.com/dgraph-io/badger/v3"
+	"github.com/dgraph-io/badger/v3/pb"
 	"google.golang.org/grpc"
 
-	"go.linka.cloud/protodb/internal/db/pending"
+	"go.linka.cloud/protodb/internal/badgerd/pending"
 )
 
-// MaxMsgSize is the maximum message size accepted by the gRPC server.
-// It should be 4MiB, but we set it to 4MB to avoid exceeding the allowed size
-const MaxMsgSize = 4 * 1000 * 1000
+type Iterator = pending.Iterator
+type Item = pending.Item
 
-const (
-	ModeNone Mode = iota
-	ModeAsync
-	ModeSync
-)
-
-type Mode uint8
-
-func (m Mode) String() string {
-	switch m {
-	case ModeAsync:
-		return "async"
-	case ModeSync:
-		return "sync"
-	default:
-		return "unknown"
-	}
-}
-
-type Replication interface {
+type DB interface {
+	View(fn func(tx *badger.Txn) error) error
+	Subscribe(ctx context.Context, cb func(kv *badger.KVList) error, matches []pb.Match) error
+	NewTransaction(ctx context.Context, update bool) (Tx, error)
+	Replicated() bool
 	IsLeader() bool
+	Leader() string
+	LeaderChanges() <-chan string
 	LeaderConn() (grpc.ClientConnInterface, bool)
-	CurrentLeader() string
-	Subscribe() <-chan string
 	LinearizableReads() bool
-	NewTx(ctx context.Context) (Tx, error)
 	Close() error
 }
+
 type Tx interface {
-	Iterator(tx *badger.Txn, readTs uint64, opt badger.IteratorOptions) pending.Iterator
-	New(ctx context.Context, readTs uint64) error
+	ReadTs() uint64
+	Iterator(opt badger.IteratorOptions) Iterator
 	Set(ctx context.Context, key, value []byte, expiresAt uint64) error
+	Get(ctx context.Context, key []byte) (Item, error)
 	Delete(ctx context.Context, key []byte) error
-	Commit(ctx context.Context, at uint64) error
+	Commit(ctx context.Context) error
 	Close(ctx context.Context) error
 }

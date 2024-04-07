@@ -20,7 +20,7 @@ import (
 
 	"go.linka.cloud/grpc-toolkit/logger"
 
-	pb2 "go.linka.cloud/protodb/internal/replication/gossip/pb"
+	pb2 "go.linka.cloud/protodb/internal/badgerd/replication/gossip/pb"
 )
 
 func (r *Gossip) Elect(ctx context.Context) {
