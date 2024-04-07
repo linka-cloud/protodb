@@ -1,4 +1,4 @@
-// Copyright 2023 Linka Cloud  All rights reserved.
+// Copyright 2024 Linka Cloud  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -18,42 +18,45 @@ import (
 	"github.com/dgraph-io/badger/v3"
 )
 
-type IterableMergedWrites interface {
-	Writes
-	MergedIterator(tx *badger.Txn, readTs uint64, opt badger.IteratorOptions) Iterator
-}
+type ReadTracker func(key []byte)
+
+func NoReadTracker(_ []byte) {}
 
 type Writes interface {
-	Iterator(prefix []byte, readTs uint64, reversed bool) Iterator
+	Iterator(prefix []byte, reversed bool) Iterator
+	Get(key []byte) (Item, error)
 	Set(e *badger.Entry)
 	Delete(key []byte)
 	Replay(fn func(e *badger.Entry) error) error
 	Close() error
 }
 
-func NewWithDB(db *badger.DB, addReadKey func(key []byte)) IterableMergedWrites {
-	return newWrites(db.Opts().Dir, db.MaxBatchCount(), db.MaxBatchSize(), int(db.Opts().ValueThreshold), addReadKey)
+func NewWithDB(db *badger.DB, tx *badger.Txn, addReadKey ReadTracker) Writes {
+	return newWrites(db.Opts().Dir, tx, db.MaxBatchCount(), db.MaxBatchSize(), int(db.Opts().ValueThreshold), addReadKey)
 }
 
-func New(path string, maxCount, maxSize int64, threshold int, addReadKey func(key []byte)) IterableMergedWrites {
-	return newWrites(path, maxCount, maxSize, threshold, addReadKey)
+func New(path string, tx *badger.Txn, maxCount, maxSize int64, threshold int, addReadKey ReadTracker) Writes {
+	return newWrites(path, tx, maxCount, maxSize, threshold, addReadKey)
 }
 
-func newWrites(path string, maxCount, maxSize int64, threshold int, addReadKey func(key []byte)) *writes {
-	w := newMem(addReadKey)
+func newWrites(path string, tx *badger.Txn, maxCount, maxSize int64, threshold int, addReadKey ReadTracker) *writes {
+	w := newMem(tx, addReadKey)
 	return &writes{
 		path:           path,
+		tx:             tx,
 		m:              w,
 		c:              w,
 		maxCount:       maxCount,
 		maxSize:        maxSize,
 		valueThreshold: threshold,
-		addReadKey:     addReadKey,
+		addReadKey:     w.addReadKey,
 	}
 }
 
 type writes struct {
 	path string
+
+	tx *badger.Txn
 
 	m *mem
 	w *wal
@@ -66,24 +69,20 @@ type writes struct {
 	maxSize        int64
 	valueThreshold int
 
-	addReadKey func(key []byte)
+	addReadKey ReadTracker
 }
 
-func (w *writes) MergedIterator(tx *badger.Txn, readTs uint64, opt badger.IteratorOptions) Iterator {
-	return newMergeIterator(&txIterator{tx.NewIterator(opt), w.addReadKey}, w.iterator(opt.Prefix, readTs, opt.Reverse), opt.Reverse)
+func (w *writes) Iterator(prefix []byte, reversed bool) Iterator {
+	return w.c.Iterator(prefix, reversed)
 }
 
-func (w *writes) Iterator(prefix []byte, readTs uint64, reversed bool) Iterator {
-	return w.c.Iterator(prefix, readTs, reversed)
-}
-
-func (w *writes) iterator(prefix []byte, readTs uint64, reversed bool) iterator {
-	return w.c.Iterator(prefix, readTs, reversed).(iterator)
+func (w *writes) Get(key []byte) (Item, error) {
+	return w.c.Get(key)
 }
 
 func (w *writes) Set(e *badger.Entry) {
 	if w.w == nil && !w.checkSize(e) {
-		w.w = newWal(w.path, w.m, w.maxSize)
+		w.w = newWal(w.path, w.tx, w.m, w.maxSize)
 		w.c = w.w
 	}
 	w.c.Set(e)
@@ -94,7 +93,7 @@ func (w *writes) Delete(key []byte) {
 		Key: key,
 	}
 	if w.w == nil && !w.checkSize(e) {
-		w.w = newWal(w.path, w.m, w.maxSize)
+		w.w = newWal(w.path, w.tx, w.m, w.maxSize)
 		w.c = w.w
 	}
 	w.c.Delete(key)

@@ -24,11 +24,12 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
 
+	"go.linka.cloud/protodb/internal/badgerd"
 	"go.linka.cloud/protodb/pb"
 )
 
 var (
-	ErrNotLeader    = errors.New("current node is not leader")
+	ErrNotLeader    = badgerd.ErrNotLeader
 	ErrNoLeaderConn = errors.New("no leader connection")
 )
 

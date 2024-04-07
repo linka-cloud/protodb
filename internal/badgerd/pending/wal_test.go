@@ -1,4 +1,4 @@
-// Copyright 2023 Linka Cloud  All rights reserved.
+// Copyright 2024 Linka Cloud  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -51,8 +51,7 @@ func genEntries(count int, size int64) []*badger.Entry {
 }
 
 func TestWal(t *testing.T) {
-	w := newWal(os.TempDir(), nil, 0)
-	w.addReadKey = func(key []byte) {}
+	w := newWal(os.TempDir(), nil, nil, 0)
 	defer w.Close()
 
 	const count = 1_000
@@ -78,7 +77,7 @@ func TestWal(t *testing.T) {
 		assert.Equal(t, &pointer{key: e.Key, offset: s + 4, len: uint32(headerSize + len(e.Key)), deleted: true}, w.m[y.Hash(e.Key)])
 		require.NoError(t, w.Replay(func(e *badger.Entry) error {
 			assert.Equal(t, entries[0].Key, e.Key)
-			assert.Equal(t, bitDelete, e.UserMeta)
+			assert.Equal(t, BitDelete, e.UserMeta)
 			assert.Empty(t, e.Value)
 			return nil
 		}))
@@ -100,7 +99,7 @@ func TestWal(t *testing.T) {
 		})
 		assert.Equal(t, entries, g)
 
-		it := w.Iterator(nil, 0, false)
+		it := w.Iterator(nil, false)
 		defer it.Close()
 
 		i := 0
@@ -119,7 +118,7 @@ func TestWal(t *testing.T) {
 		assert.Equal(t, count, i)
 	})
 	t.Run(fmt.Sprintf("Batch delete %d entries and iterate", count), func(t *testing.T) {
-		it := w.Iterator(nil, 0, false)
+		it := w.Iterator(nil, false)
 		defer it.Close()
 
 		for it.Rewind(); it.Valid(); it.Next() {
@@ -152,7 +151,7 @@ func TestWal(t *testing.T) {
 }
 
 func writeWal(entries []*badger.Entry) *wal {
-	w := newWal(os.TempDir(), nil, 0)
+	w := newWal(os.TempDir(), nil, nil, 0)
 	defer w.Close()
 	for _, v := range entries {
 		w.Set(v)
@@ -179,7 +178,7 @@ func BenchmarkWalReplay(b *testing.B) {
 	entries := genEntries(sizes[len(sizes)-1], 1024)
 	for _, size := range sizes {
 		b.Run(fmt.Sprintf("%d", size), func(b *testing.B) {
-			w := newWal(os.TempDir(), nil, 0)
+			w := newWal(os.TempDir(), nil, nil, 0)
 			defer w.Close()
 			for _, v := range entries[:size] {
 				w.Set(v)

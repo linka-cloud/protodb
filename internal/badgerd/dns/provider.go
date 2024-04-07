@@ -12,8 +12,8 @@ import (
 	"go.linka.cloud/grpc-toolkit/logger"
 	"go.uber.org/multierr"
 
-	"go.linka.cloud/protodb/internal/dns/godns"
-	"go.linka.cloud/protodb/internal/dns/miekgdns"
+	"go.linka.cloud/protodb/internal/badgerd/dns/godns"
+	"go.linka.cloud/protodb/internal/badgerd/dns/miekgdns"
 )
 
 // Provider is a stateful cache for asynchronous DNS resolutions. It provides a way to resolve addresses and obtain them.

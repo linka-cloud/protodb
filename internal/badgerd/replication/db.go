@@ -19,12 +19,9 @@ import (
 	"io"
 
 	"github.com/dgraph-io/badger/v3"
-
-	"go.linka.cloud/protodb/internal/protodb"
 )
 
 type DB interface {
-	protodb.DB
 	Path() string
 	InMemory() bool
 	MaxVersion() uint64
@@ -32,11 +29,17 @@ type DB interface {
 	Drop() error
 	Load(ctx context.Context, r io.Reader) (uint64, error)
 	Stream(ctx context.Context, at, since uint64, w io.Writer) error
-	LoadDescriptors(ctx context.Context) error
-	NewWriteBatchAt(readTs uint64) *badger.WriteBatch
+	NewWriteBatchAt(readTs uint64) WriteBatch
 
 	ValueThreshold() int64
 	MaxBatchCount() int64
 	MaxBatchSize() int64
 	Close() error
+}
+
+type WriteBatch interface {
+	SetEntryAt(e *badger.Entry, ts uint64) error
+	DeleteAt(key []byte, ts uint64) error
+	Flush() error
+	Cancel()
 }

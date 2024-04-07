@@ -31,7 +31,7 @@ import (
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 
-	pb2 "go.linka.cloud/protodb/internal/replication/gossip/pb"
+	pb2 "go.linka.cloud/protodb/internal/badgerd/replication/gossip/pb"
 	"go.linka.cloud/protodb/pb"
 )
 
@@ -239,9 +239,9 @@ func (r *Gossip) onNewLeader(ctx context.Context, identity string) {
 		if err := r.updateMeta(ctx, b); err != nil {
 			log.Errorf("failed to update node: %v", err)
 		}
-		if err := r.db.LoadDescriptors(ctx); err != nil {
-			log.Errorf("failed to load proto descriptors: %v", err)
-		}
+		// if err := r.db.LoadDescriptors(ctx); err != nil {
+		// 	log.Errorf("failed to load proto descriptors: %v", err)
+		// }
 	}
 	r.pub.Publish(identity)
 	if _, ok := r.leaderClient(); identity != r.name && !ok {

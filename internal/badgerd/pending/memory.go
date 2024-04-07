@@ -1,4 +1,4 @@
-// Copyright 2023 Linka Cloud  All rights reserved.
+// Copyright 2024 Linka Cloud  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,27 +16,39 @@ package pending
 
 import (
 	"bytes"
+	"math"
 	"sort"
 
 	"github.com/dgraph-io/badger/v3"
 	"github.com/dgraph-io/badger/v3/y"
 )
 
-const bitDelete byte = 1 << 0 // Set if the key has been deleted.
+const BitDelete byte = 1 << 0 // Set if the key has been deleted.
 
-func newMem(addReadKey func(key []byte)) *mem {
+func newMem(tx *badger.Txn, addReadKey ReadTracker) *mem {
+	if addReadKey == nil {
+		addReadKey = NoReadTracker
+	}
 	return &mem{
+		tx:         tx,
 		m:          make(map[string]*badger.Entry),
 		addReadKey: addReadKey,
 	}
 }
 
 type mem struct {
+	tx         *badger.Txn
 	m          map[string]*badger.Entry
-	addReadKey func(key []byte)
+	addReadKey ReadTracker
 }
 
-func (m *mem) Iterator(prefix []byte, readTs uint64, reversed bool) Iterator {
+func (m *mem) Iterator(prefix []byte, reversed bool) Iterator {
+	if m.tx == nil {
+		return m.newIterator(prefix, math.MaxUint64, reversed)
+	}
+	return newMergeIterator(&txIterator{m.tx.NewIterator(badger.IteratorOptions{Prefix: prefix, Reverse: reversed}), m.addReadKey}, m.newIterator(prefix, m.tx.ReadTs(), reversed), reversed)
+}
+func (m *mem) newIterator(prefix []byte, readTs uint64, reversed bool) iterator {
 	if m.empty() {
 		return &memIterator{
 			prefix:     prefix,
@@ -63,19 +75,42 @@ func (m *mem) Iterator(prefix []byte, readTs uint64, reversed bool) Iterator {
 	}
 }
 
-func (p *mem) Set(e *badger.Entry) {
-	p.m[string(e.Key)] = e
+func (m *mem) Get(key []byte) (Item, error) {
+	e, ok := m.m[string(key)]
+	if !ok {
+		if m.tx == nil {
+			return nil, badger.ErrKeyNotFound
+		}
+		return m.tx.Get(key)
+	}
+	if e.UserMeta&BitDelete != 0 {
+		return nil, badger.ErrKeyNotFound
+	}
+	m.addReadKey(key)
+	return &item{
+		readTs: 0,
+		e: &badger.Entry{
+			Key:       e.Key,
+			Value:     e.Value,
+			ExpiresAt: e.ExpiresAt,
+			UserMeta:  e.UserMeta,
+		},
+	}, nil
 }
 
-func (p *mem) Delete(key []byte) {
-	p.m[string(key)] = &badger.Entry{
+func (m *mem) Set(e *badger.Entry) {
+	m.m[string(e.Key)] = e
+}
+
+func (m *mem) Delete(key []byte) {
+	m.m[string(key)] = &badger.Entry{
 		Key:      key,
-		UserMeta: bitDelete,
+		UserMeta: BitDelete,
 	}
 }
 
-func (p *mem) Replay(fn func(e *badger.Entry) error) error {
-	for _, e := range p.m {
+func (m *mem) Replay(fn func(e *badger.Entry) error) error {
+	for _, e := range m.m {
 		if err := fn(e); err != nil {
 			return err
 		}
@@ -83,20 +118,20 @@ func (p *mem) Replay(fn func(e *badger.Entry) error) error {
 	return nil
 }
 
-func (p *mem) Close() error {
+func (m *mem) Close() error {
 	return nil
 }
 
-func (p *mem) slice() []*badger.Entry {
-	entries := make([]*badger.Entry, 0, len(p.m))
-	for _, e := range p.m {
+func (m *mem) slice() []*badger.Entry {
+	entries := make([]*badger.Entry, 0, len(m.m))
+	for _, e := range m.m {
 		entries = append(entries, e)
 	}
 	return entries
 }
 
-func (p *mem) empty() bool {
-	return len(p.m) == 0
+func (m *mem) empty() bool {
+	return len(m.m) == 0
 }
 
 type memIterator struct {
@@ -105,7 +140,7 @@ type memIterator struct {
 	nextIdx    int
 	readTs     uint64
 	reversed   bool
-	addReadKey func(key []byte)
+	addReadKey ReadTracker
 }
 
 func (i *memIterator) Next() {
@@ -113,7 +148,7 @@ func (i *memIterator) Next() {
 }
 
 func (i *memIterator) skip() bool {
-	return i.entries[i.nextIdx].UserMeta&bitDelete != 0 || !bytes.HasPrefix(i.entries[i.nextIdx].Key, i.prefix)
+	return i.entries[i.nextIdx].UserMeta&BitDelete != 0 || !bytes.HasPrefix(i.entries[i.nextIdx].Key, i.prefix)
 }
 
 func (i *memIterator) Rewind() {

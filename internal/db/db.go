@@ -19,18 +19,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 	"sync"
 
 	"github.com/dgraph-io/badger/v3"
 	bpb "github.com/dgraph-io/badger/v3/pb"
-	"github.com/dgraph-io/badger/v3/y"
 	"go.linka.cloud/grpc-toolkit/logger"
 	"go.linka.cloud/protoc-gen-defaults/defaults"
 	pf "go.linka.cloud/protofilters"
 	"go.uber.org/multierr"
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	pdesc "google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -38,10 +37,11 @@ import (
 	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/dynamicpb"
 
+	"go.linka.cloud/protodb/internal/badgerd"
+	"go.linka.cloud/protodb/internal/badgerd/replication"
 	"go.linka.cloud/protodb/internal/client"
 	"go.linka.cloud/protodb/internal/protodb"
-	"go.linka.cloud/protodb/internal/replication"
-	"go.linka.cloud/protodb/internal/replication/gossip"
+	"go.linka.cloud/protodb/internal/server"
 	"go.linka.cloud/protodb/pb"
 )
 
@@ -58,34 +58,6 @@ func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 	if o.logger == nil {
 		o.logger = logger.C(ctx).WithField("service", "protodb")
 	}
-	bopts := o.build()
-	// we check for conflicts internally, so we don't need badger to do it
-	bopts.DetectConflicts = false
-	bdb, err := badger.OpenManaged(bopts)
-	if err != nil {
-		return nil, err
-	}
-
-	db, err := newDB(ctx, bdb, o, bopts)
-	if err != nil {
-		return nil, multierr.Combine(err, bdb.Close())
-	}
-	return db, nil
-}
-
-func newDB(ctx context.Context, bdb *badger.DB, o options, bopts badger.Options) (*db, error) {
-	orc := newOracle()
-
-	// We do increment nextTxnTs below. So, no need to do it here.
-	orc.nextTxnTs = bdb.MaxVersion()
-
-	// Let's advance nextTxnTs to one more than whatever we observed via
-	// replaying the logs.
-	orc.txnMark.Done(orc.nextTxnTs)
-	// In normal mode, we must update readMark so older versions of keys can be removed during
-	// compaction when run in offline mode via the flatten tool.
-	orc.readMark.Done(orc.nextTxnTs)
-	orc.incrementNextTs()
 	// TODO(adphi): Use custom registry to avoid this hack
 	if err := os.Setenv(protobufRegistrationConflictEnv, protobufRegistrationConflictPolicy); err != nil {
 		return nil, err
@@ -93,61 +65,78 @@ func newDB(ctx context.Context, bdb *badger.DB, o options, bopts badger.Options)
 	freg := preg.GlobalFiles
 	treg := preg.GlobalTypes
 
-	db := &db{bdb: bdb, orc: orc, opts: o, freg: freg, treg: treg, bopts: bopts}
-	var ro replication.Options
-	for _, v := range o.repl {
-		v(&ro)
-	}
-	var err error
-	switch ro.Mode {
-	case replication.ModeAsync, replication.ModeSync:
-		db.repl, err = gossip.New(ctx, db, o.repl...)
+	db := &db{opts: o, freg: freg, treg: treg}
+	if o.repl != nil {
+		h, err := server.NewServer(db)
 		if err != nil {
 			return nil, err
 		}
-	default:
+		o.repl = append(o.repl, replication.WithExtraServices(func(r grpc.ServiceRegistrar) {
+			pb.RegisterProtoDBServer(r, h)
+		}))
 	}
-	if db.replicated() {
+	var err error
+	db.bdb, err = badgerd.Open(
+		ctx,
+		badgerd.WithLogger(o.logger),
+		badgerd.WithInMemory(o.inMemory),
+		badgerd.WithPath(o.path),
+		badgerd.WithBadgerOptionsFunc(o.badgerOptionsFunc),
+		badgerd.WithReplication(o.repl...),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, db.scancel = context.WithCancel(ctx)
+	go func() {
+		if err := db.bdb.Subscribe(ctx, func(_ *badger.KVList) error {
+			if err := db.loadDescriptors(ctx); err != nil {
+				logger.C(ctx).WithError(err).Errorf("failed to reload descriptors")
+			}
+			return nil
+		}, []bpb.Match{{Prefix: []byte(protodb.Descriptors + "/")}}); err != nil && !errors.Is(err, context.Canceled) {
+			logger.C(ctx).WithError(err).Errorf("failed to watch schema changes")
+		}
+	}()
+
+	if db.bdb.Replicated() {
+		if err = db.loadDescriptors(ctx); err != nil {
+			return nil, multierr.Combine(err, db.bdb.Close())
+		}
 		return db, nil
 	}
-	if err := db.load(ctx); err != nil {
-		return nil, err
+	if err = db.load(ctx); err != nil {
+		return nil, multierr.Combine(err, db.bdb.Close())
 	}
 	return db, nil
 }
 
 type db struct {
-	bdb   *badger.DB
-	opts  options
-	bopts badger.Options
-	orc   *oracle
+	bdb  badgerd.DB
+	opts options
 
 	mu   sync.RWMutex
 	freg *preg.Files
 	treg *preg.Types
 
-	repl replication.Replication
+	// repl replication.Replication
 
-	cmu   sync.RWMutex
-	close bool
+	cmu     sync.RWMutex
+	scancel context.CancelFunc
+	close   bool
 }
 
 func (db *db) IsLeader() bool {
-	y.AssertTruef(db.repl != nil, "call IsLeader on non replicated instance")
-	return db.repl.IsLeader()
+	return db.bdb.IsLeader()
 }
 
 func (db *db) Leader() string {
-	y.AssertTruef(db.repl != nil, "call IsLeader on non replicated instance")
-	if _, ok := db.repl.LeaderConn(); ok || db.repl.IsLeader() {
-		return db.repl.CurrentLeader()
-	}
-	return ""
+	return db.bdb.Leader()
 }
 
 func (db *db) LeaderChanges() <-chan string {
-	y.AssertTruef(db.repl != nil, "call IsLeader on non replicated instance")
-	return db.repl.Subscribe()
+	return db.bdb.LeaderChanges()
 }
 
 func (db *db) Watch(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (<-chan protodb.Event, error) {
@@ -322,7 +311,7 @@ func (db *db) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 		return nil, err
 	}
 	defer tx.Close()
-	m, err = tx.Set(ctx, m, opts...)
+	out, err := tx.Set(ctx, m, opts...)
 	if err != nil {
 		metrics.Set.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 		return nil, err
@@ -335,7 +324,7 @@ func (db *db) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 		metrics.Set.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
 		return nil, err
 	}
-	return m, nil
+	return out, nil
 }
 
 func (db *db) Delete(ctx context.Context, m proto.Message) error {
@@ -390,10 +379,8 @@ func (db *db) Close() (err error) {
 	}
 	db.cmu.Lock()
 	db.close = true
-	if db.replicated() {
-		err = multierr.Append(err, db.repl.Close())
-	}
 	db.cmu.Unlock()
+	db.scancel()
 	err = multierr.Append(err, db.bdb.Close())
 	if db.opts.onClose != nil {
 		db.opts.onClose()
@@ -439,7 +426,10 @@ func (db *db) RegisterProto(ctx context.Context, file *descriptorpb.FileDescript
 		return err
 	}
 	if ok {
-		return c.RegisterProto(ctx, file)
+		if err := c.RegisterProto(ctx, file); err != nil {
+			return err
+		}
+		return db.loadDescriptors(ctx)
 	}
 
 	db.mu.Lock()
@@ -544,11 +534,11 @@ func (db *db) FileDescriptors(ctx context.Context) ([]*descriptorpb.FileDescript
 	return out, nil
 }
 
-func (db *db) Backup(ctx context.Context, w io.Writer) error {
-	// TODO(adphi): add to service and proxy
-	_, err := db.bdb.NewStream().Backup(w, 0)
-	return err
-}
+// func (db *db) Backup(ctx context.Context, w io.Writer) error {
+// 	// TODO(adphi): add to service and proxy
+// 	_, err := db.bdb.NewStream().Backup(w, 0)
+// 	return err
+// }
 
 func (db *db) registerFileDescriptorProto(ctx context.Context, file *descriptorpb.FileDescriptorProto) (err error) {
 	defer func() {
@@ -636,7 +626,7 @@ func (db *db) saveDescriptors(ctx context.Context) error {
 			return err
 		}
 		k := protodb.DescriptorPrefix(v)
-		g, err := tx.getRaw(k)
+		g, err := tx.getRaw(ctx, k)
 		if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
 			return err
 		}
@@ -660,7 +650,7 @@ func (db *db) loadDescriptors(ctx context.Context) error {
 	}
 	defer tx.Close()
 	txn := tx.txn
-	it := txn.NewIterator(badger.IteratorOptions{Prefix: []byte(protodb.Descriptors)})
+	it := txn.Iterator(badger.IteratorOptions{Prefix: []byte(protodb.Descriptors)})
 	defer it.Close()
 	var errs error
 	for it.Rewind(); it.Valid(); it.Next() {
@@ -685,7 +675,7 @@ func (db *db) recoverRegister(ctx context.Context, file *descriptorpb.FileDescri
 	}
 	txn := tx.txn
 	key := protodb.DescriptorPrefix(file)
-	it := txn.NewIterator(badger.IteratorOptions{Prefix: key})
+	it := txn.Iterator(badger.IteratorOptions{Prefix: key})
 	defer it.Close()
 	found := false
 	equals := false
@@ -725,18 +715,14 @@ func (db *db) recoverRegister(ctx context.Context, file *descriptorpb.FileDescri
 	return nil
 }
 
-func (db *db) replicated() bool {
-	return db.repl != nil
-}
-
 func (db *db) maybeProxy(read bool) (client.Client, bool, error) {
-	if db.repl == nil {
+	if !db.bdb.Replicated() {
 		return nil, false, nil
 	}
-	if db.repl.IsLeader() || (db.repl.LinearizableReads() && read) {
+	if db.bdb.IsLeader() || (db.bdb.LinearizableReads() && read) {
 		return nil, false, nil
 	}
-	cc, ok := db.repl.LeaderConn()
+	cc, ok := db.bdb.LeaderConn()
 	if !ok {
 		return nil, false, protodb.ErrNoLeaderConn
 	}

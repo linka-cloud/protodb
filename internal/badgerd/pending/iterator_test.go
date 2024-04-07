@@ -1,4 +1,4 @@
-// Copyright 2023 Linka Cloud  All rights reserved.
+// Copyright 2024 Linka Cloud  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -38,13 +38,14 @@ func TestIterator(t *testing.T) {
 	require.NoError(t, tx.Commit())
 	tx.Discard()
 
-	w := NewWithDB(db, func(key []byte) {})
-	defer w.Close()
 	tx = db.NewTransaction(false)
 	defer tx.Discard()
 
+	w := NewWithDB(db, tx, nil)
+	defer w.Close()
+
 	t.Run("no pending writes", func(t *testing.T) {
-		it := w.MergedIterator(tx, db.MaxVersion(), badger.DefaultIteratorOptions)
+		it := w.Iterator(nil, false)
 		defer it.Close()
 
 		i := 0
@@ -66,7 +67,7 @@ func TestIterator(t *testing.T) {
 	}
 
 	t.Run("with pending writes", func(t *testing.T) {
-		it := w.MergedIterator(tx, db.MaxVersion(), badger.DefaultIteratorOptions)
+		it := w.Iterator(nil, false)
 		defer it.Close()
 		i := 0
 		for it.Rewind(); it.Valid(); it.Next() {
@@ -91,14 +92,14 @@ func TestIterator(t *testing.T) {
 	})
 
 	t.Run("start outside ou pending writes", func(t *testing.T) {
-		it := w.MergedIterator(tx, db.MaxVersion(), badger.IteratorOptions{Prefix: []byte("zzz")})
+		it := w.Iterator([]byte("zzz"), false)
 		defer it.Close()
 		it.Rewind()
 		assert.False(t, it.Valid())
 	})
 
 	t.Run("reverse", func(t *testing.T) {
-		it := w.MergedIterator(tx, db.MaxVersion(), badger.IteratorOptions{Reverse: true})
+		it := w.Iterator(nil, true)
 		defer it.Close()
 		i := len(entries) - 1
 		for it.Rewind(); it.Valid(); it.Next() {
@@ -127,7 +128,7 @@ func TestIterator(t *testing.T) {
 	}
 
 	t.Run("with pending deletes", func(t *testing.T) {
-		it := w.MergedIterator(tx, db.MaxVersion(), badger.DefaultIteratorOptions)
+		it := w.Iterator(nil, false)
 		defer it.Close()
 		i := 1
 		for it.Rewind(); it.Valid(); it.Next() {
@@ -146,7 +147,7 @@ func TestIterator(t *testing.T) {
 	})
 
 	t.Run("with pending deletes reverse", func(t *testing.T) {
-		it := w.MergedIterator(tx, db.MaxVersion(), badger.IteratorOptions{Reverse: true})
+		it := w.Iterator(nil, true)
 		defer it.Close()
 		i := len(entries) - 1
 		for it.Rewind(); it.Valid(); it.Next() {
@@ -169,7 +170,7 @@ func TestIterator(t *testing.T) {
 	}
 
 	t.Run("pending deletes only", func(t *testing.T) {
-		it := w.MergedIterator(tx, db.MaxVersion(), badger.DefaultIteratorOptions)
+		it := w.Iterator(nil, false)
 		defer it.Close()
 		i := 0
 		for it.Rewind(); it.Valid(); it.Next() {

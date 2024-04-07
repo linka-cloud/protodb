@@ -19,7 +19,7 @@ import (
 
 	"github.com/dgraph-io/badger/v3"
 
-	"go.linka.cloud/protodb/internal/db/pending"
+	"go.linka.cloud/protodb/internal/badgerd/pending"
 )
 
 var _ Tx = (*Maybe)(nil)
@@ -28,23 +28,30 @@ type Maybe struct {
 	Tx
 	DB
 	readTs uint64
-	w      pending.IterableMergedWrites
+	w      pending.Writes
 }
 
-func (s *Maybe) Iterator(tx *badger.Txn, readTs uint64, opt badger.IteratorOptions) pending.Iterator {
+func (s *Maybe) Iterator(opt badger.IteratorOptions) pending.Iterator {
 	if s.Tx != nil {
-		return s.Tx.Iterator(tx, readTs, opt)
+		return s.Tx.Iterator(opt)
 	}
-	return s.w.MergedIterator(tx, readTs, opt)
+	return s.w.Iterator(opt.Prefix, opt.Reverse)
 }
 
-func (s *Maybe) New(ctx context.Context, readTs uint64) error {
+func (s *Maybe) New(ctx context.Context, tx *badger.Txn, readTracker pending.ReadTracker) error {
 	if s.Tx != nil {
-		return s.Tx.New(ctx, readTs)
+		return s.Tx.New(ctx, tx, readTracker)
 	}
-	s.readTs = readTs
-	s.w = pending.New(s.DB.Path(), s.DB.MaxBatchCount(), s.DB.MaxBatchSize(), int(s.DB.ValueThreshold()), func(key []byte) {})
+	s.readTs = tx.ReadTs()
+	s.w = pending.New(s.DB.Path(), tx, s.DB.MaxBatchCount(), s.DB.MaxBatchSize(), int(s.DB.ValueThreshold()), readTracker)
 	return nil
+}
+
+func (s *Maybe) Get(ctx context.Context, key []byte) (pending.Item, error) {
+	if s.Tx != nil {
+		return s.Tx.Get(ctx, key)
+	}
+	return s.w.Get(key)
 }
 
 func (s *Maybe) Set(ctx context.Context, key, value []byte, expiresAt uint64) error {
@@ -67,7 +74,7 @@ func (s *Maybe) Delete(ctx context.Context, key []byte) error {
 	return nil
 }
 
-func (s *Maybe) Commit(ctx context.Context, at uint64) error {
+func (s *Maybe) CommitAt(ctx context.Context, at uint64) error {
 	if s.Tx != nil {
 		return s.Tx.Commit(ctx, at)
 	}

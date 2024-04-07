@@ -19,10 +19,10 @@ import (
 
 	"go.linka.cloud/protofilters/filters"
 
+	"go.linka.cloud/protodb/internal/badgerd/replication"
 	"go.linka.cloud/protodb/internal/client"
 	"go.linka.cloud/protodb/internal/db"
 	"go.linka.cloud/protodb/internal/protodb"
-	"go.linka.cloud/protodb/internal/replication"
 	"go.linka.cloud/protodb/internal/server"
 	"go.linka.cloud/protodb/pb"
 )
@@ -72,7 +72,6 @@ var (
 	WithInMemory                  = db.WithInMemory
 	WithBadgerOptionsFunc         = db.WithBadgerOptionsFunc
 	WithLogger                    = db.WithLogger
-	WithNumVersionsToKeep         = db.WithNumVersionsToKeep
 	WithApplyDefaults             = db.WithApplyDefaults
 	WithIgnoreProtoRegisterErrors = db.WithIgnoreProtoRegisterErrors
 	WithProtoRegisterErrHandler   = db.WithProtoRegisterErrHandler

@@ -20,6 +20,7 @@ import (
 	"go.linka.cloud/protofilters/filters"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
+	"go.linka.cloud/protodb/internal/badgerd"
 	"go.linka.cloud/protodb/pb"
 )
 
@@ -30,13 +31,7 @@ type (
 	Filter     = filters.FieldFilterer
 )
 
-type Logger interface {
-	Errorf(string, ...interface{})
-	Warningf(string, ...interface{})
-	Infof(string, ...interface{})
-	Debugf(string, ...interface{})
-	Tracef(string, ...interface{})
-}
+type Logger = badgerd.Logger
 
 type GetOption func(o *GetOpts)
 
