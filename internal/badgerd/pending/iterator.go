@@ -15,6 +15,8 @@
 package pending
 
 import (
+	"bytes"
+
 	"github.com/dgraph-io/badger/v3"
 )
 
@@ -23,6 +25,7 @@ type Iterator interface {
 	Next()
 	Valid() bool
 	Seek(key []byte)
+	SeekLast()
 	Key() []byte
 	Item() Item
 	Close()
@@ -38,16 +41,18 @@ type Item interface {
 	Version() uint64
 }
 
-func TxIterator(i *badger.Iterator, addReadKey ReadTracker) Iterator {
-	return &txIterator{i: i, addReadKey: addReadKey}
-}
+// func TxIterator(i *badger.Iterator, addReadKey ReadTracker) Iterator {
+// 	return &txIterator{i: i, addReadKey: addReadKey}
+// }
 
 type iterator interface {
 	Iterator
 	skip() bool
+	seek(key []byte)
 }
 
 type txIterator struct {
+	prefix     []byte
 	i          *badger.Iterator
 	addReadKey ReadTracker
 }
@@ -59,6 +64,14 @@ func (t *txIterator) Next() {
 func (t *txIterator) Seek(key []byte) {
 	t.addReadKey(key)
 	t.i.Seek(key)
+}
+
+func (t *txIterator) seek(key []byte) {
+	t.i.Seek(key)
+}
+
+func (t *txIterator) SeekLast() {
+	seekLast(t, t.prefix)
 }
 
 func (t *txIterator) Rewind() {
@@ -85,4 +98,26 @@ func (t *txIterator) skip() bool {
 
 func (t *txIterator) Close() {
 	t.i.Close()
+}
+
+func incrementPrefix(prefix []byte) []byte {
+	result := make([]byte, len(prefix))
+	copy(result, prefix)
+	var len = len(prefix)
+	for len > 0 {
+		if result[len-1] != 0xFF {
+			result[len-1] += 1
+			break
+		}
+		len -= 1
+	}
+	return result[0:len]
+}
+
+func seekLast(it iterator, prefix []byte) {
+	i := incrementPrefix(prefix)
+	it.Seek(i)
+	if it.Valid() && bytes.Equal(i, it.Item().Key()) {
+		it.Next()
+	}
 }

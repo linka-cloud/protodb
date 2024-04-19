@@ -28,7 +28,6 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"go.linka.cloud/protodb/internal/badgerd"
-	"go.linka.cloud/protodb/internal/badgerd/pending"
 	"go.linka.cloud/protodb/internal/protodb"
 	"go.linka.cloud/protodb/internal/token"
 )
@@ -135,7 +134,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 		hasNext = false
 	)
 	if o.Reverse {
-		seekLast(it, prefix)
+		it.SeekLast()
 	} else {
 		it.Rewind()
 	}
@@ -399,26 +398,4 @@ func hash(f protodb.Filter) (hash string, err error) {
 	sha.Write(b)
 	h := sha.Sum(nil)
 	return base64.StdEncoding.EncodeToString(h), nil
-}
-
-func incrementPrefix(prefix []byte) []byte {
-	result := make([]byte, len(prefix))
-	copy(result, prefix)
-	var len = len(prefix)
-	for len > 0 {
-		if result[len-1] != 0xFF {
-			result[len-1] += 1
-			break
-		}
-		len -= 1
-	}
-	return result[0:len]
-}
-
-func seekLast(it pending.Iterator, prefix []byte) {
-	i := incrementPrefix(prefix)
-	it.Seek(i)
-	if it.Valid() && bytes.Equal(i, it.Item().Key()) {
-		it.Next()
-	}
 }

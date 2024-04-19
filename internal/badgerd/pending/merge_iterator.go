@@ -25,6 +25,7 @@ type mergeIterator struct {
 	right node
 	small *node
 
+	prefix  []byte
 	curKey  []byte
 	reverse bool
 }
@@ -148,6 +149,14 @@ func (mi *mergeIterator) Rewind() {
 
 // Seek brings us to element with key >= given key.
 func (mi *mergeIterator) Seek(key []byte) {
+	mi.seek(key)
+}
+
+func (mi *mergeIterator) SeekLast() {
+	seekLast(mi, mi.prefix)
+}
+
+func (mi *mergeIterator) seek(key []byte) {
 	mi.left.seek(key)
 	mi.right.seek(key)
 	mi.fix()
@@ -182,6 +191,7 @@ func (mi *mergeIterator) skip() bool {
 // NewMergeIterator creates a merge iterator.
 func newMergeIterator(txi *txIterator, pending iterator, reverse bool) iterator {
 	mi := &mergeIterator{
+		prefix:  txi.prefix,
 		reverse: reverse,
 	}
 	mi.left.setIterator(pending)
