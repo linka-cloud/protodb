@@ -114,7 +114,15 @@ func (w *wal) Iterator(prefix []byte, reversed bool) Iterator {
 	if w.tx == nil {
 		return w.newIterator(prefix, math.MaxUint64, reversed)
 	}
-	return newMergeIterator(&txIterator{w.tx.NewIterator(badger.IteratorOptions{Prefix: prefix, Reverse: reversed}), w.addReadKey}, w.newIterator(prefix, w.tx.ReadTs(), reversed), reversed)
+	return newMergeIterator(
+		&txIterator{
+			prefix:     prefix,
+			i:          w.tx.NewIterator(badger.IteratorOptions{Prefix: prefix, Reverse: reversed}),
+			addReadKey: w.addReadKey,
+		},
+		w.newIterator(prefix, w.tx.ReadTs(), reversed),
+		reversed,
+	)
 }
 
 func (w *wal) Get(key []byte) (Item, error) {
@@ -267,6 +275,10 @@ func (i *walIterator) Rewind() {
 
 func (i *walIterator) Seek(key []byte) {
 	i.addReadKey(key)
+	i.seek(key)
+}
+
+func (i *walIterator) seek(key []byte) {
 	i.nextIdx = sort.Search(len(i.items), func(idx int) bool {
 		cmp := bytes.Compare(i.items[idx].key, key)
 		if !i.reversed {
@@ -274,6 +286,10 @@ func (i *walIterator) Seek(key []byte) {
 		}
 		return cmp <= 0
 	})
+}
+
+func (i *walIterator) SeekLast() {
+	seekLast(i, i.prefix)
 }
 
 func (i *walIterator) Key() []byte {

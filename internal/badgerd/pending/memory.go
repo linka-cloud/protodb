@@ -46,7 +46,15 @@ func (m *mem) Iterator(prefix []byte, reversed bool) Iterator {
 	if m.tx == nil {
 		return m.newIterator(prefix, math.MaxUint64, reversed)
 	}
-	return newMergeIterator(&txIterator{m.tx.NewIterator(badger.IteratorOptions{Prefix: prefix, Reverse: reversed}), m.addReadKey}, m.newIterator(prefix, m.tx.ReadTs(), reversed), reversed)
+	return newMergeIterator(
+		&txIterator{
+			prefix:     prefix,
+			i:          m.tx.NewIterator(badger.IteratorOptions{Prefix: prefix, Reverse: reversed}),
+			addReadKey: m.addReadKey,
+		},
+		m.newIterator(prefix, m.tx.ReadTs(), reversed),
+		reversed,
+	)
 }
 func (m *mem) newIterator(prefix []byte, readTs uint64, reversed bool) iterator {
 	if m.empty() {
@@ -157,6 +165,10 @@ func (i *memIterator) Rewind() {
 
 func (i *memIterator) Seek(key []byte) {
 	i.addReadKey(key)
+	i.seek(key)
+}
+
+func (i *memIterator) seek(key []byte) {
 	i.nextIdx = sort.Search(len(i.entries), func(idx int) bool {
 		cmp := bytes.Compare(i.entries[idx].Key, key)
 		if !i.reversed {
@@ -164,6 +176,10 @@ func (i *memIterator) Seek(key []byte) {
 		}
 		return cmp <= 0
 	})
+}
+
+func (i *memIterator) SeekLast() {
+	seekLast(i, i.prefix)
 }
 
 func (i *memIterator) Key() []byte {
