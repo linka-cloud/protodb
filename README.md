@@ -1,5 +1,7 @@
 # ProtoDB
 
+[![PkgGoDev](https://pkg.go.dev/badge/go.linka.cloud/protodb)](https://pkg.go.dev/go.linka.cloud/protodb)
+
 *A versatile strongly typed watchable key/value store based on [badger](https://github.com/dgraph-io/badger) that allow you to scale when your needs evolve.*
 
 ### Why ?
