@@ -169,7 +169,7 @@ func (s *server) Tx(stream pb.ProtoDB_TxServer) error {
 }
 
 func (s *server) Watch(req *pb.WatchRequest, stream pb.ProtoDB_WatchServer) error {
-	d, err := s.unmarshalToDynamic(req.Search)
+	d, err := s.unmarshal(req.Search)
 	if err != nil {
 		return err
 	}
@@ -208,7 +208,7 @@ func (s *server) Watch(req *pb.WatchRequest, stream pb.ProtoDB_WatchServer) erro
 }
 
 func (s *server) get(ctx context.Context, r protodb.Reader, get *pb.GetRequest) ([]*anypb.Any, *pb.PagingInfo, error) {
-	d, err := s.unmarshalToDynamic(get.Search)
+	d, err := s.unmarshal(get.Search)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -224,7 +224,7 @@ func (s *server) get(ctx context.Context, r protodb.Reader, get *pb.GetRequest) 
 }
 
 func (s *server) set(ctx context.Context, w protodb.Writer, set *pb.SetRequest) (*anypb.Any, error) {
-	d, err := s.unmarshalToDynamic(set.Payload)
+	d, err := s.unmarshal(set.Payload)
 	if err != nil {
 		return nil, err
 	}
@@ -240,7 +240,7 @@ func (s *server) set(ctx context.Context, w protodb.Writer, set *pb.SetRequest) 
 }
 
 func (s *server) delete(ctx context.Context, w protodb.Writer, del *pb.DeleteRequest) error {
-	d, err := s.unmarshalToDynamic(del.Payload)
+	d, err := s.unmarshal(del.Payload)
 	if err != nil {
 		return err
 	}
@@ -258,7 +258,10 @@ func toAnySlice(m ...proto.Message) (out []*anypb.Any, err error) {
 	return
 }
 
-func (s *server) unmarshalToDynamic(a *anypb.Any) (*dynamicpb.Message, error) {
+func (s *server) unmarshal(a *anypb.Any) (proto.Message, error) {
+	if m, err := a.UnmarshalNew(); err == nil {
+		return m, nil
+	}
 	desc, err := s.db.Resolver().FindDescriptorByName(a.MessageName())
 	if err != nil {
 		return nil, err
