@@ -89,7 +89,7 @@ func (c *client) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOp
 	if o.Filter != nil {
 		f = o.Filter.Expr()
 	}
-	res, err := c.c.Get(ctx, &pb.GetRequest{Search: a, Filter: f, Paging: o.Paging, FieldMask: o.FieldMask})
+	res, err := c.c.Get(ctx, &pb.GetRequest{Search: a, Filter: f, Paging: o.Paging, FieldMask: o.FieldMask, Reverse: o.Reverse})
 	if err != nil {
 		return nil, nil, err
 	}

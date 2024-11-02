@@ -84,6 +84,7 @@ message GetRequest {
   linka.cloud.protofilters.Expression filter = 2;
   Paging paging = 3;
   google.protobuf.FieldMask field_mask = 4;
+  bool reverse = 5;
 }
 
 message GetResponse {

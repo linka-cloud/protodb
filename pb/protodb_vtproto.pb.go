@@ -108,6 +108,7 @@ func (m *GetRequest) CloneVT() *GetRequest {
 	r.Search = (*anypb.Any)((*anypb1.Any)(m.Search).CloneVT())
 	r.Paging = m.Paging.CloneVT()
 	r.FieldMask = (*fieldmaskpb.FieldMask)((*fieldmaskpb1.FieldMask)(m.FieldMask).CloneVT())
+	r.Reverse = m.Reverse
 	if rhs := m.Filter; rhs != nil {
 		if vtpb, ok := interface{}(rhs).(interface{ CloneVT() *filters.Expression }); ok {
 			r.Filter = vtpb.CloneVT()
@@ -630,6 +631,9 @@ func (this *GetRequest) EqualVT(that *GetRequest) bool {
 		return false
 	}
 	if !(*fieldmaskpb1.FieldMask)(this.FieldMask).EqualVT((*fieldmaskpb1.FieldMask)(that.FieldMask)) {
+		return false
+	}
+	if this.Reverse != that.Reverse {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -1473,6 +1477,16 @@ func (m *GetRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.Reverse {
+		i--
+		if m.Reverse {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x28
 	}
 	if m.FieldMask != nil {
 		size, err := (*fieldmaskpb1.FieldMask)(m.FieldMask).MarshalToSizedBufferVT(dAtA[:i])
@@ -2550,6 +2564,9 @@ func (m *GetRequest) SizeVT() (n int) {
 		l = (*fieldmaskpb1.FieldMask)(m.FieldMask).SizeVT()
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
 	}
+	if m.Reverse {
+		n += 2
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -3492,6 +3509,26 @@ func (m *GetRequest) UnmarshalVT(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Reverse", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Reverse = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

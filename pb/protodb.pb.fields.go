@@ -66,11 +66,13 @@ var GetRequestFields = struct {
 	Filter    string
 	Paging    string
 	FieldMask string
+	Reverse   string
 }{
 	Search:    "search",
 	Filter:    "filter",
 	Paging:    "paging",
 	FieldMask: "field_mask",
+	Reverse:   "reverse",
 }
 
 var GetResponseFields = struct {
