@@ -153,7 +153,7 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...protodb.GetOpt
 	o := makeGetOpts(opts...)
 
 	k, _, _, _ := protodb.DataPrefix(m)
-	log := logger.StandardLogger().WithFields("service", "protodb", "action", "watch", "key", string(k))
+	log := logger.C(ctx).WithFields("service", "protodb", "action", "watch", "key", string(k))
 	log.Debugf("start watching for key %s", string(k))
 	ch := make(chan protodb.Event, 1)
 	wait := make(chan struct{})

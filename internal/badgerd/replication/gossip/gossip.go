@@ -291,7 +291,6 @@ func (r *Gossip) Subscribe() <-chan string {
 
 func (r *Gossip) clients() []*node {
 	nodes := r.nodes.Values()
-	logger.StandardLogger().Debugf("replication clients: %d", len(nodes))
 	return nodes
 }
 

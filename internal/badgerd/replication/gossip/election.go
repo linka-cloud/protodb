@@ -27,6 +27,7 @@ func (r *Gossip) Elect(ctx context.Context) {
 	meta := r.meta.Load().CloneVT()
 	log := logger.C(ctx)
 	nodes := r.clients()
+	log.Debugf("replication clients: %d", len(nodes))
 	log.Info("starting election")
 	count := 0
 	var n *node
