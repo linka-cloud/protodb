@@ -62,7 +62,7 @@ type Writer[T any, PT message[T]] interface {
 }
 
 type TxProvider[T any, PT message[T]] interface {
-	Tx(ctx context.Context) (Tx[T, PT], error)
+	Tx(ctx context.Context, opts ...protodb.TxOption) (Tx[T, PT], error)
 }
 
 type Event[T any, PT message[T]] interface {
@@ -137,8 +137,8 @@ func (s *store[T, PT]) Watch(ctx context.Context, m PT, opts ...protodb.GetOptio
 	return out, nil
 }
 
-func (s *store[T, PT]) Tx(ctx context.Context) (Tx[T, PT], error) {
-	txn, err := s.db.Tx(ctx)
+func (s *store[T, PT]) Tx(ctx context.Context, opts ...protodb.TxOption) (Tx[T, PT], error) {
+	txn, err := s.db.Tx(ctx, opts...)
 	return &tx[T, PT]{txn: txn}, err
 }
 
