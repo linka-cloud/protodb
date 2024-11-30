@@ -7,7 +7,6 @@ toolchain go1.22.1
 require (
 	github.com/alta/protopatch v0.5.3
 	github.com/bombsimon/logrusr/v4 v4.1.0
-	github.com/cespare/xxhash v1.1.0
 	github.com/dgraph-io/badger/v3 v3.2103.5
 	github.com/dgraph-io/ristretto v0.1.1
 	github.com/efficientgo/core v1.0.0-rc.2
@@ -23,7 +22,6 @@ require (
 	github.com/prometheus/client_golang v1.19.0
 	github.com/shaj13/raft v0.0.0-00010101000000-000000000000
 	github.com/sirupsen/logrus v1.9.3
-	github.com/spf13/cobra v1.3.0
 	github.com/stretchr/testify v1.8.4
 	go.linka.cloud/grpc-toolkit v0.4.4-0.20231026145832-5d6b16a2c2a0
 	go.linka.cloud/protoc-gen-defaults v0.4.0
@@ -46,6 +44,7 @@ require (
 	github.com/bufbuild/protocompile v0.9.0 // indirect
 	github.com/caitlinelfring/go-env-default v1.1.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
+	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f // indirect
@@ -64,7 +63,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.1 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
-	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-msgpack v0.5.5 // indirect
@@ -73,7 +71,6 @@ require (
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/iancoleman/strcase v0.3.0 // indirect
 	github.com/improbable-eng/grpc-web v0.15.0 // indirect
-	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jhump/protoreflect v1.15.6 // indirect
 	github.com/justinas/alice v1.2.0 // indirect
 	github.com/klauspost/compress v1.17.7 // indirect
@@ -97,7 +94,7 @@ require (
 	go.opencensus.io v0.24.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/mod v0.16.0 // indirect
-	golang.org/x/net v0.22.0 // indirect
+	golang.org/x/net v0.23.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	google.golang.org/genproto v0.0.0-20240311173647-c811ad7063a7 // indirect
