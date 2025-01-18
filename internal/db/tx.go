@@ -95,7 +95,26 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 		return nil, nil, badger.ErrDBClosed
 	}
 	o := makeGetOpts(opts...)
-	prefix, field, _, _ := protodb.DataPrefix(m)
+	prefix, field, value, _ := protodb.DataPrefix(m)
+	// short path for simple get
+	// TODO(adphi): should we check for filters ?
+	if value != "" {
+		item, err := tx.txn.Get(ctx, prefix)
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := item.Value(func(val []byte) error {
+			return tx.db.unmarshal(val, m)
+		}); err != nil {
+			return nil, nil, err
+		}
+		if o.FieldMask != nil {
+			if err := FilterFieldMask(m, o.FieldMask); err != nil {
+				return nil, nil, err
+			}
+		}
+		return []proto.Message{m}, nil, nil
+	}
 	hasContinuationToken := o.Paging.GetToken() != ""
 	inToken := &token.Token{}
 	if err := inToken.Decode(o.Paging.GetToken()); err != nil {
