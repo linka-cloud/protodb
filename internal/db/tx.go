@@ -97,10 +97,12 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 	o := makeGetOpts(opts...)
 	prefix, field, value, _ := protodb.DataPrefix(m)
 	// short path for simple get
-	// TODO(adphi): should we check for filters ?
 	if value != "" {
 		item, err := tx.txn.Get(ctx, prefix)
 		if err != nil {
+			if errors.Is(err, badger.ErrKeyNotFound) {
+				return nil, &protodb.PagingInfo{}, nil
+			}
 			return nil, nil, err
 		}
 		if err := item.Value(func(val []byte) error {
@@ -108,12 +110,21 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 		}); err != nil {
 			return nil, nil, err
 		}
+		if o.Filter != nil {
+			match, err := pf.Match(m, o.Filter)
+			if err != nil {
+				return nil, nil, err
+			}
+			if !match {
+				return nil, &protodb.PagingInfo{}, nil
+			}
+		}
 		if o.FieldMask != nil {
 			if err := FilterFieldMask(m, o.FieldMask); err != nil {
 				return nil, nil, err
 			}
 		}
-		return []proto.Message{m}, nil, nil
+		return []proto.Message{m}, &protodb.PagingInfo{}, nil
 	}
 	hasContinuationToken := o.Paging.GetToken() != ""
 	inToken := &token.Token{}
