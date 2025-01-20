@@ -275,3 +275,7 @@ func KeyFor(m proto.Message) (key string, field string, err error) {
 	}
 	return "", field, fmt.Errorf("key / id not found in %s", m.ProtoReflect().Type().Descriptor().FullName())
 }
+
+func SeqKey(name string) string {
+	return fmt.Sprintf("%s/%s", Seq, name)
+}

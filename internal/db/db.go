@@ -17,6 +17,7 @@ package db
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -40,6 +41,7 @@ import (
 	"go.linka.cloud/protodb/internal/badgerd"
 	"go.linka.cloud/protodb/internal/badgerd/replication"
 	"go.linka.cloud/protodb/internal/client"
+	"go.linka.cloud/protodb/internal/mutex"
 	"go.linka.cloud/protodb/internal/protodb"
 	"go.linka.cloud/protodb/internal/server"
 	"go.linka.cloud/protodb/pb"
@@ -65,7 +67,7 @@ func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 	freg := preg.GlobalFiles
 	treg := preg.GlobalTypes
 
-	db := &db{opts: o, freg: freg, treg: treg}
+	db := &db{opts: o, freg: freg, treg: treg, smu: mutex.NewKV()}
 	if o.repl != nil {
 		h, err := server.NewServer(db)
 		if err != nil {
@@ -119,7 +121,7 @@ type db struct {
 	mu   sync.RWMutex
 	freg *preg.Files
 	treg *preg.Types
-
+	smu  *mutex.KV
 	// repl replication.Replication
 
 	cmu     sync.RWMutex
@@ -371,6 +373,53 @@ func (db *db) Tx(ctx context.Context, opts ...protodb.TxOption) (protodb.Tx, err
 		return c.Tx(ctx, opts...)
 	}
 	return newTx(ctx, db, opts...)
+}
+
+func (db *db) NextSeq(ctx context.Context, name string) (uint64, error) {
+	if name == "" {
+		return 0, badger.ErrEmptyKey
+	}
+	c, ok, err := db.maybeProxy(false)
+	if err != nil {
+		return 0, err
+	}
+	if ok {
+		return c.NextSeq(ctx, name)
+	}
+	db.smu.Lock(name)
+	defer db.smu.Unlock(name)
+	var seq uint64
+	txn, err := db.bdb.NewTransaction(ctx, true)
+	if err != nil {
+		return 0, err
+	}
+	defer txn.Close(ctx)
+	k := []byte(protodb.SeqKey(name))
+	i, err := txn.Get(ctx, k)
+	found := !errors.Is(err, badger.ErrKeyNotFound)
+	if err != nil && found {
+		return 0, err
+	}
+	b := make([]byte, 8)
+	if found {
+		b, err = i.ValueCopy(b)
+		if err != nil {
+			return 0, err
+		}
+		if len(b) != 8 {
+			return 0, fmt.Errorf("invalid seq value: %v", b)
+		}
+		seq = binary.BigEndian.Uint64(b)
+	}
+	seq++
+	binary.BigEndian.PutUint64(b, seq)
+	if err := txn.Set(ctx, k, b, 0); err != nil {
+		return 0, err
+	}
+	if err := txn.Commit(ctx); err != nil {
+		return 0, err
+	}
+	return seq, nil
 }
 
 func (db *db) Close() (err error) {

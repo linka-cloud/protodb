@@ -48,6 +48,8 @@ service ProtoDB {
   rpc Delete(DeleteRequest) returns (DeleteResponse);
   // Tx creates a transaction.
   rpc Tx(stream TxRequest) returns (stream TxResponse);
+  // NextSeq returns the next sequence number for the given key.
+  rpc NextSeq(NextSeqRequest) returns (NextSeqResponse);
   // Watch returns a stream of events for the given search.
   // A first empty event is sent to indicate that the watch is ready.
   // This is needed by clients that cannot create a stream before receiving
@@ -109,6 +111,14 @@ message TxResponse {
     DeleteResponse delete = 3;
     CommitResponse commit = 4;
   }
+}
+
+message NextSeqRequest {
+  string key = 1;
+}
+
+message NextSeqResponse {
+  uint64 seq = 1;
 }
 
 message CommitResponse {

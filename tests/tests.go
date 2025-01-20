@@ -74,6 +74,7 @@ var Tests = []Case{
 	{Name: "TestRegister", Run: TestRegister},
 	{Name: "TestBatchInsertAndQuery", Run: TestBatchInsertAndQuery},
 	{Name: "TestOversizeBatchInsert", Run: TestOversizeBatchInsert},
+	{Name: "TestSeq", Run: TestSeq},
 	{Name: "TestFieldMask", Run: TestFieldMask},
 	{Name: "TestMessageWithKeyOption", Run: TestMessageWithKeyOption},
 	{Name: "TestStaticKey", Run: TestStaticKey},
@@ -431,6 +432,16 @@ func TestOversizeBatchInsert(t *testing.T, db protodb.Client) {
 	t.Logf("100%%: inserted %d items", max)
 	err = tx.Commit(ctx)
 	require.NoError(err)
+}
+
+func TestSeq(t *testing.T, db protodb.Client) {
+	require := require2.New(t)
+	assert := assert2.New(t)
+	for i := 0; i < 10; i++ {
+		seq, err := db.NextSeq(context.Background(), "test")
+		require.NoError(err)
+		assert.Equal(uint64(i+1), seq)
+	}
 }
 
 func TestFieldMask(t *testing.T, db protodb.Client) {

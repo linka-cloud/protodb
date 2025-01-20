@@ -40,6 +40,7 @@ type DB interface {
 	Writer
 	Watcher
 	TxProvider
+	SeqProvider
 	Leader
 	io.Closer
 }
@@ -70,6 +71,10 @@ type TxProvider interface {
 type Committer interface {
 	Commit(ctx context.Context) error
 	Close()
+}
+
+type SeqProvider interface {
+	NextSeq(ctx context.Context, name string) (uint64, error)
 }
 
 type Registerer interface {

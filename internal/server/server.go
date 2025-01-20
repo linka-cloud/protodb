@@ -47,7 +47,7 @@ func NewServer(db protodb.DB) (Server, error) {
 
 type server struct {
 	db protodb.DB
-	pb.UnimplementedProtoDBServer
+	pb.UnsafeProtoDBServer
 }
 
 func (s *server) RegisterService(r grpc.ServiceRegistrar) {
@@ -98,6 +98,14 @@ func (s *server) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteR
 		return nil, err
 	}
 	return &pb.DeleteResponse{}, nil
+}
+
+func (s *server) NextSeq(ctx context.Context, req *pb.NextSeqRequest) (*pb.NextSeqResponse, error) {
+	seq, err := s.db.NextSeq(ctx, req.Key)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.NextSeqResponse{Seq: seq}, nil
 }
 
 func (s *server) Tx(stream pb.ProtoDB_TxServer) error {

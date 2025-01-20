@@ -42,6 +42,7 @@ type Client interface {
 	protodb.Writer
 	protodb.Watcher
 	protodb.TxProvider
+	protodb.SeqProvider
 	io.Closer
 }
 
@@ -132,6 +133,14 @@ func (c *client) Delete(ctx context.Context, m proto.Message) error {
 	}
 	_, err = c.c.Delete(ctx, &pb.DeleteRequest{Payload: a})
 	return err
+}
+
+func (c *client) NextSeq(ctx context.Context, name string) (uint64, error) {
+	res, err := c.c.NextSeq(ctx, &pb.NextSeqRequest{Key: name})
+	if err != nil {
+		return 0, err
+	}
+	return res.Seq, nil
 }
 
 func (c *client) Watch(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (<-chan protodb.Event, error) {

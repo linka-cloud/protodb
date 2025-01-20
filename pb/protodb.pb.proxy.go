@@ -97,6 +97,11 @@ func (x *proxyProtoDB) Tx(s ProtoDB_TxServer) error {
 	return <-errs
 }
 
+// NextSeq proxies call to backend server
+func (x *proxyProtoDB) NextSeq(ctx context.Context, req *NextSeqRequest) (*NextSeqResponse, error) {
+	return x.c.NextSeq(ctx, req, x.opts...)
+}
+
 // Watch proxies call to backend server
 func (x *proxyProtoDB) Watch(req *WatchRequest, s ProtoDB_WatchServer) error {
 	cs, err := x.c.Watch(s.Context(), req, x.opts...)

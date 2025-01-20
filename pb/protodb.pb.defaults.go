@@ -52,6 +52,12 @@ func (x *TxRequest) Default() {
 func (x *TxResponse) Default() {
 }
 
+func (x *NextSeqRequest) Default() {
+}
+
+func (x *NextSeqResponse) Default() {
+}
+
 func (x *CommitResponse) Default() {
 }
 

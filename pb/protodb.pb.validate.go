@@ -1466,6 +1466,210 @@ var _ interface {
 	ErrorName() string
 } = TxResponseValidationError{}
 
+// Validate checks the field values on NextSeqRequest with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *NextSeqRequest) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on NextSeqRequest with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in NextSeqRequestMultiError,
+// or nil if none found.
+func (m *NextSeqRequest) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *NextSeqRequest) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Key
+
+	if len(errors) > 0 {
+		return NextSeqRequestMultiError(errors)
+	}
+
+	return nil
+}
+
+// NextSeqRequestMultiError is an error wrapping multiple validation errors
+// returned by NextSeqRequest.ValidateAll() if the designated constraints
+// aren't met.
+type NextSeqRequestMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m NextSeqRequestMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m NextSeqRequestMultiError) AllErrors() []error { return m }
+
+// NextSeqRequestValidationError is the validation error returned by
+// NextSeqRequest.Validate if the designated constraints aren't met.
+type NextSeqRequestValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e NextSeqRequestValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e NextSeqRequestValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e NextSeqRequestValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e NextSeqRequestValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e NextSeqRequestValidationError) ErrorName() string { return "NextSeqRequestValidationError" }
+
+// Error satisfies the builtin error interface
+func (e NextSeqRequestValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sNextSeqRequest.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = NextSeqRequestValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = NextSeqRequestValidationError{}
+
+// Validate checks the field values on NextSeqResponse with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// first error encountered is returned, or nil if there are no violations.
+func (m *NextSeqResponse) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on NextSeqResponse with the rules
+// defined in the proto definition for this message. If any rules are
+// violated, the result is a list of violation errors wrapped in
+// NextSeqResponseMultiError, or nil if none found.
+func (m *NextSeqResponse) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *NextSeqResponse) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Seq
+
+	if len(errors) > 0 {
+		return NextSeqResponseMultiError(errors)
+	}
+
+	return nil
+}
+
+// NextSeqResponseMultiError is an error wrapping multiple validation errors
+// returned by NextSeqResponse.ValidateAll() if the designated constraints
+// aren't met.
+type NextSeqResponseMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m NextSeqResponseMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m NextSeqResponseMultiError) AllErrors() []error { return m }
+
+// NextSeqResponseValidationError is the validation error returned by
+// NextSeqResponse.Validate if the designated constraints aren't met.
+type NextSeqResponseValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e NextSeqResponseValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e NextSeqResponseValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e NextSeqResponseValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e NextSeqResponseValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e NextSeqResponseValidationError) ErrorName() string { return "NextSeqResponseValidationError" }
+
+// Error satisfies the builtin error interface
+func (e NextSeqResponseValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sNextSeqResponse.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = NextSeqResponseValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = NextSeqResponseValidationError{}
+
 // Validate checks the field values on CommitResponse with the rules defined in
 // the proto definition for this message. If any rules are violated, the first
 // error encountered is returned, or nil if there are no violations.
