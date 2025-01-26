@@ -87,6 +87,8 @@ message GetRequest {
   Paging paging = 3;
   google.protobuf.FieldMask field_mask = 4;
   bool reverse = 5;
+  // one is a flag to indicate that request must stop after the first result
+  bool one = 6;
 }
 
 message GetResponse {

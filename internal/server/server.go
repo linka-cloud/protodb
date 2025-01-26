@@ -286,6 +286,9 @@ func (s *server) unmarshal(a *anypb.Any) (proto.Message, error) {
 }
 
 func getOpts(r *pb.GetRequest) (opts []protodb.GetOption) {
+	if r.One {
+		opts = append(opts, protodb.WithOne())
+	}
 	return append(opts, protodb.WithFilter(r.Filter), protodb.WithPaging(r.Paging), protodb.WithReadFieldMask(r.FieldMask))
 }
 

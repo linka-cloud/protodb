@@ -65,6 +65,12 @@ func WithReadFieldMask(fieldMask *fieldmaskpb.FieldMask) GetOption {
 	}
 }
 
+func WithOne() GetOption {
+	return func(o *GetOpts) {
+		o.One = true
+	}
+}
+
 type TxOpts struct {
 	ReadOnly bool
 }
@@ -82,6 +88,7 @@ type GetOpts struct {
 	Filter    Filter
 	FieldMask *fieldmaskpb.FieldMask
 	Reverse   bool
+	One       bool
 }
 
 type SetOption func(o *SetOpts)

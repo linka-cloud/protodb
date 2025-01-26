@@ -87,6 +87,7 @@ var (
 	WithReadFieldMaskPaths = protodb.WithReadFieldMaskPaths
 	WithReadFieldMask      = protodb.WithReadFieldMask
 	WithReverse            = protodb.WithReverse
+	WithOne                = protodb.WithOne
 )
 
 type TxOption = protodb.TxOption

@@ -109,6 +109,7 @@ func (m *GetRequest) CloneVT() *GetRequest {
 	r.Paging = m.Paging.CloneVT()
 	r.FieldMask = (*fieldmaskpb.FieldMask)((*fieldmaskpb1.FieldMask)(m.FieldMask).CloneVT())
 	r.Reverse = m.Reverse
+	r.One = m.One
 	if rhs := m.Filter; rhs != nil {
 		if vtpb, ok := interface{}(rhs).(interface{ CloneVT() *filters.Expression }); ok {
 			r.Filter = vtpb.CloneVT()
@@ -668,6 +669,9 @@ func (this *GetRequest) EqualVT(that *GetRequest) bool {
 		return false
 	}
 	if this.Reverse != that.Reverse {
+		return false
+	}
+	if this.One != that.One {
 		return false
 	}
 	return string(this.unknownFields) == string(that.unknownFields)
@@ -1549,6 +1553,16 @@ func (m *GetRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.One {
+		i--
+		if m.One {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i--
+		dAtA[i] = 0x30
 	}
 	if m.Reverse {
 		i--
@@ -2717,6 +2731,9 @@ func (m *GetRequest) SizeVT() (n int) {
 	if m.Reverse {
 		n += 2
 	}
+	if m.One {
+		n += 2
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -3706,6 +3723,26 @@ func (m *GetRequest) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Reverse = bool(v != 0)
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field One", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.One = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

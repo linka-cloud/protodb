@@ -241,6 +241,9 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 			}
 		}
 		out = append(out, v)
+		if o.One {
+			break
+		}
 	}
 	tks, err := outToken.Encode()
 	if err != nil {

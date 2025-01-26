@@ -676,6 +676,8 @@ func (m *GetRequest) validate(all bool) error {
 
 	// no validation rules for Reverse
 
+	// no validation rules for One
+
 	if len(errors) > 0 {
 		return GetRequestMultiError(errors)
 	}
