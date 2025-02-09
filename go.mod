@@ -29,14 +29,14 @@ require (
 	go.linka.cloud/protoc-gen-defaults v0.4.0
 	go.linka.cloud/protoc-gen-go-fields v0.4.0
 	go.linka.cloud/protoc-gen-proxy v0.0.0-20230802234945-cc173b85cf13
-	go.linka.cloud/protofilters v0.8.1
+	go.linka.cloud/protofilters v0.8.2-0.20250209153700-12f397dfb6a5
 	go.linka.cloud/pubsub v0.0.0-20220728154114-8213058139f3
 	go.uber.org/multierr v1.11.0
 	golang.org/x/sync v0.6.0
 	golang.org/x/tools v0.19.0
 	google.golang.org/grpc v1.62.1
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.3.0
-	google.golang.org/protobuf v1.33.0
+	google.golang.org/protobuf v1.34.2
 	k8s.io/klog/v2 v2.120.1
 )
 
@@ -46,7 +46,7 @@ require (
 	github.com/bufbuild/protocompile v0.9.0 // indirect
 	github.com/caitlinelfring/go-env-default v1.1.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
-	github.com/cespare/xxhash/v2 v2.2.0 // indirect
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/desertbit/timer v0.0.0-20180107155436-c41aec40b27f // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
