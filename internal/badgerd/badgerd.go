@@ -45,6 +45,7 @@ type Tx interface {
 	Iterator(opt badger.IteratorOptions) Iterator
 	Set(ctx context.Context, key, value []byte, expiresAt uint64) error
 	Get(ctx context.Context, key []byte) (Item, error)
+	AddReadKey(key []byte)
 	Delete(ctx context.Context, key []byte) error
 	Commit(ctx context.Context) error
 	Close(ctx context.Context) error

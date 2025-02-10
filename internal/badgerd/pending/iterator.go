@@ -52,9 +52,8 @@ type iterator interface {
 }
 
 type txIterator struct {
-	prefix     []byte
-	i          *badger.Iterator
-	addReadKey ReadTracker
+	prefix []byte
+	i      *badger.Iterator
 }
 
 func (t *txIterator) Next() {
@@ -62,7 +61,6 @@ func (t *txIterator) Next() {
 }
 
 func (t *txIterator) Seek(key []byte) {
-	t.addReadKey(key)
 	t.i.Seek(key)
 }
 
@@ -88,7 +86,6 @@ func (t *txIterator) Key() []byte {
 
 func (t *txIterator) Item() Item {
 	item := t.i.Item()
-	t.addReadKey(item.Key())
 	return item
 }
 

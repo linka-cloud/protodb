@@ -94,12 +94,12 @@ func (r *tx) hasStreams(s *stream) bool {
 	return false
 }
 
-func (r *tx) New(ctx context.Context, tx *badger.Txn, readTracker pending.ReadTracker) error {
+func (r *tx) New(ctx context.Context, tx *badger.Txn) error {
 	if err := r.do(ctx, &pb.Op{Action: &pb.Op_New{New: &pb.New{At: tx.ReadTs()}}}); err != nil {
 		return err
 	}
 	r.readTs = tx.ReadTs()
-	r.w = pending.New(r.db.Path(), tx, r.db.MaxBatchCount(), r.db.MaxBatchSize(), int(r.db.ValueThreshold()), readTracker)
+	r.w = pending.New(r.db.Path(), tx, r.db.MaxBatchCount(), r.db.MaxBatchSize(), int(r.db.ValueThreshold()))
 	return nil
 }
 

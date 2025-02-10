@@ -30,7 +30,7 @@ func TestWrites(t *testing.T) {
 	const count = 1_000
 	entries := genEntries(count, 1024*1024)
 
-	w := newWrites(db.Opts().Dir, nil, db.MaxBatchCount(), db.MaxBatchSize(), int(db.Opts().ValueThreshold), nil)
+	w := newWrites(db.Opts().Dir, nil, db.MaxBatchCount(), db.MaxBatchSize(), int(db.Opts().ValueThreshold))
 	defer w.Close()
 
 	for _, v := range entries {

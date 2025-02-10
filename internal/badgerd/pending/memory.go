@@ -25,21 +25,16 @@ import (
 
 const BitDelete byte = 1 << 0 // Set if the key has been deleted.
 
-func newMem(tx *badger.Txn, addReadKey ReadTracker) *mem {
-	if addReadKey == nil {
-		addReadKey = NoReadTracker
-	}
+func newMem(tx *badger.Txn) *mem {
 	return &mem{
-		tx:         tx,
-		m:          make(map[string]*badger.Entry),
-		addReadKey: addReadKey,
+		tx: tx,
+		m:  make(map[string]*badger.Entry),
 	}
 }
 
 type mem struct {
-	tx         *badger.Txn
-	m          map[string]*badger.Entry
-	addReadKey ReadTracker
+	tx *badger.Txn
+	m  map[string]*badger.Entry
 }
 
 func (m *mem) Iterator(prefix []byte, reversed bool) Iterator {
@@ -48,9 +43,8 @@ func (m *mem) Iterator(prefix []byte, reversed bool) Iterator {
 	}
 	return newMergeIterator(
 		&txIterator{
-			prefix:     prefix,
-			i:          m.tx.NewIterator(badger.IteratorOptions{Prefix: prefix, Reverse: reversed}),
-			addReadKey: m.addReadKey,
+			prefix: prefix,
+			i:      m.tx.NewIterator(badger.IteratorOptions{Prefix: prefix, Reverse: reversed}),
 		},
 		m.newIterator(prefix, m.tx.ReadTs(), reversed),
 		reversed,
@@ -59,10 +53,9 @@ func (m *mem) Iterator(prefix []byte, reversed bool) Iterator {
 func (m *mem) newIterator(prefix []byte, readTs uint64, reversed bool) iterator {
 	if m.empty() {
 		return &memIterator{
-			prefix:     prefix,
-			readTs:     readTs,
-			reversed:   reversed,
-			addReadKey: m.addReadKey,
+			prefix:   prefix,
+			readTs:   readTs,
+			reversed: reversed,
 		}
 	}
 	entries := m.slice()
@@ -75,11 +68,10 @@ func (m *mem) newIterator(prefix []byte, readTs uint64, reversed bool) iterator 
 		return cmp > 0
 	})
 	return &memIterator{
-		prefix:     prefix,
-		readTs:     readTs,
-		entries:    entries,
-		reversed:   reversed,
-		addReadKey: m.addReadKey,
+		prefix:   prefix,
+		readTs:   readTs,
+		entries:  entries,
+		reversed: reversed,
 	}
 }
 
@@ -94,7 +86,6 @@ func (m *mem) Get(key []byte) (Item, error) {
 	if e.UserMeta&BitDelete != 0 {
 		return nil, badger.ErrKeyNotFound
 	}
-	m.addReadKey(key)
 	return &item{
 		readTs: 0,
 		e: &badger.Entry{
@@ -143,12 +134,11 @@ func (m *mem) empty() bool {
 }
 
 type memIterator struct {
-	prefix     []byte
-	entries    []*badger.Entry
-	nextIdx    int
-	readTs     uint64
-	reversed   bool
-	addReadKey ReadTracker
+	prefix   []byte
+	entries  []*badger.Entry
+	nextIdx  int
+	readTs   uint64
+	reversed bool
 }
 
 func (i *memIterator) Next() {
@@ -164,7 +154,6 @@ func (i *memIterator) Rewind() {
 }
 
 func (i *memIterator) Seek(key []byte) {
-	i.addReadKey(key)
 	i.seek(key)
 }
 
@@ -190,7 +179,6 @@ func (i *memIterator) Key() []byte {
 func (i *memIterator) Item() Item {
 	y.AssertTrue(i.Valid())
 	entry := i.entries[i.nextIdx]
-	i.addReadKey(entry.Key)
 	return &item{
 		readTs: i.readTs,
 		e: &badger.Entry{

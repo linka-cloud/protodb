@@ -91,9 +91,9 @@ func newWal(path string, tx *badger.Txn, m *mem, size int64) *wal {
 		y.Check(err)
 	}
 	if m == nil {
-		return &wal{f: f, m: make(map[uint32]*pointer), addReadKey: NoReadTracker}
+		return &wal{f: f, m: make(map[uint32]*pointer)}
 	}
-	w := &wal{f: f, tx: tx, m: make(map[uint32]*pointer, len(m.m)), addReadKey: m.addReadKey}
+	w := &wal{f: f, tx: tx, m: make(map[uint32]*pointer, len(m.m))}
 	for _, e := range m.m {
 		y.Check(w.append(e))
 	}
@@ -102,12 +102,11 @@ func newWal(path string, tx *badger.Txn, m *mem, size int64) *wal {
 }
 
 type wal struct {
-	tx         *badger.Txn
-	f          *z.MmapFile
-	m          map[uint32]*pointer
-	pos        int64
-	addReadKey ReadTracker
-	o          sync.Once
+	tx  *badger.Txn
+	f   *z.MmapFile
+	m   map[uint32]*pointer
+	pos int64
+	o   sync.Once
 }
 
 func (w *wal) Iterator(prefix []byte, reversed bool) Iterator {
@@ -116,9 +115,8 @@ func (w *wal) Iterator(prefix []byte, reversed bool) Iterator {
 	}
 	return newMergeIterator(
 		&txIterator{
-			prefix:     prefix,
-			i:          w.tx.NewIterator(badger.IteratorOptions{Prefix: prefix, Reverse: reversed}),
-			addReadKey: w.addReadKey,
+			prefix: prefix,
+			i:      w.tx.NewIterator(badger.IteratorOptions{Prefix: prefix, Reverse: reversed}),
 		},
 		w.newIterator(prefix, w.tx.ReadTs(), reversed),
 		reversed,
@@ -140,7 +138,6 @@ func (w *wal) Get(key []byte) (Item, error) {
 	if err != nil {
 		return nil, err
 	}
-	w.addReadKey(key)
 	return &item{
 		readTs: 0,
 		e: &badger.Entry{
@@ -243,7 +240,7 @@ func (w *wal) newIterator(prefix []byte, readTs uint64, reversed bool) iterator 
 		}
 		return cmp > 0
 	})
-	return &walIterator{w: w, prefix: prefix, items: items, reversed: reversed, readTs: readTs, addReadKey: w.addReadKey}
+	return &walIterator{w: w, prefix: prefix, items: items, reversed: reversed, readTs: readTs}
 }
 
 type entry struct {
@@ -252,13 +249,12 @@ type entry struct {
 }
 
 type walIterator struct {
-	w          *wal
-	prefix     []byte
-	items      []*entry
-	nextIdx    int
-	readTs     uint64
-	reversed   bool
-	addReadKey ReadTracker
+	w        *wal
+	prefix   []byte
+	items    []*entry
+	nextIdx  int
+	readTs   uint64
+	reversed bool
 }
 
 func (i *walIterator) Next() {
@@ -274,7 +270,6 @@ func (i *walIterator) Rewind() {
 }
 
 func (i *walIterator) Seek(key []byte) {
-	i.addReadKey(key)
 	i.seek(key)
 }
 
@@ -301,7 +296,6 @@ func (i *walIterator) Item() Item {
 	y.AssertTrue(i.Valid())
 	e := i.items[i.nextIdx]
 	entry, err := i.w.read(e.key)
-	i.addReadKey(e.key)
 	y.Check(err)
 	return &item{
 		readTs: i.readTs,

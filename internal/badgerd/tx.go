@@ -50,7 +50,7 @@ func (db *db) newTransaction(ctx context.Context, update bool) (*tx, error) {
 			return nil, err
 		}
 	}
-	if err = tx.repl.New(ctx, txn, tx.addReadKey); err != nil {
+	if err = tx.repl.New(ctx, txn); err != nil {
 		return nil, err
 	}
 	return tx, nil
@@ -66,7 +66,7 @@ type tx struct {
 	reads []uint64 // contains fingerprints of keys read.
 	// contains fingerprints of keys written. This is used for conflict detection.
 	conflictKeys map[uint64]struct{}
-	readsLock    sync.Mutex // guards the reads slice. See addReadKey.
+	readsLock    sync.Mutex // guards the reads slice. See AddReadKey.
 
 	m    sync.RWMutex
 	done bool
@@ -136,7 +136,7 @@ func (tx *tx) Close(_ context.Context) error {
 	return tx.close()
 }
 
-func (tx *tx) addReadKey(key []byte) {
+func (tx *tx) AddReadKey(key []byte) {
 	if tx.update {
 		fp := z.MemHash(key)
 

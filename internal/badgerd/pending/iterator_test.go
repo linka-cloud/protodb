@@ -41,7 +41,7 @@ func TestIterator(t *testing.T) {
 	tx = db.NewTransaction(false)
 	defer tx.Discard()
 
-	w := NewWithDB(db, tx, nil)
+	w := NewWithDB(db, tx)
 	defer w.Close()
 
 	t.Run("no pending writes", func(t *testing.T) {

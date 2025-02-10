@@ -44,7 +44,7 @@ func Open(ctx context.Context, opts ...Option) (DB, error) {
 		o.logger = logger.C(ctx).WithField("service", "badgerd")
 	}
 	bopts := o.build()
-	// we check for conflicts internally, so we don't need badger to do it
+	// we do our own conflict checks, so we don't need badger to do it
 	bopts.DetectConflicts = false
 	bdb, err := badger.OpenManaged(bopts)
 	if err != nil {

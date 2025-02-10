@@ -18,10 +18,6 @@ import (
 	"github.com/dgraph-io/badger/v3"
 )
 
-type ReadTracker func(key []byte)
-
-func NoReadTracker(_ []byte) {}
-
 type Writes interface {
 	Iterator(prefix []byte, reversed bool) Iterator
 	Get(key []byte) (Item, error)
@@ -31,16 +27,16 @@ type Writes interface {
 	Close() error
 }
 
-func NewWithDB(db *badger.DB, tx *badger.Txn, addReadKey ReadTracker) Writes {
-	return newWrites(db.Opts().Dir, tx, db.MaxBatchCount(), db.MaxBatchSize(), int(db.Opts().ValueThreshold), addReadKey)
+func NewWithDB(db *badger.DB, tx *badger.Txn) Writes {
+	return newWrites(db.Opts().Dir, tx, db.MaxBatchCount(), db.MaxBatchSize(), int(db.Opts().ValueThreshold))
 }
 
-func New(path string, tx *badger.Txn, maxCount, maxSize int64, threshold int, addReadKey ReadTracker) Writes {
-	return newWrites(path, tx, maxCount, maxSize, threshold, addReadKey)
+func New(path string, tx *badger.Txn, maxCount, maxSize int64, threshold int) Writes {
+	return newWrites(path, tx, maxCount, maxSize, threshold)
 }
 
-func newWrites(path string, tx *badger.Txn, maxCount, maxSize int64, threshold int, addReadKey ReadTracker) *writes {
-	w := newMem(tx, addReadKey)
+func newWrites(path string, tx *badger.Txn, maxCount, maxSize int64, threshold int) *writes {
+	w := newMem(tx)
 	return &writes{
 		path:           path,
 		tx:             tx,
@@ -49,7 +45,6 @@ func newWrites(path string, tx *badger.Txn, maxCount, maxSize int64, threshold i
 		maxCount:       maxCount,
 		maxSize:        maxSize,
 		valueThreshold: threshold,
-		addReadKey:     w.addReadKey,
 	}
 }
 
@@ -68,8 +63,6 @@ type writes struct {
 	maxCount       int64
 	maxSize        int64
 	valueThreshold int
-
-	addReadKey ReadTracker
 }
 
 func (w *writes) Iterator(prefix []byte, reversed bool) Iterator {

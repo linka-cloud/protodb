@@ -83,7 +83,7 @@ func (r *Gossip) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 	log.Infof("Replicating from %s", p.Addr)
 
 	var batch replication.WriteBatch
-	w := pending.New(r.db.Path(), nil, r.db.MaxBatchCount(), r.db.MaxBatchSize(), int(r.db.ValueThreshold()), nil)
+	w := pending.New(r.db.Path(), nil, r.db.MaxBatchCount(), r.db.MaxBatchSize(), int(r.db.ValueThreshold()))
 	defer func() {
 		w.Close()
 		if batch != nil {

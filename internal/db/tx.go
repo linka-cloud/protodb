@@ -124,6 +124,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 				return nil, nil, err
 			}
 		}
+		tx.txn.AddReadKey(prefix)
 		return []proto.Message{m}, &protodb.PagingInfo{}, nil
 	}
 	hasContinuationToken := o.Paging.GetToken() != ""
@@ -240,6 +241,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 				return nil, nil, err
 			}
 		}
+		tx.txn.AddReadKey(item.Key())
 		out = append(out, v)
 		if o.One {
 			break
@@ -260,6 +262,7 @@ func (tx *tx) getRaw(ctx context.Context, key []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	tx.txn.AddReadKey(key)
 	return item.ValueCopy(nil)
 }
 

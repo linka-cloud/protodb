@@ -38,12 +38,12 @@ func (s *Maybe) Iterator(opt badger.IteratorOptions) pending.Iterator {
 	return s.w.Iterator(opt.Prefix, opt.Reverse)
 }
 
-func (s *Maybe) New(ctx context.Context, tx *badger.Txn, readTracker pending.ReadTracker) error {
+func (s *Maybe) New(ctx context.Context, tx *badger.Txn) error {
 	if s.Tx != nil {
-		return s.Tx.New(ctx, tx, readTracker)
+		return s.Tx.New(ctx, tx)
 	}
 	s.readTs = tx.ReadTs()
-	s.w = pending.New(s.DB.Path(), tx, s.DB.MaxBatchCount(), s.DB.MaxBatchSize(), int(s.DB.ValueThreshold()), readTracker)
+	s.w = pending.New(s.DB.Path(), tx, s.DB.MaxBatchCount(), s.DB.MaxBatchSize(), int(s.DB.ValueThreshold()))
 	return nil
 }
 

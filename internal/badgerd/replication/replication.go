@@ -56,7 +56,7 @@ type Replication interface {
 	Close() error
 }
 type Tx interface {
-	New(ctx context.Context, tx *badger.Txn, readTracker pending.ReadTracker) error
+	New(ctx context.Context, tx *badger.Txn) error
 	Get(ctx context.Context, key []byte) (pending.Item, error)
 	Set(ctx context.Context, key []byte, val []byte, expires uint64) error
 	Delete(ctx context.Context, key []byte) error
