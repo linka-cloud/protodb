@@ -73,7 +73,7 @@ type MessageWithKeyOptionMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m MessageWithKeyOptionMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -177,7 +177,7 @@ type MessageWithStaticKeyMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m MessageWithStaticKeyMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -342,7 +342,7 @@ type InterfaceMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m InterfaceMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -494,7 +494,7 @@ type IPAddressMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m IPAddressMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}
@@ -596,7 +596,7 @@ type KVMultiError []error
 
 // Error returns a concatenation of all the error messages it wraps.
 func (m KVMultiError) Error() string {
-	var msgs []string
+	msgs := make([]string, 0, len(m))
 	for _, err := range m {
 		msgs = append(msgs, err.Error())
 	}

@@ -78,7 +78,7 @@ func (s *Maybe) CommitAt(ctx context.Context, at uint64) error {
 	if s.Tx != nil {
 		return s.Tx.Commit(ctx, at)
 	}
-	b := s.DB.NewWriteBatchAt(s.readTs)
+	b := s.DB.NewWriteBatchAt(at)
 	defer b.Cancel()
 	if err := s.w.Replay(func(e *badger.Entry) error {
 		if e.UserMeta != 0 {

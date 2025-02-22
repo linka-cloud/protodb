@@ -128,7 +128,7 @@ func (r *tx) Delete(ctx context.Context, key []byte) error {
 
 func (r *tx) Commit(ctx context.Context, at uint64) error {
 	go r.do(ctx, &pb.Op{Action: &pb.Op_Commit{Commit: &pb.Commit{At: at}}})
-	b := r.db.NewWriteBatchAt(r.readTs)
+	b := r.db.NewWriteBatchAt(at)
 	defer b.Cancel()
 	if err := r.w.Replay(func(e *badger.Entry) error {
 		if e.UserMeta != 0 {

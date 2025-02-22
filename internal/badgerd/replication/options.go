@@ -20,6 +20,7 @@ import (
 	"errors"
 	"time"
 
+	"go.linka.cloud/raft"
 	"google.golang.org/grpc"
 )
 
@@ -34,6 +35,8 @@ type Options struct {
 
 	GossipPort    int
 	EncryptionKey string
+
+	StartOptions []raft.StartOption
 
 	ExtraServices []func(registrar grpc.ServiceRegistrar)
 
@@ -82,6 +85,12 @@ func WithTick(ms int) Option {
 		if ms > 100 {
 			o.Tick = time.Duration(ms) * time.Millisecond
 		}
+	}
+}
+
+func WithRaftStartOptions(opts ...raft.StartOption) Option {
+	return func(o *Options) {
+		o.StartOptions = append(o.StartOptions, opts...)
 	}
 }
 

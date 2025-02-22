@@ -17,6 +17,7 @@ package badgerd
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 
@@ -29,9 +30,12 @@ import (
 
 	"go.linka.cloud/protodb/internal/badgerd/replication"
 	"go.linka.cloud/protodb/internal/badgerd/replication/gossip"
+	"go.linka.cloud/protodb/internal/badgerd/replication/raft"
 )
 
 var ErrNotLeader = errors.New("current node is not leader")
+
+const internalPrefix = "::badgerd"
 
 var _ DB = (*db)(nil)
 
@@ -76,14 +80,43 @@ func newDB(ctx context.Context, bdb *badger.DB, o options, bopts badger.Options)
 	for _, v := range o.repl {
 		v(&ro)
 	}
+	var isRaft bool
+	if err := bdb.View(func(tx *badger.Txn) error {
+		_, err := tx.Get([]byte(fmt.Sprintf("%s::raft", internalPrefix)))
+		isRaft = err == nil
+		if !errors.Is(err, badger.ErrKeyNotFound) {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return nil, fmt.Errorf("failed to retrieve current replication mode: %w", err)
+	}
+	if isRaft && ro.Mode != replication.ModeRaft {
+		return nil, errors.New("existing data is using raft replication, can't use other replication mode")
+	}
 	var err error
 	switch ro.Mode {
+	case replication.ModeRaft:
+		if orc.readTs() > 0 && !isRaft {
+			return nil, errors.New("can't use raft replication with existing data")
+		}
+		tx := bdb.NewTransactionAt(0, true)
+		defer tx.Discard()
+		if err := tx.Set([]byte(fmt.Sprintf("%s::raft", internalPrefix)), []byte{}); err != nil {
+			return nil, err
+		}
+		if err := tx.CommitAt(1, nil); err != nil {
+			return nil, err
+		}
+		db.repl, err = raft.New(ctx, db, o.repl...)
+		if err != nil {
+			return nil, err
+		}
 	case replication.ModeAsync, replication.ModeSync:
 		db.repl, err = gossip.New(ctx, db, o.repl...)
 		if err != nil {
 			return nil, err
 		}
-	default:
 	}
 	return db, nil
 }
@@ -150,8 +183,8 @@ func (db *db) Stream(_ context.Context, at, since uint64, w io.Writer) error {
 	return err
 }
 
-func (db *db) NewWriteBatchAt(readTs uint64) replication.WriteBatch {
-	return db.bdb.NewWriteBatchAt(readTs)
+func (db *db) NewWriteBatchAt(commitTs uint64) replication.WriteBatch {
+	return db.bdb.NewWriteBatchAt(commitTs)
 }
 
 func (db *db) Path() string {

@@ -16,6 +16,7 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -30,6 +31,37 @@ import (
 )
 
 const data = "testdata"
+
+func TestRaft(t *testing.T) {
+	for i := 0; i < 3; i += 2 {
+		t.Run(fmt.Sprintf("raft-%d", i+1), func(t *testing.T) {
+			for _, v := range Tests {
+				t.Run(v.Name, func(t *testing.T) {
+					ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+					defer cancel()
+
+					path := filepath.Join(data, v.Name)
+					defer os.RemoveAll(path)
+					c := NewCluster(path, i+1, protodb.ReplicationModeRaft, protodb.WithApplyDefaults(true))
+					require.NoError(t, c.StartAll(ctx))
+					defer func() {
+						require.NoError(t, c.StopAll())
+					}()
+
+					srv, err := protodb.NewServer(c.Get(0))
+					require.NoError(t, err)
+
+					tr := &inprocgrpc.Channel{}
+					srv.RegisterService(tr)
+
+					db, err := protodb.NewClient(tr)
+					require.NoError(t, err)
+					v.Run(t, db)
+				})
+			}
+		})
+	}
+}
 
 func TestServerReplicated(t *testing.T) {
 	for _, mode := range []protodb.ReplicationMode{protodb.ReplicationModeAsync, protodb.ReplicationModeSync} {

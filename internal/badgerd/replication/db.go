@@ -29,7 +29,7 @@ type DB interface {
 	Drop() error
 	Load(ctx context.Context, r io.Reader) (uint64, error)
 	Stream(ctx context.Context, at, since uint64, w io.Writer) error
-	NewWriteBatchAt(readTs uint64) WriteBatch
+	NewWriteBatchAt(commitTs uint64) WriteBatch
 
 	ValueThreshold() int64
 	MaxBatchCount() int64

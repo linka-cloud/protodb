@@ -31,6 +31,7 @@ const (
 	ModeNone Mode = iota
 	ModeAsync
 	ModeSync
+	ModeRaft
 )
 
 type Mode uint8
@@ -41,6 +42,8 @@ func (m Mode) String() string {
 		return "async"
 	case ModeSync:
 		return "sync"
+	case ModeRaft:
+		return "raft"
 	default:
 		return "unknown"
 	}
