@@ -33,8 +33,9 @@ func newMem(tx *badger.Txn) *mem {
 }
 
 type mem struct {
-	tx *badger.Txn
-	m  map[string]*badger.Entry
+	tx       *badger.Txn
+	m        map[string]*badger.Entry
+	commitTs uint64
 }
 
 func (m *mem) Iterator(prefix []byte, reversed bool) Iterator {
@@ -98,14 +99,14 @@ func (m *mem) Get(key []byte) (Item, error) {
 }
 
 func (m *mem) Set(e *badger.Entry) {
-	m.m[string(e.Key)] = e
+	m.append(e)
 }
 
 func (m *mem) Delete(key []byte) {
-	m.m[string(key)] = &badger.Entry{
+	m.append(&badger.Entry{
 		Key:      key,
 		UserMeta: BitDelete,
-	}
+	})
 }
 
 func (m *mem) Replay(fn func(e *badger.Entry) error) error {
@@ -115,6 +116,15 @@ func (m *mem) Replay(fn func(e *badger.Entry) error) error {
 		}
 	}
 	return nil
+}
+
+func (m *mem) SetCommitTs(commitTs uint64) error {
+	m.commitTs = commitTs
+	return nil
+}
+
+func (m *mem) CommitTs() uint64 {
+	return m.commitTs
 }
 
 func (m *mem) Close() error {
@@ -131,6 +141,12 @@ func (m *mem) slice() []*badger.Entry {
 
 func (m *mem) empty() bool {
 	return len(m.m) == 0
+}
+
+func (m *mem) append(e *badger.Entry) {
+	y.AssertTruef(m.commitTs == 0, "Cannot write entry after SetCommitTs")
+	m.m[string(e.Key)] = e
+	return
 }
 
 type memIterator struct {

@@ -15,10 +15,12 @@
 package badgerd
 
 import (
+	"bytes"
 	"context"
 	"sync"
 
 	"github.com/dgraph-io/badger/v3"
+	"github.com/dgraph-io/badger/v3/y"
 	"github.com/dgraph-io/ristretto/z"
 	"go.linka.cloud/grpc-toolkit/logger"
 
@@ -76,8 +78,8 @@ func (tx *tx) ReadTs() uint64 {
 	return tx.readTs
 }
 
-func (tx *tx) Iterator(opt badger.IteratorOptions) pending.Iterator {
-	return tx.repl.Iterator(opt)
+func (tx *tx) Iterator(opt badger.IteratorOptions) Iterator {
+	return &iterator{tx.repl.Iterator(opt)}
 }
 
 func (tx *tx) Set(ctx context.Context, key, value []byte, expiresAt uint64) error {
@@ -86,6 +88,9 @@ func (tx *tx) Set(ctx context.Context, key, value []byte, expiresAt uint64) erro
 	}
 	if !tx.update {
 		return badger.ErrReadOnlyTxn
+	}
+	if bytes.HasPrefix(key, internalPrefix) {
+		return badger.ErrInvalidKey
 	}
 	if err := tx.repl.Set(ctx, key, value, expiresAt); err != nil {
 		return err
@@ -97,6 +102,9 @@ func (tx *tx) Set(ctx context.Context, key, value []byte, expiresAt uint64) erro
 func (tx *tx) Get(ctx context.Context, key []byte) (pending.Item, error) {
 	if tx.closed() {
 		return nil, badger.ErrDBClosed
+	}
+	if bytes.HasPrefix(key, internalPrefix) {
+		return nil, badger.ErrInvalidKey
 	}
 	return tx.repl.Get(ctx, key)
 }
@@ -129,7 +137,16 @@ func (tx *tx) Commit(ctx context.Context) error {
 	}
 	defer tx.db.orc.doneCommit(ts)
 
-	return tx.repl.CommitAt(ctx, ts)
+	if err := tx.repl.Set(ctx, commitTsKey, y.U64ToBytes(ts), 0); err != nil {
+		return err
+	}
+	if err := tx.repl.CommitAt(ctx, ts); err != nil {
+		return err
+	}
+	tx.db.mmu.Lock()
+	tx.db.maxVersion = ts
+	tx.db.mmu.Unlock()
+	return nil
 }
 
 func (tx *tx) Close(_ context.Context) error {
