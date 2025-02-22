@@ -13,8 +13,10 @@ require (
 	github.com/efficientgo/core v1.0.0-rc.2
 	github.com/envoyproxy/protoc-gen-validate v1.2.1
 	github.com/fullstorydev/grpchan v1.1.2-0.20220223040110-9b5ad76b6f3d
+	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.1
 	github.com/hashicorp/memberlist v0.5.3
+	github.com/klauspost/compress v1.18.0
 	github.com/lyft/protoc-gen-star v0.6.2
 	github.com/mennanov/fmutils v0.3.0
 	github.com/miekg/dns v1.1.63
@@ -30,6 +32,7 @@ require (
 	go.linka.cloud/protoc-gen-proxy v0.0.0-20230802234945-cc173b85cf13
 	go.linka.cloud/protofilters v0.8.2-0.20250209153700-12f397dfb6a5
 	go.linka.cloud/pubsub v0.0.0-20220728154114-8213058139f3
+	go.linka.cloud/raft v0.0.0-20250209211815-c214fa119954
 	go.uber.org/multierr v1.11.0
 	golang.org/x/sync v0.11.0
 	golang.org/x/tools v0.30.0
@@ -59,7 +62,6 @@ require (
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
@@ -75,7 +77,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jhump/protoreflect v1.17.0 // indirect
 	github.com/justinas/alice v1.2.0 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/lyft/protoc-gen-star/v2 v2.0.4-0.20230330145011-496ad1ac90a4 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pires/go-proxyproto v0.8.0 // indirect
@@ -90,7 +91,12 @@ require (
 	github.com/spf13/afero v1.12.0 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75 // indirect
+	go.etcd.io/etcd/client/pkg/v3 v3.5.12 // indirect
+	go.etcd.io/etcd/pkg/v3 v3.5.12 // indirect
+	go.etcd.io/etcd/raft/v3 v3.5.12 // indirect
+	go.etcd.io/etcd/server/v3 v3.5.12 // indirect
 	go.opencensus.io v0.24.0 // indirect
+	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/mod v0.23.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
 	golang.org/x/sys v0.30.0 // indirect

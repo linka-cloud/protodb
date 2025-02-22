@@ -94,9 +94,11 @@ jobs:
         - "TestEmbed"
         - "TestServer"
         - "TestServerReplicated/sync"
-        - "TestReplicationModes/sync"
         - "TestServerReplicated/async"
+        - "TestReplicationModes/sync"
         - "TestReplicationModes/async"
+        - "TestReplicationModes/raft"
+        - "TestRaft"
 
     steps:
     - name: Checkout

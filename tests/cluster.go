@@ -22,6 +22,7 @@ import (
 	"sync"
 
 	"go.linka.cloud/grpc-toolkit/logger"
+	"go.linka.cloud/raft"
 	"go.uber.org/multierr"
 	"golang.org/x/sync/errgroup"
 
@@ -73,6 +74,16 @@ func (c *Cluster) Start(ctx context.Context, i int) error {
 	if err := os.MkdirAll(p, os.ModePerm); err != nil {
 		return err
 	}
+	var members []raft.RawMember
+	for i, v := range c.ports {
+		members = append(members, raft.RawMember{
+			ID:      uint64(i + 1),
+			Address: fmt.Sprintf("127.0.0.1:%d", v+10000),
+		})
+	}
+	// do not set that in one line, it won't work
+	m := []raft.RawMember{members[i]}
+	m = append(m, append(members[:i], members[i+1:]...)...)
 	opts := append(
 		c.opts,
 		protodb.WithLogger(logger.C(ctx).WithField("name", fmt.Sprintf("db-%d", i))),
@@ -84,6 +95,7 @@ func (c *Cluster) Start(ctx context.Context, i int) error {
 			protodb.WithAddrs(c.addrs...),
 			protodb.WithGossipPort(c.ports[i]),
 			protodb.WithGRPCPort(c.ports[i]+10000),
+			protodb.WithRaftStartOptions(raft.WithFallback(raft.WithRestart(), raft.WithInitCluster()), raft.WithMembers(m...)),
 		),
 	)
 	db, err := protodb.Open(ctx, opts...)

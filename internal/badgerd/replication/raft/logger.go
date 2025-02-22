@@ -1,4 +1,4 @@
-// Copyright 2023 Linka Cloud  All rights reserved.
+// Copyright 2024 Linka Cloud  All rights reserved.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,18 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package tests
+package raft
 
 import (
-	"testing"
-
-	"go.linka.cloud/protodb"
+	"go.linka.cloud/grpc-toolkit/logger"
+	"go.linka.cloud/raft/raftlog"
 )
 
-func TestReplicationModes(t *testing.T) {
-	for _, v := range []protodb.ReplicationMode{protodb.ReplicationModeRaft, protodb.ReplicationModeAsync, protodb.ReplicationModeSync} {
-		t.Run(v.String(), func(t *testing.T) {
-			TestReplication(t, data, v)
-		})
-	}
+var _ raftlog.Logger = (*logWrapper)(nil)
+
+type logWrapper struct {
+	logger.Logger
+}
+
+func (l *logWrapper) V(lvl int) raftlog.Verbose {
+	return &verboseWrapper{lvl, l.Logger}
+}
+
+type verboseWrapper struct {
+	lvl int
+	logger.Logger
+}
+
+func (v *verboseWrapper) Enabled() bool {
+	// logrus level are 0-6 (PanicLevel-TraceLevel)
+	// raft level are 0-4 (Info-Panic)
+	return int(v.Logger.Logger().Level)*-1+4 >= v.lvl
 }
