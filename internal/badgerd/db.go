@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"path/filepath"
 	"sync"
 
 	"github.com/dgraph-io/badger/v3"
@@ -27,6 +28,7 @@ import (
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 
+	"go.linka.cloud/protodb/internal/badgerd/pending"
 	"go.linka.cloud/protodb/internal/badgerd/replication"
 	"go.linka.cloud/protodb/internal/badgerd/replication/gossip"
 )
@@ -34,6 +36,11 @@ import (
 var ErrNotLeader = errors.New("current node is not leader")
 
 var _ DB = (*db)(nil)
+
+var (
+	internalPrefix = []byte("!badgerd!")
+	commitTsKey    = []byte("!badgerd!commitTs")
+)
 
 func Open(ctx context.Context, opts ...Option) (DB, error) {
 	o := defaultOptions
@@ -55,15 +62,37 @@ func Open(ctx context.Context, opts ...Option) (DB, error) {
 	if err != nil {
 		return nil, multierr.Combine(err, bdb.Close())
 	}
+	y.Check(db.replayWal())
 	return db, nil
 }
 
 func newDB(ctx context.Context, bdb *badger.DB, o options, bopts badger.Options) (*db, error) {
 	orc := newOracle()
 
-	// We do increment nextTxnTs below. So, no need to do it here.
-	orc.nextTxnTs = bdb.MaxVersion()
+	var max uint64
+	if err := bdb.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(commitTsKey)
+		if errors.Is(err, badger.ErrKeyNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		v, err := item.ValueCopy(nil)
+		if err != nil {
+			return err
+		}
+		max = y.BytesToU64(v)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	if orc.nextTxnTs == 0 {
+		max = bdb.MaxVersion()
+	}
 
+	// We do increment nextTxnTs below. So, no need to do it here.
+	orc.nextTxnTs = max
 	// Let's advance nextTxnTs to one more than whatever we observed via
 	// replaying the logs.
 	orc.txnMark.Done(orc.nextTxnTs)
@@ -92,8 +121,10 @@ type db struct {
 	bdb   *badger.DB
 	bopts badger.Options
 
-	orc *oracle
-	mu  sync.Mutex
+	orc        *oracle
+	mu         sync.Mutex
+	maxVersion uint64
+	mmu        sync.RWMutex
 
 	repl replication.Replication
 
@@ -114,10 +145,15 @@ func (db *db) NewTransaction(ctx context.Context, update bool) (Tx, error) {
 }
 
 func (db *db) MaxVersion() uint64 {
-	return db.bdb.MaxVersion()
+	db.mmu.RLock()
+	defer db.mmu.RUnlock()
+	return db.maxVersion
 }
 
 func (db *db) SetVersion(v uint64) {
+	db.mmu.Lock()
+	defer db.mmu.Unlock()
+	db.maxVersion = v
 	db.orc.Lock()
 	db.orc.txnMark.Done(v)
 	// we do not set the read mark here
@@ -223,4 +259,37 @@ func (db *db) closed() bool {
 	db.cmu.RLock()
 	defer db.cmu.RUnlock()
 	return db.close
+}
+
+func (db *db) replayWal() error {
+	files, err := filepath.Glob(filepath.Join(db.bdb.Opts().Dir, "tx-*.wal"))
+	if err != nil {
+		return err
+	}
+	for _, v := range files {
+		if err := db.replayWalFile(v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (db *db) replayWalFile(path string) error {
+	w, err := pending.OpenWAL(path)
+	if err != nil {
+		return nil
+	}
+	if w.CommitTs() <= db.orc.nextTxnTs-1 {
+		return w.Close()
+	}
+	b := db.bdb.NewWriteBatchAt(w.CommitTs())
+	if err := w.Replay(func(e *badger.Entry) error {
+		if e.UserMeta&pending.BitDelete > 0 {
+			return b.Delete(e.Key)
+		}
+		return b.SetEntry(e)
+	}); err != nil {
+		return err
+	}
+	return w.Close()
 }

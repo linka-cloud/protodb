@@ -18,6 +18,7 @@ import (
 	"context"
 
 	"github.com/dgraph-io/badger/v3"
+	"github.com/dgraph-io/badger/v3/y"
 
 	"go.linka.cloud/protodb/internal/badgerd/pending"
 )
@@ -78,17 +79,22 @@ func (s *Maybe) CommitAt(ctx context.Context, at uint64) error {
 	if s.Tx != nil {
 		return s.Tx.Commit(ctx, at)
 	}
-	b := s.DB.NewWriteBatchAt(s.readTs)
-	defer b.Cancel()
-	if err := s.w.Replay(func(e *badger.Entry) error {
-		if e.UserMeta != 0 {
-			return b.DeleteAt(e.Key, at)
-		}
-		return b.SetEntryAt(e, at)
-	}); err != nil {
+	if err := s.w.SetCommitTs(at); err != nil {
 		return err
 	}
-	return b.Flush()
+	// from here we need to crash if we can't replay the writes
+	// otherwise we might have an incomplete transaction at the commit timestamp
+	b := s.DB.NewWriteBatchAt(s.readTs)
+	defer b.Cancel()
+	y.Check(s.w.Replay(func(e *badger.Entry) error {
+		if e.UserMeta != 0 {
+			y.Check(b.DeleteAt(e.Key, at))
+		}
+		y.Check(b.SetEntryAt(e, at))
+		return nil
+	}))
+	y.Check(b.Flush())
+	return nil
 }
 
 func (s *Maybe) Close(ctx context.Context) error {

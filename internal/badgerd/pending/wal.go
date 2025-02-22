@@ -29,7 +29,10 @@ import (
 	"github.com/dgraph-io/badger/v3"
 	"github.com/dgraph-io/badger/v3/y"
 	"github.com/dgraph-io/ristretto/z"
+	"go.uber.org/multierr"
 )
+
+var commitPrefix = []byte("commitTs")
 
 var counter = struct {
 	n atomic.Uint64
@@ -42,7 +45,10 @@ type pointer struct {
 	deleted bool
 }
 
-const headerSize = 1 + 4 + 4 + 8
+const (
+	commitTsSize = 8 + 8
+	headerSize   = 1 + 4 + 4 + 8
+)
 
 type header struct {
 	userMeta  byte
@@ -74,6 +80,38 @@ func (h *header) decode(buf []byte) {
 	h.expiresAt = binary.BigEndian.Uint64(buf[9:])
 }
 
+func OpenWAL(path string) (Writes, error) {
+	f, err := z.OpenMmapFile(path, os.O_RDONLY, -1)
+	if err != nil {
+		return nil, err
+	}
+	w := &wal{f: f, m: make(map[uint32]*pointer), ro: true}
+	for {
+		buf := w.f.Slice(int(w.pos))
+		if len(buf) == 0 {
+			break
+		}
+		if bytes.HasPrefix(buf, commitPrefix) {
+			w.commitTs = y.BytesToU64(buf[len(commitPrefix):])
+			break
+		}
+		var e walEntry
+		e.h.decode(buf)
+		e.k = buf[headerSize : headerSize+e.h.klen]
+		w.m[y.Hash(e.k)] = &pointer{
+			key:     e.k,
+			offset:  uint32(w.pos),
+			len:     uint32(len(buf)),
+			deleted: e.h.userMeta&BitDelete > 0,
+		}
+		w.pos += int64(len(buf)) + 4
+	}
+	if w.commitTs == 0 {
+		return nil, errors.New("commit ts not found")
+	}
+	return w, nil
+}
+
 func newWal(path string, tx *badger.Txn, m *mem, size int64) *wal {
 	var fp string
 	for {
@@ -102,11 +140,14 @@ func newWal(path string, tx *badger.Txn, m *mem, size int64) *wal {
 }
 
 type wal struct {
-	tx  *badger.Txn
-	f   *z.MmapFile
-	m   map[uint32]*pointer
-	pos int64
-	o   sync.Once
+	tx       *badger.Txn
+	f        *z.MmapFile
+	m        map[uint32]*pointer
+	pos      int64
+	o        sync.Once
+	commitTs uint64
+	ro       bool
+	lo       sync.Once
 }
 
 func (w *wal) Iterator(prefix []byte, reversed bool) Iterator {
@@ -160,15 +201,39 @@ func (w *wal) Delete(key []byte) {
 	}))
 }
 
+func (w *wal) SetCommitTs(commitTs uint64) error {
+	y.AssertTruef(w.commitTs == 0, "Cannot set commitTs twice")
+	y.AssertTruef(!w.ro, "Cannot set commitTs on read-only wal")
+	buf, pos, err := w.f.AllocateSlice(commitTsSize, int(w.pos))
+	if err != nil {
+		return err
+	}
+	copy(buf[:len(commitPrefix)], commitPrefix)
+	copy(buf[len(commitPrefix):], y.U64ToBytes(commitTs))
+	w.pos = int64(pos)
+	w.commitTs = commitTs
+	return w.f.Sync()
+}
+
+func (w *wal) CommitTs() uint64 {
+	return w.commitTs
+}
+
 func (w *wal) Close() error {
 	var err error
 	w.o.Do(func() {
-		err = w.f.Delete()
+		if w.ro {
+			err = multierr.Combine(z.Munmap(w.f.Data), os.Remove(w.f.Fd.Name()))
+		} else {
+			err = w.f.Delete()
+		}
 	})
 	return err
 }
 
 func (w *wal) append(e *badger.Entry) error {
+	y.AssertTruef(w.commitTs == 0, "Cannot write entry after SetCommitTs")
+	y.AssertTruef(!w.ro, "Cannot write entry on read-only wal")
 	l := uint32(headerSize + len(e.Key) + len(e.Value))
 	buf, pos, err := w.f.AllocateSlice(int(l), int(w.pos))
 	if err != nil {

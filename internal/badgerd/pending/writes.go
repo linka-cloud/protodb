@@ -24,6 +24,8 @@ type Writes interface {
 	Set(e *badger.Entry)
 	Delete(key []byte)
 	Replay(fn func(e *badger.Entry) error) error
+	SetCommitTs(commitTs uint64) error
+	CommitTs() uint64
 	Close() error
 }
 
@@ -94,6 +96,14 @@ func (w *writes) Delete(key []byte) {
 
 func (w *writes) Replay(fn func(e *badger.Entry) error) error {
 	return w.c.Replay(fn)
+}
+
+func (w *writes) SetCommitTs(commit uint64) error {
+	return w.c.SetCommitTs(commit)
+}
+
+func (w *writes) CommitTs() uint64 {
+	return w.c.CommitTs()
 }
 
 func (w *writes) Close() error {

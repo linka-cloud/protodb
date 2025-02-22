@@ -54,9 +54,12 @@ func TestWal(t *testing.T) {
 	w := newWal(os.TempDir(), nil, nil, 0)
 	defer w.Close()
 
-	const count = 1_000
+	const (
+		count = 1_000
+		size  = 1024 * 1024
+	)
 
-	entries := genEntries(count, 1024*1024)
+	entries := genEntries(count, size)
 
 	e := entries[0]
 	s := uint32(headerSize + len(e.Key) + len(e.Value))
@@ -83,7 +86,7 @@ func TestWal(t *testing.T) {
 		}))
 	})
 
-	t.Run(fmt.Sprintf("Batch insert %d entries and iterate", count), func(t *testing.T) {
+	t.Run(fmt.Sprintf("Batch insert %d entries of %d bytes and iterate", count, size), func(t *testing.T) {
 		for _, v := range entries {
 			w.Set(v)
 		}
@@ -141,12 +144,46 @@ func TestWal(t *testing.T) {
 		assert.Equal(t, count, i)
 	})
 
+	t.Run("Set commit ts", func(t *testing.T) {
+		require.NoError(t, w.SetCommitTs(42))
+		assert.Equal(t, uint64(42), w.CommitTs())
+	})
+
+	var w2 Writes
+	t.Run("Open wal retrieve commit ts", func(t *testing.T) {
+		require.NoError(t, w.f.Close(-1))
+		var err error
+		w2, err = OpenWAL(w.f.Fd.Name())
+		require.NoError(t, err)
+		assert.Equal(t, uint64(42), w2.CommitTs())
+	})
+
+	t.Run("Iterate over reopened wal", func(t *testing.T) {
+		it := w2.Iterator(nil, false)
+		defer it.Close()
+
+		i := 0
+		for it.Rewind(); it.Valid(); it.Next() {
+			v := it.Item()
+			assert.Equalf(t, entries[i].Key, v.Key(), "key mismatch")
+			var b []byte
+			require.NoError(t, v.Value(func(val []byte) error {
+				b = append(b, val...)
+				return nil
+			}))
+			assert.Emptyf(t, b, "should be empty")
+			assert.Equalf(t, entries[i].ExpiresAt, v.ExpiresAt(), "expiresAt mismatch")
+			assert.Truef(t, v.IsDeletedOrExpired(), "expected deleted")
+			i++
+		}
+		assert.Equal(t, count, i)
+	})
+
 	t.Run("Close", func(t *testing.T) {
-
-		require.NoError(t, w.Close())
-
-		_, err := os.Stat(w.f.Fd.Name())
-		assert.ErrorIs(t, err, os.ErrNotExist)
+		if w2 == nil {
+			t.Skip()
+		}
+		require.NoError(t, w2.Close())
 	})
 }
 
