@@ -20,10 +20,12 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: "1.21"
+        go-version: "1.24"
 
     - name: Install Protoc
-      uses: arduino/setup-protoc@v1
+      uses: arduino/setup-protoc@v3
+      with:
+        repo-token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Configure git for private modules
       env:
@@ -62,10 +64,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v2
       with:
-        go-version: "1.21"
-
-    - name: Install Protoc
-      uses: arduino/setup-protoc@v1
+        go-version: "1.24"
 
     - name: Configure git for private modules
       env:
@@ -83,4 +82,54 @@ jobs:
           ${{ runner.os }}-go-
 
     - name: Run tests
-      run: make tests
+      run: go list ./... |grep -v tests|xargs -n 1 go test -v -count 1 -p 1
+
+  integration-tests:
+    name: Integration tests
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        test:
+        - "TestEmbed"
+        - "TestServer"
+        - "TestServerReplicated/sync"
+        - "TestReplicationModes/sync"
+        - "TestServerReplicated/async"
+        - "TestReplicationModes/async"
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        # fetching all tags is required for the Makefile to compute the right version
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: "1.24"
+
+    - name: Configure git for private modules
+      env:
+        TOKEN: ${{ secrets.REPOSITORIES_ACCESS_TOKEN }}
+        USER: ${{ secrets.REPOSITORIES_ACCESS_USER }}
+      run: git config --global url."https://${USER}:${TOKEN}@github.com".insteadOf "https://github.com"
+
+    - name: Share cache with other actions
+      uses: actions/cache@v2
+      with:
+        path: |
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Run integration tests
+      run: |
+        set -x
+        name=""
+        for p in $(echo "${{ matrix.test }}" | tr '/' '\n'); do
+          name+="^\Q${p}\E$/"
+        done
+        go test -v -count 1 -p 1 -timeout 1h -run $name ./tests
