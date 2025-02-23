@@ -345,11 +345,9 @@ func (r *Gossip) Close() (err error) {
 	r.co.Do(func() {
 		r.cancel()
 		r.txnCloser.Done()
-		err = multierr.Combine(
-			r.svc.Stop(),
-			r.list.Leave(time.Second),
-			r.list.Shutdown(),
-		)
+		err = r.svc.Stop()
+		_ = r.list.Leave(time.Second)
+		err = multierr.Append(err, r.list.Shutdown())
 	})
 	return
 }

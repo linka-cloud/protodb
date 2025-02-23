@@ -28,11 +28,12 @@ import (
 
 	"go.linka.cloud/protodb/internal/badgerd/pending"
 	"go.linka.cloud/protodb/internal/badgerd/replication"
+	"go.linka.cloud/protodb/internal/badgerd/replication/async"
 	"go.linka.cloud/protodb/internal/badgerd/replication/gossip/pb"
 )
 
 type stream struct {
-	c pb.ReplicationService_ReplicateClient
+	q *async.Queue[*pb.Op, *pb.Ack]
 	n string
 }
 
@@ -48,7 +49,7 @@ func (r *Gossip) NewTx(ctx context.Context) (replication.Tx, error) {
 		if err != nil {
 			return nil, err
 		}
-		cs = append(cs, &stream{n: v.name, c: c})
+		cs = append(cs, &stream{n: v.name, q: async.NewQueue(c)})
 		log.Infof("Started replicated transaction with %v", v.name)
 	}
 	return &tx{db: r.db, mode: r.mode, cs: cs}, nil
@@ -126,6 +127,7 @@ func (r *tx) Delete(ctx context.Context, key []byte) error {
 }
 
 func (r *tx) Commit(ctx context.Context, at uint64) error {
+	go r.do(ctx, &pb.Op{Action: &pb.Op_Commit{Commit: &pb.Commit{At: at}}})
 	b := r.db.NewWriteBatchAt(r.readTs)
 	defer b.Cancel()
 	if err := r.w.Replay(func(e *badger.Entry) error {
@@ -136,13 +138,7 @@ func (r *tx) Commit(ctx context.Context, at uint64) error {
 	}); err != nil {
 		return err
 	}
-	if err := b.Flush(); err != nil {
-		return err
-	}
-	if err := r.do(ctx, &pb.Op{Action: &pb.Op_Commit{Commit: &pb.Commit{At: at}}}); err != nil && !errors.Is(err, io.EOF) {
-		return err
-	}
-	return nil
+	return b.Flush()
 }
 
 func (r *tx) Close(ctx context.Context) error {
@@ -152,12 +148,28 @@ func (r *tx) Close(ctx context.Context) error {
 	return nil
 }
 
-func (r *tx) cancel(_ context.Context) error {
+func (r *tx) cancel(ctx context.Context) error {
 	var merr error
 	r.o.Do(func() {
 		merr := r.w.Close()
-		for _, v := range r.cs {
-			merr = multierr.Append(merr, v.c.CloseSend())
+		cs := r.streams()
+		ch := make(chan error, len(cs))
+		for _, v := range cs {
+			go func(v *stream) {
+				err := v.q.Close()
+				if r.mode == replication.ModeSync {
+					ch <- v.q.Close()
+				}
+				if err != nil {
+					logger.C(ctx).WithError(err).WithField("peer", v.n).Error("failed to close replication stream")
+				}
+			}(v)
+		}
+		if r.mode == replication.ModeAsync {
+			return
+		}
+		for range cs {
+			merr = multierr.Append(merr, <-ch)
 		}
 	})
 	return merr
@@ -166,78 +178,36 @@ func (r *tx) cancel(_ context.Context) error {
 func (r *tx) do(ctx context.Context, msg *pb.Op) error {
 	msg.ID = r.count.Load()
 	defer r.count.Add(1)
-	log := logger.C(ctx)
-	switch r.mode {
-	case replication.ModeAsync:
-		go func() {
-			if err := r.send(ctx, msg, cb(log, nil)); err != nil {
-				log.WithError(err).Errorf("failed to send replication message")
-			}
-		}()
-		return nil
-	case replication.ModeSync:
-		errs := make(chan error, 1)
-		if err := r.send(ctx, msg, cb(log, errs)); err != nil {
-			return err
-		}
-		return <-errs
-	}
-	return nil
-}
-
-type result struct {
-	s   *stream
-	err error
-}
-
-func (r *tx) send(_ context.Context, msg *pb.Op, cb func(err error)) error {
 	cs := r.streams()
-	sres := make(chan *result, len(cs))
-	ares := make(chan *result, len(cs))
+	ch := make(chan error, len(cs))
 	for _, v := range cs {
 		go func(v *stream) {
-			err := v.c.Send(msg.CloneVT())
-			sres <- &result{err: err, s: v}
-			_, err = v.c.Recv()
-			ares <- &result{err: err, s: v}
+			a := v.q.Send(msg.CloneVT())
+			switch r.mode {
+			case replication.ModeAsync:
+				ch <- r.handleErr(ctx, async.NewResult(v, a.WaitSent()))
+				if _, err := a.Wait(); err != nil {
+					r.handleErr(ctx, async.NewResult(v, err))
+				}
+			case replication.ModeSync:
+				_, err := a.Wait()
+				ch <- r.handleErr(ctx, async.NewResult(v, err))
+			}
 		}(v)
 	}
-	var err error
 	for range cs {
-		res := <-sres
-		err = r.handleErr(res, err)
-	}
-	if err != nil {
-		return err
-	}
-	go func() {
-		var err error
-		for range cs {
-			res := <-ares
-			err = r.handleErr(res, err)
+		if err := <-ch; err != nil {
+			return err
 		}
-		if cb != nil {
-			cb(err)
-		}
-	}()
+	}
 	return nil
 }
 
-func cb(log logger.Logger, errs chan<- error) func(err error) {
-	return func(err error) {
-		if errs != nil {
-			errs <- err
-		}
-		if err != nil {
-			log.WithError(err).Errorf("failed to send replication message")
-		}
+func (r *tx) handleErr(ctx context.Context, res *async.Result[*stream]) error {
+	if res.Err() != nil && r.hasStreams(res.Value()) && !errors.Is(res.Err(), io.EOF) {
+		logger.C(ctx).WithField("peer", res.Value().n).WithError(res.Err()).Error("failed to send replication message: removing peer")
+		r.removeSteam(res.Value())
+		return fmt.Errorf("%s: %w", res.Value().n, res.Err())
 	}
-}
-
-func (r *tx) handleErr(res *result, err error) error {
-	if res.err != nil && r.hasStreams(res.s) {
-		r.removeSteam(res.s)
-		return multierr.Append(err, fmt.Errorf("%s: %w", res.s.n, res.err))
-	}
-	return err
+	return nil
 }

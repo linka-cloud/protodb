@@ -88,7 +88,7 @@ type options struct {
 func (o options) build() badger.Options {
 	opts := badger.DefaultOptions(o.path).
 		WithInMemory(o.inMemory).
-		WithLogger(o.logger)
+		WithLogger(&logWrapper{o.logger})
 	// https://github.com/dgraph-io/badger/issues/1304#issuecomment-630078745
 	// if o.lowMemory {
 	// 	opts.TableLoadingMode = boptions.FileIO

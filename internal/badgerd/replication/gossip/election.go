@@ -53,7 +53,7 @@ func (r *Gossip) Elect(ctx context.Context) {
 			Meta: meta.CloneVT(),
 		})
 		if err != nil {
-			logger.C(ctx).WithError(err).Error("failed to send election message to %s", v.name)
+			logger.C(ctx).WithError(err).WithField("peer", v.name).Error("failed to send election message")
 			return
 		}
 		switch res.Type {

@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger/v3"
+	"github.com/dgraph-io/badger/v3/y"
 	gerrs "go.linka.cloud/grpc-toolkit/errors"
 	"go.linka.cloud/grpc-toolkit/logger"
 	"google.golang.org/grpc/peer"
@@ -106,18 +107,13 @@ func (r *Gossip) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 		defer r.txnMark.Done(cmsg.Commit.At)
 		log.Infof("commit transaction at %d", cmsg.Commit.At)
 		batch = r.db.NewWriteBatchAt(cmsg.Commit.At)
-		err := w.Replay(func(e *badger.Entry) error {
+		y.Check(w.Replay(func(e *badger.Entry) error {
 			if e.UserMeta != 0 {
 				return batch.DeleteAt(e.Key, cmsg.Commit.At)
 			}
 			return batch.SetEntryAt(e, cmsg.Commit.At)
-		})
-		if err != nil {
-			return gerrs.Internalf("failed to write transaction: %v", err)
-		}
-		if err := batch.Flush(); err != nil {
-			return gerrs.Internalf("failed to flush transaction: %v", err)
-		}
+		}))
+		y.Check(batch.Flush())
 		r.db.SetVersion(cmsg.Commit.At)
 		if err := ss.Send(&pb2.Ack{}); err != nil {
 			return gerrs.Internalf("failed to send response: %v", err)
