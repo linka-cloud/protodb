@@ -105,13 +105,14 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 			}
 			return nil, nil, err
 		}
+		v := m.ProtoReflect().New().Interface()
 		if err := item.Value(func(val []byte) error {
-			return tx.db.unmarshal(val, m)
+			return tx.db.unmarshal(val, v)
 		}); err != nil {
 			return nil, nil, err
 		}
 		if o.Filter != nil {
-			match, err := pf.Match(m, o.Filter)
+			match, err := pf.Match(v, o.Filter)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -120,12 +121,12 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 			}
 		}
 		if o.FieldMask != nil {
-			if err := FilterFieldMask(m, o.FieldMask); err != nil {
+			if err := FilterFieldMask(v, o.FieldMask); err != nil {
 				return nil, nil, err
 			}
 		}
 		tx.txn.AddReadKey(prefix)
-		return []proto.Message{m}, &protodb.PagingInfo{}, nil
+		return []proto.Message{v}, &protodb.PagingInfo{}, nil
 	}
 	hasContinuationToken := o.Paging.GetToken() != ""
 	inToken := &token.Token{}
