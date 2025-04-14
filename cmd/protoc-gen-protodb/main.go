@@ -124,217 +124,26 @@ const protodbTpl = `{{ comment .SyntaxSourceCodeInfo.LeadingComments }}
 package {{ package . }}
 
 import (
-	"context"
-	"fmt"
-
 	"go.linka.cloud/protodb"
-	"go.uber.org/multierr"
+	"go.linka.cloud/protodb/typed"
 )
 
 {{ range .AllMessages }}
 
 {{ if enabled . }}
 
-var (
-	_ {{ name . }}Store = (*_{{ name .}}DB)(nil)
-	_ {{ name . }}Tx = (*_{{ name .}}Tx)(nil)
+type (
+	{{ name . }}Store typed.Store[{{ name . }}, *{{ name . }}]
+	{{ name . }}Tx typed.Tx[{{ name . }}, *{{ name . }}]
+	{{ name . }}Event typed.Event[{{ name . }}, *{{ name . }}]
 )
 
-type {{ name . }}Store interface {
-	{{ name . }}Reader
-	{{ name . }}Writer
-	{{ name . }}Watcher
-	{{ name . }}TxProvider
-
-	Register(ctx context.Context) error
-
-	Raw() protodb.Client
-}
-
-type {{ name . }}Tx interface {
-	protodb.Committer
-	{{ name . }}Reader
-	{{ name . }}Writer
-	Raw() protodb.Tx
-}
-
-type {{ name . }}Reader interface {
-	Get(ctx context.Context, m *{{ name . }}, opts ...protodb.GetOption) ([]*{{ name . }}, *protodb.PagingInfo, error)
-}
-
-type {{ name . }}Watcher interface {
-	Watch(ctx context.Context, m *{{ name . }}, opts ...protodb.GetOption) (<-chan {{ name . }}Event, error)
-}
-
-type {{ name . }}Writer interface {
-	Set(ctx context.Context, m *{{ name . }}, opts ...protodb.SetOption) (*{{ name . }}, error)
-	Delete(ctx context.Context, m *{{ name . }}) error
-}
-
-type {{ name . }}TxProvider interface {
-	Tx(ctx context.Context) ({{ name . }}Tx, error)
-}
-
-type {{ name . }}Event interface {
-	Type() protodb.EventType
-	Old() *{{ name . }}
-	New() *{{ name . }}
-	Err() error
-}
-
 func New{{ name . }}Store(db protodb.Client) {{ name . }}Store {
-	return &_{{ name . }}DB{db: db}
-}
-
-type _{{ name . }}DB struct {
-	db protodb.Client
-}
-
-func (s *_{{ name . }}DB) Raw() protodb.Client {
-	return s.db
-}
-
-func (s *_{{ name . }}DB) Register(ctx context.Context) error {
-	return s.db.Register(ctx, (&{{ name . }}{}).ProtoReflect().Descriptor().ParentFile())
-}
-
-func (s *_{{ name . }}DB) Get(ctx context.Context, m *{{ name . }}, opts ...protodb.GetOption) ([]*{{ name . }}, *protodb.PagingInfo, error) {
-	return get{{ name . }}(ctx, s.db, m, opts...)
-}
-
-func (s *_{{ name . }}DB) Set(ctx context.Context, m *{{ name . }}, opts ...protodb.SetOption) (*{{ name . }}, error) {
-	return set{{ name . }}(ctx, s.db, m, opts...)
-}
-
-func (s *_{{ name . }}DB) Delete(ctx context.Context, m *{{ name . }}) error {
-	return delete{{ name . }}(ctx, s.db, m)
-}
-
-func (s *_{{ name . }}DB) Watch(ctx context.Context, m *{{ name . }}, opts ...protodb.GetOption) (<-chan {{ name . }}Event, error) {
-	out := make(chan {{ name . }}Event)
-	ch, err := s.db.Watch(ctx, m, opts...)
-	if err != nil {
-		return nil, err
-	}
-	go func() {
-		defer close(out)
-		for e := range ch {
-			if e.Type() == 0 {
-				continue
-			}
-			ev := &_{{ name . }}Event{typ: e.Type(), err: e.Err()}
-			if n := e.New(); n != nil {
-				v, ok := n.(*{{ name . }})
-				if ! ok {
-					ev.err = multierr.Append(ev.err, fmt.Errorf("unexpected type for new {{ name . }}: %T", n))
-				} else {
-					ev.new = v
-				}
-			}
-			if o := e.Old(); o != nil {
-				v, ok := o.(*{{ name . }})
-				if ! ok {
-					ev.err = multierr.Append(ev.err, fmt.Errorf("unexpected type for old {{ name . }}: %T", o))
-				} else {
-					ev.old = v
-				}
-			}
-			out <- ev
-		}
-	}()
-	return out, nil
-}
-
-func (s *_{{ name . }}DB) Tx(ctx context.Context) ({{ name . }}Tx, error) {
-	txn, err := s.db.Tx(ctx)
-	return &_{{ name . }}Tx{txn: txn}, err
-}
-
-func get{{ name . }}(ctx context.Context, r protodb.Reader, m *{{ name . }}, opts ...protodb.GetOption) ([]*{{ name . }}, *protodb.PagingInfo, error) {
-	ms, i, err := r.Get(ctx, m, opts...)
-	if err != nil {
-		return nil, nil, err
-	}
-	var out []*{{ name . }}
-	for _, v := range ms {
-		vv, ok := v.(*{{ name . }})
-		if !ok {
-			return  nil, nil, fmt.Errorf("unexpected type for {{ name .}}: %T", v)
-		}
-		out = append(out, vv)
-	}
-	return out, i, nil
-}
-
-func set{{ name . }}(ctx context.Context, w protodb.Writer, m *{{ name . }}, opts ...protodb.SetOption) (*{{ name . }}, error) {
-	v, err := w.Set(ctx, m, opts...)
-	if err != nil {
-		return nil, err
-	}
-	vv, ok := v.(*{{ name . }})
-	if !ok {
-		return  nil, fmt.Errorf("unexpected type for {{ name .}}: %T", v)
-	}
-	return vv, nil
-}
-
-func delete{{ name . }}(ctx context.Context, w protodb.Writer, m *{{ name . }}) error {
-	return w.Delete(ctx, m)
+	return typed.NewStore[{{ name . }}, *{{ name . }}](db)
 }
 
 func New{{ name . }}Tx(tx protodb.Tx) {{ name . }}Tx {
-	return &_{{ name . }}Tx{txn: tx}
-}
-
-type _{{ name . }}Tx struct {
-	txn protodb.Tx
-}
-
-func (s *_{{ name . }}Tx) Raw() protodb.Tx {
-	return s.txn
-}
-
-func (s *_{{ name . }}Tx) Get(ctx context.Context, m *{{ name . }}, opts ...protodb.GetOption) ([]*{{ name . }}, *protodb.PagingInfo, error) {
-	return get{{ name . }}(ctx, s.txn, m, opts...)
-}
-
-func (s *_{{ name . }}Tx) Set(ctx context.Context, m *{{ name . }}, opts ...protodb.SetOption) (*{{ name . }}, error) {
-	return set{{ name . }}(ctx, s.txn, m, opts...)
-}
-
-func (s *_{{ name . }}Tx) Delete(ctx context.Context, m *{{ name . }}) error {
-	return delete{{ name . }}(ctx, s.txn, m)
-}
-
-func (s *_{{ name . }}Tx) Commit(ctx context.Context) error {
-	return s.txn.Commit(ctx)
-}
-
-func (s *_{{ name . }}Tx) Close() {
-	s.txn.Close()
-}
-
-type _{{ name . }}Event struct {
-	typ protodb.EventType
-	old *{{ name . }}
-	new *{{ name . }}
-	err error
-}
-
-func (e *_{{ name . }}Event) Type() protodb.EventType {
-	return e.typ
-}
-
-func (e *_{{ name . }}Event) Old() *{{ name . }} {
-	return e.old
-}
-
-func (e *_{{ name . }}Event) New() *{{ name . }} {
-	return e.new
-}
-
-func (e *_{{ name . }}Event) Err() error {
-	return e.err
+	return typed.NewTx[{{ name . }}, *{{ name . }}](tx)
 }
 
 {{ end }}
