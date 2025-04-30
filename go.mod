@@ -7,7 +7,6 @@ toolchain go1.24.0
 require (
 	github.com/alta/protopatch v0.5.3
 	github.com/bombsimon/logrusr/v4 v4.1.0
-	github.com/cespare/xxhash v1.1.0
 	github.com/dgraph-io/badger/v3 v3.2103.5
 	github.com/dgraph-io/ristretto v0.2.0
 	github.com/efficientgo/core v1.0.0-rc.2
@@ -22,7 +21,6 @@ require (
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10
 	github.com/prometheus/client_golang v1.21.0
 	github.com/sirupsen/logrus v1.9.3
-	github.com/spf13/cobra v1.3.0
 	github.com/stretchr/testify v1.10.0
 	go.linka.cloud/grpc-toolkit v0.4.4-0.20231026145832-5d6b16a2c2a0
 	go.linka.cloud/protoc-gen-defaults v0.4.0
@@ -31,7 +29,7 @@ require (
 	go.linka.cloud/protofilters v0.8.2-0.20250209153700-12f397dfb6a5
 	go.linka.cloud/pubsub v0.0.0-20220728154114-8213058139f3
 	go.uber.org/multierr v1.11.0
-	golang.org/x/sync v0.11.0
+	golang.org/x/sync v0.12.0
 	golang.org/x/tools v0.30.0
 	google.golang.org/grpc v1.70.0
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.5.1
@@ -45,6 +43,7 @@ require (
 	github.com/bufbuild/protocompile v0.14.1 // indirect
 	github.com/caitlinelfring/go-env-default v1.1.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
+	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/desertbit/timer v1.0.1 // indirect
@@ -62,7 +61,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
-	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
 	github.com/hashicorp/go-metrics v0.5.4 // indirect
@@ -72,7 +70,6 @@ require (
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/iancoleman/strcase v0.3.0 // indirect
 	github.com/improbable-eng/grpc-web v0.15.0 // indirect
-	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jhump/protoreflect v1.17.0 // indirect
 	github.com/justinas/alice v1.2.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
@@ -92,9 +89,9 @@ require (
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/mod v0.23.0 // indirect
-	golang.org/x/net v0.35.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
-	golang.org/x/text v0.22.0 // indirect
+	golang.org/x/net v0.38.0 // indirect
+	golang.org/x/sys v0.31.0 // indirect
+	golang.org/x/text v0.23.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250219182151-9fdb1cabc7b2 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250219182151-9fdb1cabc7b2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
