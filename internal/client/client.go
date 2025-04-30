@@ -105,6 +105,10 @@ func (c *client) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOp
 	return msgs, res.Paging, nil
 }
 
+func (c *client) GetOne(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (proto.Message, bool, error) {
+	return protodb.GetOne(ctx, c, m, opts...)
+}
+
 func (c *client) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOption) (proto.Message, error) {
 	a, err := anypb.New(m)
 	if err != nil {
@@ -239,6 +243,10 @@ func (t *txc) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 		msgs = append(msgs, msg)
 	}
 	return msgs, res.GetGet().GetPaging(), nil
+}
+
+func (t *txc) GetOne(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (proto.Message, bool, error) {
+	return protodb.GetOne(ctx, t, m, opts...)
 }
 
 func (t *txc) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOption) (proto.Message, error) {

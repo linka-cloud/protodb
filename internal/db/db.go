@@ -296,6 +296,10 @@ func (db *db) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 	return msgs, paging, err
 }
 
+func (db *db) GetOne(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (proto.Message, bool, error) {
+	return protodb.GetOne(ctx, db, m, opts...)
+}
+
 func (db *db) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOption) (proto.Message, error) {
 	defer metrics.Set.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 

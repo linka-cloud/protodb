@@ -53,6 +53,7 @@ type Tx interface {
 
 type Reader interface {
 	Get(ctx context.Context, m proto.Message, opts ...GetOption) ([]proto.Message, *PagingInfo, error)
+	GetOne(ctx context.Context, m proto.Message, opts ...GetOption) (proto.Message, bool, error)
 }
 
 type Watcher interface {
@@ -108,4 +109,15 @@ type Event interface {
 	Old() proto.Message
 	New() proto.Message
 	Err() error
+}
+
+func GetOne(ctx context.Context, r Reader, m proto.Message, opts ...GetOption) (proto.Message, bool, error) {
+	res, _, err := r.Get(ctx, m, append(opts, WithOne())...)
+	if err != nil {
+		return nil, false, err
+	}
+	if len(res) == 0 {
+		return nil, false, nil
+	}
+	return res[0], true, nil
 }

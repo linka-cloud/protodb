@@ -50,6 +50,7 @@ type Tx[T any, PT message[T]] interface {
 
 type Reader[T any, PT message[T]] interface {
 	Get(ctx context.Context, m PT, opts ...protodb.GetOption) ([]PT, *protodb.PagingInfo, error)
+	GetOne(ctx context.Context, m PT, opts ...protodb.GetOption) (PT, bool, error)
 }
 
 type Watcher[T any, PT message[T]] interface {
@@ -92,6 +93,10 @@ func (s *store[T, PT]) Register(ctx context.Context) error {
 
 func (s *store[T, PT]) Get(ctx context.Context, m PT, opts ...protodb.GetOption) ([]PT, *protodb.PagingInfo, error) {
 	return getTyped[T, PT](ctx, s.db, m, opts...)
+}
+
+func (s *store[T, PT]) GetOne(ctx context.Context, m PT, opts ...protodb.GetOption) (PT, bool, error) {
+	return getOneTyped[T, PT](ctx, s.db, m, opts...)
 }
 
 func (s *store[T, PT]) Set(ctx context.Context, m PT, opts ...protodb.SetOption) (PT, error) {
@@ -158,6 +163,21 @@ func getTyped[T any, PT message[T]](ctx context.Context, r protodb.Reader, m PT,
 	return out, i, nil
 }
 
+func getOneTyped[T any, PT message[T]](ctx context.Context, r protodb.Reader, m PT, opts ...protodb.GetOption) (PT, bool, error) {
+	v, ok, err := r.GetOne(ctx, m, opts...)
+	if err != nil {
+		return nil, false, err
+	}
+	if !ok {
+		return nil, false, nil
+	}
+	vv, ok := v.(PT)
+	if !ok {
+		return nil, false, fmt.Errorf("unexpected type for Typed: %T", v)
+	}
+	return vv, true, nil
+}
+
 func setTyped[T any, PT message[T]](ctx context.Context, w protodb.Writer, m PT, opts ...protodb.SetOption) (PT, error) {
 	v, err := w.Set(ctx, m, opts...)
 	if err != nil {
@@ -188,6 +208,10 @@ func (t *tx[T, PT]) Raw() protodb.Tx {
 
 func (t *tx[T, PT]) Get(ctx context.Context, m PT, opts ...protodb.GetOption) ([]PT, *protodb.PagingInfo, error) {
 	return getTyped[T, PT](ctx, t.txn, m, opts...)
+}
+
+func (t *tx[T, PT]) GetOne(ctx context.Context, m PT, opts ...protodb.GetOption) (PT, bool, error) {
+	return getOneTyped[T, PT](ctx, t.txn, m, opts...)
 }
 
 func (t *tx[T, PT]) Set(ctx context.Context, m PT, opts ...protodb.SetOption) (PT, error) {

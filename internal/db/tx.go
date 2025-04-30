@@ -81,6 +81,10 @@ type tx struct {
 	done bool
 }
 
+func (tx *tx) GetOne(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (proto.Message, bool, error) {
+	return protodb.GetOne(ctx, tx, m, opts...)
+}
+
 func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (out []proto.Message, info *protodb.PagingInfo, err error) {
 	defer metrics.Tx.Get.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 	out, info, err = tx.get(ctx, m, opts...)
