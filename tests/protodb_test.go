@@ -32,7 +32,7 @@ import (
 const data = "testdata"
 
 func TestServerReplicated(t *testing.T) {
-	for _, mode := range []protodb.ReplicationMode{protodb.ReplicationModeAsync, protodb.ReplicationModeSync} {
+	for _, mode := range []protodb.ReplicationMode{protodb.ReplicationModeSync, protodb.ReplicationModeAsync} {
 		t.Run(mode.String(), func(t *testing.T) {
 			for _, v := range Tests {
 				t.Run(v.Name, func(t *testing.T) {
@@ -50,7 +50,9 @@ func TestServerReplicated(t *testing.T) {
 						require.NoError(t, c.StopAll())
 					}()
 
-					srv, err := protodb.NewServer(c.Get(1))
+					leader, err := c.Leader(ctx)
+					require.NoError(t, err)
+					srv, err := protodb.NewServer(leader)
 					require.NoError(t, err)
 
 					tr := &inprocgrpc.Channel{}

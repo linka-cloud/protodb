@@ -929,7 +929,7 @@ func (db *db) recoverRegister(ctx context.Context, file *descriptorpb.FileDescri
 	return nil
 }
 
-func (db *db) maybeProxy(read bool) (client.Client, bool, error) {
+func (db *db) MaybeProxy(read bool) (grpc.ClientConnInterface, bool, error) {
 	if !db.bdb.Replicated() {
 		return nil, false, nil
 	}
@@ -939,6 +939,14 @@ func (db *db) maybeProxy(read bool) (client.Client, bool, error) {
 	cc, ok := db.bdb.LeaderConn()
 	if !ok {
 		return nil, false, protodb.ErrNoLeaderConn
+	}
+	return cc, true, nil
+}
+
+func (db *db) maybeProxy(read bool) (client.Client, bool, error) {
+	cc, ok, err := db.MaybeProxy(read)
+	if !ok {
+		return nil, false, err
 	}
 	c, err := client.NewClient(cc)
 	if err != nil {

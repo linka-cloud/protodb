@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 
 	"go.linka.cloud/grpc-toolkit/logger"
 	"go.uber.org/multierr"
@@ -104,6 +105,27 @@ func (c *Cluster) Get(i int) protodb.DB {
 	return c.dbs[i]
 }
 
+func (c *Cluster) Leader(ctx context.Context) (protodb.DB, error) {
+	t := time.NewTicker(10 * time.Millisecond)
+	defer t.Stop()
+	for {
+		for i := range c.dbs {
+			db := c.Get(i)
+			if db == nil {
+				continue
+			}
+			if db.IsLeader() {
+				return db, nil
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-t.C:
+		}
+	}
+}
+
 func (c *Cluster) Stop(i int) error {
 	if i < 0 || i >= len(c.dbs) {
 		return nil
@@ -116,11 +138,19 @@ func (c *Cluster) Stop(i int) error {
 
 func (c *Cluster) StopAll() error {
 	var err error
+	var mu sync.Mutex
 	g := errgroup.Group{}
 	for i := range c.dbs {
+		i := i
 		if db := c.Get(i); db != nil {
 			g.Go(func() error {
-				err = multierr.Append(err, c.Stop(i))
+				e := c.Stop(i)
+				if e == nil {
+					return nil
+				}
+				mu.Lock()
+				err = multierr.Append(err, e)
+				mu.Unlock()
 				return nil
 			})
 		}
