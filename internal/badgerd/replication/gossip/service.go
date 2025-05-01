@@ -15,7 +15,6 @@
 package gossip
 
 import (
-	"context"
 	"errors"
 	"io"
 	"net"
@@ -30,7 +29,6 @@ import (
 	"go.linka.cloud/protodb/internal/badgerd/pending"
 	"go.linka.cloud/protodb/internal/badgerd/replication"
 	pb2 "go.linka.cloud/protodb/internal/badgerd/replication/gossip/pb"
-	"go.linka.cloud/protodb/pb"
 )
 
 func (r *Gossip) Init(req *pb2.InitRequest, ss pb2.ReplicationService_InitServer) error {
@@ -196,105 +194,4 @@ func (r *Gossip) Alive(ss pb2.ReplicationService_AliveServer) error {
 			return err
 		}
 	}
-}
-
-func (r *Gossip) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
-	p, ok, err := r.maybeLeaderProxy(ctx, true)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return r.h.Get(ctx, req)
-	}
-	return p.Get(ctx, req)
-}
-
-func (r *Gossip) Set(ctx context.Context, req *pb.SetRequest) (*pb.SetResponse, error) {
-	p, ok, err := r.maybeLeaderProxy(ctx, false)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return r.h.Set(ctx, req)
-	}
-	return p.Set(ctx, req)
-}
-
-func (r *Gossip) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
-	p, ok, err := r.maybeLeaderProxy(ctx, false)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return r.h.Delete(ctx, req)
-	}
-	return p.Delete(ctx, req)
-}
-
-func (r *Gossip) Tx(ss pb.ProtoDB_TxServer) error {
-	p, ok, err := r.maybeLeaderProxy(ss.Context(), false)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return r.h.Tx(ss)
-	}
-	return p.Tx(ss)
-}
-
-func (r *Gossip) Watch(req *pb.WatchRequest, ss pb.ProtoDB_WatchServer) error {
-	p, ok, err := r.maybeLeaderProxy(ss.Context(), true)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return r.h.Watch(req, ss)
-	}
-	return p.Watch(req, ss)
-}
-
-func (r *Gossip) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
-	p, ok, err := r.maybeLeaderProxy(ctx, false)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return r.h.Register(ctx, req)
-	}
-	return p.Register(ctx, req)
-}
-
-func (r *Gossip) Descriptors(ctx context.Context, req *pb.DescriptorsRequest) (*pb.DescriptorsResponse, error) {
-	p, ok, err := r.maybeLeaderProxy(ctx, true)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return r.h.Descriptors(ctx, req)
-	}
-	return p.Descriptors(ctx, req)
-}
-
-func (r *Gossip) FileDescriptors(ctx context.Context, req *pb.FileDescriptorsRequest) (*pb.FileDescriptorsResponse, error) {
-	p, ok, err := r.maybeLeaderProxy(ctx, true)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return r.h.FileDescriptors(ctx, req)
-	}
-	return p.FileDescriptors(ctx, req)
-}
-
-func (r *Gossip) maybeLeaderProxy(ctx context.Context, read bool) (pb.ProtoDBServer, bool, error) {
-	if r.leading.Load() || (read && r.mode == replication.ModeSync) {
-		return nil, false, nil
-	}
-	n, ok := r.nodes.Load(r.leaderName.Load())
-	if !ok {
-		return nil, false, gerrs.Internalf("no leader connection")
-	}
-	logger.C(ctx).Infof("proxying to leader %s", r.leaderName)
-
-	return n.proxy, true, nil
 }
