@@ -55,6 +55,13 @@ func (s *server) RegisterService(r grpc.ServiceRegistrar) {
 }
 
 func (s *server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
+	p, ok, err := s.maybeProxy(false)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return p.Register(ctx, req)
+	}
 	if err := s.db.RegisterProto(ctx, req.File); err != nil {
 		return nil, err
 	}
@@ -62,6 +69,13 @@ func (s *server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.Reg
 }
 
 func (s *server) Descriptors(ctx context.Context, req *pb.DescriptorsRequest) (*pb.DescriptorsResponse, error) {
+	p, ok, err := s.maybeProxy(true)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return p.Descriptors(ctx, req)
+	}
 	des, err := s.db.Descriptors(ctx)
 	if err != nil {
 		return nil, err
@@ -70,6 +84,13 @@ func (s *server) Descriptors(ctx context.Context, req *pb.DescriptorsRequest) (*
 }
 
 func (s *server) FileDescriptors(ctx context.Context, req *pb.FileDescriptorsRequest) (*pb.FileDescriptorsResponse, error) {
+	p, ok, err := s.maybeProxy(true)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return p.FileDescriptors(ctx, req)
+	}
 	des, err := s.db.FileDescriptors(ctx)
 	if err != nil {
 		return nil, err
@@ -78,6 +99,13 @@ func (s *server) FileDescriptors(ctx context.Context, req *pb.FileDescriptorsReq
 }
 
 func (s *server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
+	p, ok, err := s.maybeProxy(true)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return p.Get(ctx, req)
+	}
 	a, i, err := s.get(ctx, s.db, req)
 	if err != nil {
 		return nil, err
@@ -86,6 +114,13 @@ func (s *server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, 
 }
 
 func (s *server) Set(ctx context.Context, req *pb.SetRequest) (*pb.SetResponse, error) {
+	p, ok, err := s.maybeProxy(false)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return p.Set(ctx, req)
+	}
 	a, err := s.set(ctx, s.db, req)
 	if err != nil {
 		return nil, err
@@ -94,6 +129,13 @@ func (s *server) Set(ctx context.Context, req *pb.SetRequest) (*pb.SetResponse, 
 }
 
 func (s *server) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
+	p, ok, err := s.maybeProxy(false)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return p.Delete(ctx, req)
+	}
 	if err := s.delete(ctx, s.db, req); err != nil {
 		return nil, err
 	}
@@ -101,6 +143,13 @@ func (s *server) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteR
 }
 
 func (s *server) NextSeq(ctx context.Context, req *pb.NextSeqRequest) (*pb.NextSeqResponse, error) {
+	p, ok, err := s.maybeProxy(false)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return p.NextSeq(ctx, req)
+	}
 	seq, err := s.db.NextSeq(ctx, req.Key)
 	if err != nil {
 		return nil, err
@@ -116,6 +165,13 @@ func (s *server) Tx(stream pb.ProtoDB_TxServer) error {
 		if readOnly = len(md.Get(pb.ReadOnlyTxKey)) > 0; readOnly {
 			opts = append(opts, protodb.WithReadOnly())
 		}
+	}
+	p, ok, err := s.maybeProxy(readOnly)
+	if err != nil {
+		return err
+	}
+	if ok {
+		return p.Tx(stream)
 	}
 	// send dummy headers for clients that cannot create streams before receiving first from the server
 	if err := grpc.SendHeader(ctx, metadata.Pairs(pb.ReadOnlyTxKey, strconv.FormatBool(readOnly))); err != nil {
@@ -177,6 +233,13 @@ func (s *server) Tx(stream pb.ProtoDB_TxServer) error {
 }
 
 func (s *server) Watch(req *pb.WatchRequest, stream pb.ProtoDB_WatchServer) error {
+	p, ok, err := s.maybeProxy(true)
+	if err != nil {
+		return err
+	}
+	if ok {
+		return p.Watch(req, stream)
+	}
 	d, err := s.unmarshal(req.Search)
 	if err != nil {
 		return err
@@ -253,6 +316,21 @@ func (s *server) delete(ctx context.Context, w protodb.Writer, del *pb.DeleteReq
 		return err
 	}
 	return w.Delete(ctx, d)
+}
+
+func (s *server) maybeProxy(read bool) (pb.ProtoDBServer, bool, error) {
+	p, ok := s.db.(protodb.LeaderProxy)
+	if !ok {
+		return nil, false, nil
+	}
+	c, ok, err := p.MaybeProxy(read)
+	if err != nil {
+		return nil, false, gerrs.Internal(err)
+	}
+	if !ok {
+		return nil, false, nil
+	}
+	return pb.NewProtoDBProxy(pb.NewProtoDBClient(c)), true, nil
 }
 
 func toAnySlice(m ...proto.Message) (out []*anypb.Any, err error) {

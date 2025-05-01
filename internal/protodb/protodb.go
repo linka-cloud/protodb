@@ -19,6 +19,7 @@ import (
 	"errors"
 	"io"
 
+	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -109,6 +110,10 @@ type Event interface {
 	Old() proto.Message
 	New() proto.Message
 	Err() error
+}
+
+type LeaderProxy interface {
+	MaybeProxy(read bool) (grpc.ClientConnInterface, bool, error)
 }
 
 func GetOne(ctx context.Context, r Reader, m proto.Message, opts ...GetOption) (proto.Message, bool, error) {
