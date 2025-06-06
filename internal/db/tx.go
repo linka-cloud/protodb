@@ -25,6 +25,8 @@ import (
 
 	"github.com/dgraph-io/badger/v3"
 	pf "go.linka.cloud/protofilters"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 
 	"go.linka.cloud/protodb/internal/badgerd"
@@ -53,6 +55,7 @@ func newTx(ctx context.Context, db *db, opts ...protodb.TxOption) (*tx, error) {
 		txn:    txn,
 		me:     end,
 		update: update,
+		span:   trace.SpanFromContext(ctx),
 	}
 	return tx, nil
 }
@@ -79,6 +82,8 @@ type tx struct {
 
 	m    sync.RWMutex
 	done bool
+
+	span trace.Span
 }
 
 func (tx *tx) GetOne(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (proto.Message, bool, error) {
@@ -86,6 +91,8 @@ func (tx *tx) GetOne(ctx context.Context, m proto.Message, opts ...protodb.GetOp
 }
 
 func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (out []proto.Message, info *protodb.PagingInfo, err error) {
+	ctx, span := tracer.Start(ctx, "protodb.Tx.Get", trace.WithAttributes(attribute.String("message", string(m.ProtoReflect().Descriptor().FullName()))))
+	defer span.End()
 	defer metrics.Tx.Get.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 	out, info, err = tx.get(ctx, m, opts...)
 	if err != nil {
@@ -95,16 +102,27 @@ func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 }
 
 func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (out []proto.Message, info *protodb.PagingInfo, err error) {
+	span := trace.SpanFromContext(ctx)
 	if tx.closed() {
 		return nil, nil, badger.ErrDBClosed
 	}
 	o := makeGetOpts(opts...)
 	prefix, field, value, _ := protodb.DataPrefix(m)
+	span.SetAttributes(
+		attribute.String("prefix", string(prefix)),
+		attribute.String("key_field", field),
+		attribute.String("key", value),
+		attribute.StringSlice("field_mask", o.FieldMask.GetPaths()),
+		attribute.Bool("filtered", o.Filter != nil),
+		attribute.Bool("continuation", o.Paging.GetToken() != ""),
+	)
 	// short path for simple get
 	if value != "" {
+		span.SetAttributes(attribute.Bool("direct", true))
 		item, err := tx.txn.Get(ctx, prefix)
 		if err != nil {
 			if errors.Is(err, badger.ErrKeyNotFound) {
+				span.SetAttributes(attribute.Bool("found", false))
 				return nil, &protodb.PagingInfo{}, nil
 			}
 			return nil, nil, err
@@ -121,9 +139,11 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 				return nil, nil, err
 			}
 			if !match {
+				span.SetAttributes(attribute.Bool("found", false))
 				return nil, &protodb.PagingInfo{}, nil
 			}
 		}
+		span.SetAttributes(attribute.Bool("found", true))
 		if o.FieldMask != nil {
 			if err := FilterFieldMask(v, o.FieldMask); err != nil {
 				return nil, nil, err
@@ -157,6 +177,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 	}
 
 	keyOnly := IsKeyOnlyFilter(o.Filter, field)
+	span.SetAttributes(attribute.Bool("key_only", keyOnly))
 	iterPrefix := prefix
 	if p, ok := MatchPrefixOnly(o.Filter); keyOnly && ok {
 		tx.db.opts.logger.Tracef("filtering optimized by key only filter prefix")
@@ -168,6 +189,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 		count   = uint64(0)
 		match   = true
 		hasNext = false
+		reads   int
 	)
 	if o.Reverse {
 		it.SeekLast()
@@ -192,6 +214,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 		}
 
 		tx.db.opts.logger.Tracef("checking %q", string(item.Key()))
+		reads++
 		v := m.ProtoReflect().New().Interface()
 
 		if o.Filter == nil || !keyOnly {
@@ -252,6 +275,11 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 			break
 		}
 	}
+	span.SetAttributes(
+		attribute.Int64("reads", int64(reads)),
+		attribute.Int64("results", int64(count)),
+		attribute.Bool("has_next", hasNext),
+	)
 	tks, err := outToken.Encode()
 	if err != nil {
 		return nil, nil, err
@@ -272,6 +300,8 @@ func (tx *tx) getRaw(ctx context.Context, key []byte) ([]byte, error) {
 }
 
 func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOption) (proto.Message, error) {
+	ctx, span := tracer.Start(ctx, "protodb.Tx.Set", trace.WithAttributes(attribute.String("message", string(m.ProtoReflect().Descriptor().FullName()))))
+	defer span.End()
 	defer metrics.Tx.Set.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 	out, err := tx.set(ctx, m, opts...)
 	if err != nil {
@@ -289,11 +319,18 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 	if m == nil {
 		return nil, errors.New("empty message")
 	}
+	span := trace.SpanFromContext(ctx)
 	o := makeSetOpts(opts...)
-	k, _, _, err := protodb.DataPrefix(m)
+	span.SetAttributes(attribute.StringSlice("field_mask", o.FieldMask.GetPaths()))
+	k, field, value, err := protodb.DataPrefix(m)
 	if err != nil {
 		return nil, err
 	}
+	span.SetAttributes(
+		attribute.String("key", value),
+		attribute.String("key_field", field),
+		attribute.Int64("ttl", int64(o.TTL)),
+	)
 	if o.FieldMask != nil {
 		item, err := tx.txn.Get(ctx, k)
 		if err != nil {
@@ -342,6 +379,8 @@ func (tx *tx) setRaw(ctx context.Context, key, val []byte) error {
 }
 
 func (tx *tx) Delete(ctx context.Context, m proto.Message) error {
+	ctx, span := tracer.Start(ctx, "protodb.Tx.Delete", trace.WithAttributes(attribute.String("message", string(m.ProtoReflect().Descriptor().FullName()))))
+	defer span.End()
 	defer metrics.Tx.Delete.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 	if err := tx.delete(ctx, m); err != nil {
 		metrics.Tx.Delete.ErrorsCounter.WithLabelValues(string(m.ProtoReflect().Descriptor().FullName())).Inc()
@@ -361,10 +400,15 @@ func (tx *tx) delete(ctx context.Context, m proto.Message) error {
 		return badger.ErrReadOnlyTxn
 	}
 	// TODO(adphi): should we check / read for key first ?
-	k, _, _, err := protodb.DataPrefix(m)
+	k, field, value, err := protodb.DataPrefix(m)
 	if err != nil {
 		return err
 	}
+
+	trace.SpanFromContext(ctx).SetAttributes(
+		attribute.String("key", value),
+		attribute.String("key_field", field),
+	)
 
 	if err := ctx.Err(); err != nil {
 		tx.close()
@@ -387,6 +431,8 @@ func (tx *tx) deleteRaw(ctx context.Context, key []byte) error {
 }
 
 func (tx *tx) Commit(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "protodb.Tx.Commit")
+	defer span.End()
 	if tx.closed() {
 		return badger.ErrDBClosed
 	}
@@ -418,6 +464,7 @@ func (tx *tx) close() {
 	if tx.closed() {
 		return
 	}
+	defer tx.span.End()
 	tx.m.Lock()
 	tx.me.End()
 	metrics.Tx.OpCountHist.Observe(float64(tx.count))
