@@ -29,6 +29,9 @@ import (
 	"go.linka.cloud/grpc-toolkit/logger"
 	"go.linka.cloud/protoc-gen-defaults/defaults"
 	pf "go.linka.cloud/protofilters"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/multierr"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
@@ -47,12 +50,16 @@ import (
 	"go.linka.cloud/protodb/pb"
 )
 
+var tracer = otel.Tracer("protodb")
+
 const (
 	protobufRegistrationConflictEnv    = "GOLANG_PROTOBUF_REGISTRATION_CONFLICT"
 	protobufRegistrationConflictPolicy = "ignore"
 )
 
 func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
+	ctx, span := tracer.Start(ctx, "Open")
+	defer span.End()
 	o := defaultOptions
 	for _, v := range opts {
 		v(&o)
@@ -142,6 +149,8 @@ func (db *db) LeaderChanges() <-chan string {
 }
 
 func (db *db) Watch(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (<-chan protodb.Event, error) {
+	ctx, span := tracer.Start(ctx, "Watch")
+	defer span.End()
 	end := metrics.Watch.Start(string(m.ProtoReflect().Descriptor().FullName()))
 	c, ok, err := db.maybeProxy(true)
 	if err != nil {
@@ -149,6 +158,7 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...protodb.GetOpt
 		return nil, err
 	}
 	if ok {
+		defer end.End()
 		return c.Watch(ctx, m, opts...)
 	}
 
@@ -273,6 +283,8 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...protodb.GetOpt
 }
 
 func (db *db) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOption) ([]proto.Message, *protodb.PagingInfo, error) {
+	ctx, span := tracer.Start(ctx, "Get", trace.WithAttributes(attribute.String("message", string(m.ProtoReflect().Descriptor().FullName()))))
+	defer span.End()
 	defer metrics.Get.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 
 	c, ok, err := db.maybeProxy(true)
@@ -301,6 +313,8 @@ func (db *db) GetOne(ctx context.Context, m proto.Message, opts ...protodb.GetOp
 }
 
 func (db *db) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOption) (proto.Message, error) {
+	ctx, span := tracer.Start(ctx, "Set", trace.WithAttributes(attribute.String("message", string(m.ProtoReflect().Descriptor().FullName()))))
+	defer span.End()
 	defer metrics.Set.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 
 	c, ok, err := db.maybeProxy(false)
@@ -334,6 +348,8 @@ func (db *db) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 }
 
 func (db *db) Delete(ctx context.Context, m proto.Message) error {
+	ctx, span := tracer.Start(ctx, "Delete", trace.WithAttributes(attribute.String("message", string(m.ProtoReflect().Descriptor().FullName()))))
+	defer span.End()
 	defer metrics.Delete.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 
 	c, ok, err := db.maybeProxy(false)
@@ -365,9 +381,13 @@ func (db *db) Delete(ctx context.Context, m proto.Message) error {
 }
 
 func (db *db) Tx(ctx context.Context, opts ...protodb.TxOption) (protodb.Tx, error) {
+	ctx, span := tracer.Start(ctx, "Tx")
 	o := protodb.TxOpts{}
 	for _, opt := range opts {
 		opt(&o)
+	}
+	if o.ReadOnly {
+		span.SetAttributes(attribute.Bool("read_only", true))
 	}
 	c, ok, err := db.maybeProxy(o.ReadOnly)
 	if err != nil {
@@ -380,6 +400,8 @@ func (db *db) Tx(ctx context.Context, opts ...protodb.TxOption) (protodb.Tx, err
 }
 
 func (db *db) NextSeq(ctx context.Context, name string) (uint64, error) {
+	ctx, span := tracer.Start(ctx, "NextSeq", trace.WithAttributes(attribute.String("name", name)))
+	defer span.End()
 	if name == "" {
 		return 0, badger.ErrEmptyKey
 	}
@@ -470,6 +492,8 @@ func (db *db) marshal(m proto.Message) ([]byte, error) {
 }
 
 func (db *db) RegisterProto(ctx context.Context, file *descriptorpb.FileDescriptorProto) error {
+	ctx, span := tracer.Start(ctx, "RegisterProto", trace.WithAttributes(attribute.String("file", file.GetName())))
+	defer span.End()
 	if file == nil || file.GetName() == "" {
 		return errors.New("invalid file")
 	}
@@ -520,6 +544,8 @@ func (db *db) Resolver() pdesc.Resolver {
 }
 
 func (db *db) Descriptors(ctx context.Context) ([]*descriptorpb.DescriptorProto, error) {
+	ctx, span := tracer.Start(ctx, "Descriptors")
+	defer span.End()
 	c, ok, err := db.maybeProxy(true)
 	if err != nil {
 		return nil, err
@@ -556,6 +582,8 @@ func (db *db) Descriptors(ctx context.Context) ([]*descriptorpb.DescriptorProto,
 }
 
 func (db *db) FileDescriptors(ctx context.Context) ([]*descriptorpb.FileDescriptorProto, error) {
+	ctx, span := tracer.Start(ctx, "FileDescriptors")
+	defer span.End()
 	c, ok, err := db.maybeProxy(true)
 	if err != nil {
 		return nil, err
