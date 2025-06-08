@@ -117,7 +117,7 @@ func (tx *tx) Commit(ctx context.Context) error {
 		return badger.ErrDBClosed
 	}
 	defer tx.close()
-	if !tx.update {
+	if !tx.update || len(tx.conflictKeys) == 0 {
 		return nil
 	}
 	tx.db.orc.writeChLock.Lock()
