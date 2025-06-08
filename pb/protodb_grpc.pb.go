@@ -38,6 +38,7 @@ const (
 	ProtoDB_Delete_FullMethodName          = "/linka.cloud.protodb.ProtoDB/Delete"
 	ProtoDB_Tx_FullMethodName              = "/linka.cloud.protodb.ProtoDB/Tx"
 	ProtoDB_NextSeq_FullMethodName         = "/linka.cloud.protodb.ProtoDB/NextSeq"
+	ProtoDB_Lock_FullMethodName            = "/linka.cloud.protodb.ProtoDB/Lock"
 	ProtoDB_Watch_FullMethodName           = "/linka.cloud.protodb.ProtoDB/Watch"
 	ProtoDB_Register_FullMethodName        = "/linka.cloud.protodb.ProtoDB/Register"
 	ProtoDB_Descriptors_FullMethodName     = "/linka.cloud.protodb.ProtoDB/Descriptors"
@@ -59,6 +60,10 @@ type ProtoDBClient interface {
 	Tx(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[TxRequest, TxResponse], error)
 	// NextSeq returns the next sequence number for the given key.
 	NextSeq(ctx context.Context, in *NextSeqRequest, opts ...grpc.CallOption) (*NextSeqResponse, error)
+	// Lock locks the given Message for the duration of the stream.
+	// The server will send a LockResponse when the lock is acquired.
+	// When the stream is closed, the lock is released.
+	Lock(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[LockRequest, LockResponse], error)
 	// Watch returns a stream of events for the given search.
 	// A first empty event is sent to indicate that the watch is ready.
 	// This is needed by clients that cannot create a stream before receiving
@@ -133,9 +138,22 @@ func (c *protoDBClient) NextSeq(ctx context.Context, in *NextSeqRequest, opts ..
 	return out, nil
 }
 
+func (c *protoDBClient) Lock(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[LockRequest, LockResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &ProtoDB_ServiceDesc.Streams[1], ProtoDB_Lock_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[LockRequest, LockResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ProtoDB_LockClient = grpc.BidiStreamingClient[LockRequest, LockResponse]
+
 func (c *protoDBClient) Watch(ctx context.Context, in *WatchRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[WatchEvent], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &ProtoDB_ServiceDesc.Streams[1], ProtoDB_Watch_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &ProtoDB_ServiceDesc.Streams[2], ProtoDB_Watch_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -197,6 +215,10 @@ type ProtoDBServer interface {
 	Tx(grpc.BidiStreamingServer[TxRequest, TxResponse]) error
 	// NextSeq returns the next sequence number for the given key.
 	NextSeq(context.Context, *NextSeqRequest) (*NextSeqResponse, error)
+	// Lock locks the given Message for the duration of the stream.
+	// The server will send a LockResponse when the lock is acquired.
+	// When the stream is closed, the lock is released.
+	Lock(grpc.BidiStreamingServer[LockRequest, LockResponse]) error
 	// Watch returns a stream of events for the given search.
 	// A first empty event is sent to indicate that the watch is ready.
 	// This is needed by clients that cannot create a stream before receiving
@@ -232,6 +254,9 @@ func (UnimplementedProtoDBServer) Tx(grpc.BidiStreamingServer[TxRequest, TxRespo
 }
 func (UnimplementedProtoDBServer) NextSeq(context.Context, *NextSeqRequest) (*NextSeqResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method NextSeq not implemented")
+}
+func (UnimplementedProtoDBServer) Lock(grpc.BidiStreamingServer[LockRequest, LockResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method Lock not implemented")
 }
 func (UnimplementedProtoDBServer) Watch(*WatchRequest, grpc.ServerStreamingServer[WatchEvent]) error {
 	return status.Errorf(codes.Unimplemented, "method Watch not implemented")
@@ -345,6 +370,13 @@ func _ProtoDB_NextSeq_Handler(srv interface{}, ctx context.Context, dec func(int
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProtoDB_Lock_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(ProtoDBServer).Lock(&grpc.GenericServerStream[LockRequest, LockResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type ProtoDB_LockServer = grpc.BidiStreamingServer[LockRequest, LockResponse]
+
 func _ProtoDB_Watch_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(WatchRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -450,6 +482,12 @@ var ProtoDB_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "Tx",
 			Handler:       _ProtoDB_Tx_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "Lock",
+			Handler:       _ProtoDB_Lock_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},

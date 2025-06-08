@@ -1672,6 +1672,206 @@ var _ interface {
 	ErrorName() string
 } = NextSeqResponseValidationError{}
 
+// Validate checks the field values on LockRequest with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *LockRequest) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on LockRequest with the rules defined in
+// the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in LockRequestMultiError, or
+// nil if none found.
+func (m *LockRequest) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *LockRequest) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Key
+
+	if len(errors) > 0 {
+		return LockRequestMultiError(errors)
+	}
+
+	return nil
+}
+
+// LockRequestMultiError is an error wrapping multiple validation errors
+// returned by LockRequest.ValidateAll() if the designated constraints aren't met.
+type LockRequestMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m LockRequestMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m LockRequestMultiError) AllErrors() []error { return m }
+
+// LockRequestValidationError is the validation error returned by
+// LockRequest.Validate if the designated constraints aren't met.
+type LockRequestValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e LockRequestValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e LockRequestValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e LockRequestValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e LockRequestValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e LockRequestValidationError) ErrorName() string { return "LockRequestValidationError" }
+
+// Error satisfies the builtin error interface
+func (e LockRequestValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sLockRequest.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = LockRequestValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = LockRequestValidationError{}
+
+// Validate checks the field values on LockResponse with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *LockResponse) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on LockResponse with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in LockResponseMultiError, or
+// nil if none found.
+func (m *LockResponse) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *LockResponse) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if len(errors) > 0 {
+		return LockResponseMultiError(errors)
+	}
+
+	return nil
+}
+
+// LockResponseMultiError is an error wrapping multiple validation errors
+// returned by LockResponse.ValidateAll() if the designated constraints aren't met.
+type LockResponseMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m LockResponseMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m LockResponseMultiError) AllErrors() []error { return m }
+
+// LockResponseValidationError is the validation error returned by
+// LockResponse.Validate if the designated constraints aren't met.
+type LockResponseValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e LockResponseValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e LockResponseValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e LockResponseValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e LockResponseValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e LockResponseValidationError) ErrorName() string { return "LockResponseValidationError" }
+
+// Error satisfies the builtin error interface
+func (e LockResponseValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sLockResponse.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = LockResponseValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = LockResponseValidationError{}
+
 // Validate checks the field values on CommitResponse with the rules defined in
 // the proto definition for this message. If any rules are violated, the first
 // error encountered is returned, or nil if there are no violations.

@@ -22,6 +22,7 @@ var ProtoDBMethods = struct {
 	Delete          string
 	Tx              string
 	NextSeq         string
+	Lock            string
 	Watch           string
 	Register        string
 	Descriptors     string
@@ -32,6 +33,7 @@ var ProtoDBMethods = struct {
 	Delete:          "/linka.cloud.protodb.ProtoDB/Delete",
 	Tx:              "/linka.cloud.protodb.ProtoDB/Tx",
 	NextSeq:         "/linka.cloud.protodb.ProtoDB/NextSeq",
+	Lock:            "/linka.cloud.protodb.ProtoDB/Lock",
 	Watch:           "/linka.cloud.protodb.ProtoDB/Watch",
 	Register:        "/linka.cloud.protodb.ProtoDB/Register",
 	Descriptors:     "/linka.cloud.protodb.ProtoDB/Descriptors",
@@ -122,6 +124,15 @@ var NextSeqResponseFields = struct {
 }{
 	Seq: "seq",
 }
+
+var LockRequestFields = struct {
+	Key string
+}{
+	Key: "key",
+}
+
+var LockResponseFields = struct {
+}{}
 
 var CommitResponseFields = struct {
 	Error string

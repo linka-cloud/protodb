@@ -74,7 +74,7 @@ func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 	freg := preg.GlobalFiles
 	treg := preg.GlobalTypes
 
-	db := &db{opts: o, freg: freg, treg: treg, smu: mutex.NewKV()}
+	db := &db{opts: o, freg: freg, treg: treg, smu: mutex.NewKV(), ctxmu: mutex.NewContextKV()}
 	if o.repl != nil {
 		h, err := server.NewServer(db)
 		if err != nil {
@@ -125,10 +125,11 @@ type db struct {
 	bdb  badgerd.DB
 	opts options
 
-	mu   sync.RWMutex
-	freg *preg.Files
-	treg *preg.Types
-	smu  *mutex.KV
+	mu    sync.RWMutex
+	freg  *preg.Files
+	treg  *preg.Types
+	smu   *mutex.KV
+	ctxmu *mutex.ContextKV
 	// repl replication.Replication
 
 	cmu     sync.RWMutex
@@ -446,6 +447,38 @@ func (db *db) NextSeq(ctx context.Context, name string) (uint64, error) {
 		return 0, err
 	}
 	return seq, nil
+}
+
+func (db *db) Lock(ctx context.Context, key string) error {
+	ctx, span := tracer.Start(ctx, "Lock", trace.WithAttributes(attribute.String("key", key)))
+	defer span.End()
+	if key == "" {
+		return badger.ErrEmptyKey
+	}
+	c, ok, err := db.maybeProxy(false)
+	if err != nil {
+		return err
+	}
+	if ok {
+		return c.Lock(ctx, key)
+	}
+	return db.ctxmu.Lock(ctx, key)
+}
+
+func (db *db) Unlock(ctx context.Context, key string) error {
+	ctx, span := tracer.Start(ctx, "Unlock", trace.WithAttributes(attribute.String("key", key)))
+	defer span.End()
+	if key == "" {
+		return badger.ErrEmptyKey
+	}
+	c, ok, err := db.maybeProxy(false)
+	if err != nil {
+		return err
+	}
+	if ok {
+		return c.Unlock(ctx, key)
+	}
+	return db.ctxmu.Unlock(key)
 }
 
 func (db *db) Close() (err error) {

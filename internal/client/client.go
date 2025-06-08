@@ -18,7 +18,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 
+	gerrs "go.linka.cloud/grpc-toolkit/errors"
 	"go.linka.cloud/grpc-toolkit/logger"
 	"go.linka.cloud/protofilters/filters"
 	"go.uber.org/multierr"
@@ -43,6 +45,7 @@ type Client interface {
 	protodb.Watcher
 	protodb.TxProvider
 	protodb.SeqProvider
+	protodb.Locker
 	io.Closer
 }
 
@@ -51,7 +54,9 @@ func NewClient(cc grpc.ClientConnInterface) (Client, error) {
 }
 
 type client struct {
-	c pb.ProtoDBClient
+	c     pb.ProtoDBClient
+	locks map[string]grpc.ServerStreamingClient[pb.LockResponse]
+	mu    sync.Mutex
 }
 
 func (c *client) RegisterProto(ctx context.Context, file *descriptorpb.FileDescriptorProto) error {
@@ -145,6 +150,42 @@ func (c *client) NextSeq(ctx context.Context, name string) (uint64, error) {
 		return 0, err
 	}
 	return res.Seq, nil
+}
+
+func (c *client) Lock(ctx context.Context, key string) error {
+	s, err := c.c.Lock(ctx)
+	if err != nil {
+		return err
+	}
+	if err := s.Send(&pb.LockRequest{Key: key}); err != nil {
+		return err
+	}
+	if _, err := s.Recv(); err != nil {
+		if gerrs.IsContextCanceled(err) {
+			return context.Canceled
+		}
+		return err
+	}
+	c.mu.Lock()
+	c.locks[key] = s
+	c.mu.Unlock()
+	return nil
+}
+
+func (c *client) Unlock(_ context.Context, key string) error {
+	c.mu.Lock()
+	s, ok := c.locks[key]
+	if ok {
+		delete(c.locks, key)
+	}
+	c.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("unlock %s: not locked", key)
+	}
+	if err := s.CloseSend(); err != nil {
+		return fmt.Errorf("unlock %s: %w", key, err)
+	}
+	return nil
 }
 
 func (c *client) Watch(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (<-chan protodb.Event, error) {

@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 
 	gerrs "go.linka.cloud/grpc-toolkit/errors"
@@ -48,6 +49,33 @@ func NewServer(db protodb.DB) (Server, error) {
 type server struct {
 	db protodb.DB
 	pb.UnsafeProtoDBServer
+}
+
+func (s *server) Lock(ss grpc.BidiStreamingServer[pb.LockRequest, pb.LockResponse]) error {
+	req, err := ss.Recv()
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return gerrs.Canceled(err)
+		}
+		return gerrs.Internalf("failed to receive lock request: %v", err)
+	}
+	if err := s.db.Lock(ss.Context(), req.Key); err != nil {
+		if errors.Is(err, context.Canceled) {
+			return gerrs.Canceled(err)
+		}
+		return gerrs.Internalf("failed to lock key %q: %v", req.Key, err)
+	}
+	defer s.db.Unlock(ss.Context(), req.Key)
+	if err := ss.Send(&pb.LockResponse{}); err != nil {
+		return gerrs.Internalf("failed to send lock response: %v", err)
+	}
+	if _, err := ss.Recv(); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *server) RegisterService(r grpc.ServiceRegistrar) {

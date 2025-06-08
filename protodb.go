@@ -49,6 +49,8 @@ type Registerer = protodb.Registerer
 
 type Leader = protodb.Leader
 
+type Locker = protodb.Locker
+
 type Resolverer = protodb.Resolverer
 
 type EventType = pb.WatchEventType

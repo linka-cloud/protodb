@@ -41,6 +41,7 @@ type DB interface {
 	Watcher
 	TxProvider
 	SeqProvider
+	Locker
 	Leader
 	io.Closer
 }
@@ -93,6 +94,11 @@ type Leader interface {
 
 type Resolverer interface {
 	Resolver() protodesc.Resolver
+}
+
+type Locker interface {
+	Lock(ctx context.Context, key string) error
+	Unlock(ctx context.Context, key string) error
 }
 
 type EventType = pb.WatchEventType

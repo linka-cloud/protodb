@@ -50,6 +50,10 @@ service ProtoDB {
   rpc Tx(stream TxRequest) returns (stream TxResponse);
   // NextSeq returns the next sequence number for the given key.
   rpc NextSeq(NextSeqRequest) returns (NextSeqResponse);
+  // Lock locks the given Message for the duration of the stream.
+  // The server will send a LockResponse when the lock is acquired.
+  // When the stream is closed, the lock is released.
+  rpc Lock(stream LockRequest) returns (stream LockResponse);
   // Watch returns a stream of events for the given search.
   // A first empty event is sent to indicate that the watch is ready.
   // This is needed by clients that cannot create a stream before receiving
@@ -122,6 +126,12 @@ message NextSeqRequest {
 message NextSeqResponse {
   uint64 seq = 1;
 }
+
+message LockRequest {
+  string key = 1;
+}
+
+message LockResponse {}
 
 message CommitResponse {
   google.protobuf.StringValue error = 1;

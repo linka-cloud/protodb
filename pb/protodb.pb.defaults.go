@@ -58,6 +58,12 @@ func (x *NextSeqRequest) Default() {
 func (x *NextSeqResponse) Default() {
 }
 
+func (x *LockRequest) Default() {
+}
+
+func (x *LockResponse) Default() {
+}
+
 func (x *CommitResponse) Default() {
 }
 

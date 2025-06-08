@@ -102,6 +102,47 @@ func (x *proxyProtoDB) NextSeq(ctx context.Context, req *NextSeqRequest) (*NextS
 	return x.c.NextSeq(ctx, req, x.opts...)
 }
 
+// Lock proxies call to backend server
+func (x *proxyProtoDB) Lock(s ProtoDB_LockServer) error {
+	cs, err := x.c.Lock(s.Context(), x.opts...)
+	if err != nil {
+		return err
+	}
+	errs := make(chan error, 2)
+	recv := func() error {
+		for {
+			req, err := s.Recv()
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if err := cs.Send(req); err != nil {
+				return err
+			}
+		}
+	}
+	send := func() error {
+		for {
+			res, err := cs.Recv()
+			if err != nil {
+				return err
+			}
+			if err := s.Send(res); err != nil {
+				return err
+			}
+		}
+	}
+	go func() {
+		errs <- recv()
+	}()
+	go func() {
+		errs <- send()
+	}()
+	return <-errs
+}
+
 // Watch proxies call to backend server
 func (x *proxyProtoDB) Watch(req *WatchRequest, s ProtoDB_WatchServer) error {
 	cs, err := x.c.Watch(s.Context(), req, x.opts...)
