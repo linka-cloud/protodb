@@ -18,12 +18,14 @@ import (
 	"context"
 	"sync"
 
+	"github.com/dgraph-io/badger/v3"
 	"github.com/dgraph-io/badger/v3/y"
 	"github.com/dgraph-io/ristretto/z"
 )
 
 type oracle struct {
 	sync.Mutex // For nextTxnTs and commits.
+	bdb        *badger.DB
 	// writeChLock lock is for ensuring that transactions go to the write
 	// channel in the same order as their commit timestamps.
 	writeChLock sync.Mutex
@@ -34,8 +36,7 @@ type oracle struct {
 
 	// Used to determine which versions can be permanently
 	// discarded during compaction.
-	discardTs uint64       // Used by ManagedDB.
-	readMark  *y.WaterMark // Used by DB.
+	readMark *y.WaterMark
 
 	// committedTxns contains all committed writes (contains fingerprints
 	// of keys written and their latest commit counter).
@@ -52,7 +53,7 @@ type committedTxn struct {
 	conflictKeys map[uint64]struct{}
 }
 
-func newOracle() *oracle {
+func newOracle(bdb *badger.DB) *oracle {
 	orc := &oracle{
 		// We're not initializing nextTxnTs and readOnlyTs. It would be done after replay in Open.
 		//
@@ -61,6 +62,7 @@ func newOracle() *oracle {
 		readMark: &y.WaterMark{Name: "badger.PendingReads"},
 		txnMark:  &y.WaterMark{Name: "badger.TxnTimestamp"},
 		closer:   z.NewCloser(2),
+		bdb:      bdb,
 	}
 	orc.readMark.Init(orc.closer)
 	orc.txnMark.Init(orc.closer)
@@ -96,19 +98,6 @@ func (o *oracle) incrementNextTs() {
 	o.Lock()
 	defer o.Unlock()
 	o.nextTxnTs++
-}
-
-// Any deleted or invalid versions at or below ts would be discarded during
-// compaction to reclaim disk space in LSM tree and thence value log.
-func (o *oracle) setDiscardTs(ts uint64) {
-	o.Lock()
-	defer o.Unlock()
-	o.discardTs = ts
-	o.cleanupCommittedTransactions()
-}
-
-func (o *oracle) discardAtOrBelow() uint64 {
-	return o.readMark.DoneUntil()
 }
 
 // hasConflict must be called while having a lock.
@@ -192,6 +181,7 @@ func (o *oracle) cleanupCommittedTransactions() { // Must be called under o.Lock
 		tmp = append(tmp, txn)
 	}
 	o.committedTxns = tmp
+	o.bdb.SetDiscardTs(maxReadTs)
 }
 
 func (o *oracle) doneCommit(cts uint64) {

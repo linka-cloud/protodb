@@ -59,7 +59,7 @@ func Open(ctx context.Context, opts ...Option) (DB, error) {
 }
 
 func newDB(ctx context.Context, bdb *badger.DB, o options, bopts badger.Options) (*db, error) {
-	orc := newOracle()
+	orc := newOracle(bdb)
 
 	// We do increment nextTxnTs below. So, no need to do it here.
 	orc.nextTxnTs = bdb.MaxVersion()
