@@ -40,6 +40,9 @@ func TestServerReplicated(t *testing.T) {
 					defer cancel()
 
 					path := filepath.Join(data, v.Name)
+					if err := os.RemoveAll(path); err != nil {
+						t.Fatalf("failed to remove path: %v", err)
+					}
 					defer os.RemoveAll(path)
 					c := NewCluster(path, 3, mode, protodb.WithApplyDefaults(true))
 					require.NoError(t, c.StartAll(ctx))
@@ -69,6 +72,9 @@ func TestServer(t *testing.T) {
 			defer cancel()
 
 			path := filepath.Join(data, v.Name)
+			if err := os.RemoveAll(path); err != nil {
+				t.Fatalf("failed to remove path: %v", err)
+			}
 			defer os.RemoveAll(path)
 			sdb, err := protodb.Open(ctx, protodb.WithPath(path), protodb.WithApplyDefaults(true))
 			require.NoError(t, err)
@@ -95,6 +101,9 @@ func TestEmbed(t *testing.T) {
 			defer cancel()
 
 			path := filepath.Join(data, v.Name)
+			if err := os.RemoveAll(path); err != nil {
+				t.Fatalf("failed to remove path: %v", err)
+			}
 			defer os.RemoveAll(path)
 
 			db, err := protodb.Open(ctx, protodb.WithPath(path), protodb.WithApplyDefaults(true))

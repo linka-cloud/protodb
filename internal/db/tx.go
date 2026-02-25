@@ -24,6 +24,7 @@ import (
 	"sync"
 
 	"github.com/dgraph-io/badger/v3"
+	"github.com/dgraph-io/badger/v3/y"
 	pf "go.linka.cloud/protofilters"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -311,7 +312,7 @@ func (tx *tx) getRaw(ctx context.Context, key []byte) ([]byte, error) {
 		return nil, err
 	}
 	tx.txn.AddReadKey(key)
-	return item.ValueCopy(nil)
+	return item.ValueCopy([]byte{})
 }
 
 func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOption) (proto.Message, error) {
@@ -342,11 +343,32 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 	if err != nil {
 		return nil, err
 	}
+	uid, ok, err := tx.uid(ctx, k, true)
+	if err != nil {
+		return nil, err
+	}
 	span.SetAttributes(
 		attribute.String("prefix", string(k)),
 		attribute.String("key", value),
 		attribute.String("key_field", field),
+		attribute.Int64("uid", int64(uid)),
 	)
+	if !ok {
+		if err := ctx.Err(); err != nil {
+			tx.close()
+			return nil, err
+		}
+		uk := protodb.UIDKey(uid)
+		tx.db.opts.logger.Tracef("set key %q", string(uk))
+		if err := tx.txn.Set(ctx, uk, k, 0); err != nil {
+			return nil, err
+		}
+		urk := protodb.UIDRevKey(k)
+		tx.db.opts.logger.Tracef("set key %q", string(urk))
+		if err := tx.txn.Set(ctx, urk, y.U64ToBytes(uid), 0); err != nil {
+			return nil, err
+		}
+	}
 	if o.FieldMask != nil {
 		span.SetAttributes(attribute.StringSlice("field_mask", o.FieldMask.GetPaths()))
 		item, err := tx.txn.Get(ctx, k)
@@ -428,13 +450,31 @@ func (tx *tx) delete(ctx context.Context, m proto.Message) error {
 		return err
 	}
 
+	uid, ok, err := tx.uid(ctx, k, false)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return badger.ErrKeyNotFound
+	}
 	trace.SpanFromContext(ctx).SetAttributes(
 		attribute.String("key", value),
 		attribute.String("key_field", field),
+		attribute.Int64("uid", int64(uid)),
 	)
 
 	if err := ctx.Err(); err != nil {
 		tx.close()
+		return err
+	}
+	uk := protodb.UIDKey(uid)
+	tx.db.opts.logger.Tracef("delete key %q", uk)
+	if err := tx.txn.Delete(ctx, uk); err != nil {
+		return err
+	}
+	urk := protodb.UIDRevKey(k)
+	tx.db.opts.logger.Tracef("delete key %q", urk)
+	if err := tx.txn.Delete(ctx, urk); err != nil {
 		return err
 	}
 	tx.db.opts.logger.Tracef("delete key %q", k)
@@ -451,6 +491,36 @@ func (tx *tx) deleteRaw(ctx context.Context, key []byte) error {
 	}
 	tx.db.opts.logger.Tracef("delete key %q", string(key))
 	return tx.txn.Delete(ctx, key)
+}
+
+func (tx *tx) uid(ctx context.Context, key []byte, inc bool) (uint64, bool, error) {
+	urk := protodb.UIDRevKey(key)
+	item, err := tx.txn.Get(ctx, urk)
+	if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
+		return 0, false, err
+	}
+	if !errors.Is(err, badger.ErrKeyNotFound) {
+		var uid uint64
+		if err := item.Value(func(val []byte) error {
+			if len(val) != 8 {
+				return fmt.Errorf("invalid uid value for key %q: %s", string(urk), string(val))
+			}
+			uid = y.BytesToU64(val)
+			return nil
+		}); err != nil {
+			return 0, false, err
+		}
+		return uid, true, nil
+	}
+	if !inc {
+		return 0, false, nil
+	}
+	uid := tx.db.uid.Add(1)
+	ulk := protodb.UIDLastKey()
+	if err := tx.txn.Set(ctx, ulk, y.U64ToBytes(uid), 0); err != nil {
+		return 0, false, err
+	}
+	return uid, false, nil
 }
 
 func (tx *tx) Commit(ctx context.Context) error {

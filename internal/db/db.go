@@ -22,9 +22,11 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/dgraph-io/badger/v3"
 	bpb "github.com/dgraph-io/badger/v3/pb"
+	"github.com/dgraph-io/badger/v3/y"
 	"go.linka.cloud/grpc-toolkit/logger"
 	"go.linka.cloud/protoc-gen-defaults/defaults"
 	pf "go.linka.cloud/protofilters"
@@ -107,6 +109,9 @@ func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 		if err = db.loadDescriptors(ctx); err != nil {
 			return nil, multierr.Combine(err, db.bdb.Close())
 		}
+		if err = db.loadUID(ctx); err != nil {
+			return nil, multierr.Combine(err, db.bdb.Close())
+		}
 		return db, nil
 	}
 	if err = db.load(ctx); err != nil {
@@ -124,6 +129,8 @@ type db struct {
 	smu   *mutex.KV
 	ctxmu *mutex.ContextKV
 	// repl replication.Replication
+
+	uid atomic.Uint64
 
 	cmu     sync.RWMutex
 	scancel context.CancelFunc
@@ -760,7 +767,29 @@ func (db *db) load(ctx context.Context) error {
 	if err := db.loadDescriptors(ctx); err != nil && !errors.Is(err, protodb.ErrNotLeader) {
 		return err
 	}
+	if err := db.loadUID(ctx); err != nil && !errors.Is(err, protodb.ErrNotLeader) {
+		return err
+	}
 	return nil
+}
+
+func (db *db) loadUID(ctx context.Context) error {
+	return db.bdb.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(protodb.UIDLastKey())
+		if err == nil {
+			return item.Value(func(val []byte) error {
+				if len(val) != 8 {
+					return fmt.Errorf("invalid uid last value: %v", val)
+				}
+				db.uid.Store(y.BytesToU64(val))
+				return nil
+			})
+		}
+		if !errors.Is(err, badger.ErrKeyNotFound) {
+			return err
+		}
+		return nil
+	})
 }
 
 func (db *db) saveDescriptors(ctx context.Context) error {

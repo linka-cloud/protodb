@@ -208,7 +208,7 @@ func TestBatchWatch(t *testing.T, db protodb.Client) {
 		require.NoError(err)
 	}
 	require.NoError(tx.Commit(ctx))
-	t.Logf("retriveing %d events", count)
+	t.Logf("retrieving %d events", count)
 	for i := 0; i < count; i++ {
 		if i%logCount == 0 {
 			t.Logf("retrieve create events: %d/%d", i, count)
