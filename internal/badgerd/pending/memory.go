@@ -21,6 +21,7 @@ import (
 
 	"github.com/dgraph-io/badger/v3"
 	"github.com/dgraph-io/badger/v3/y"
+	"github.com/dgraph-io/ristretto/z"
 )
 
 const BitDelete byte = 1 << 0 // Set if the key has been deleted.
@@ -28,13 +29,13 @@ const BitDelete byte = 1 << 0 // Set if the key has been deleted.
 func newMem(tx *badger.Txn) *mem {
 	return &mem{
 		tx: tx,
-		m:  make(map[string]*badger.Entry),
+		m:  make(map[uint64]*badger.Entry),
 	}
 }
 
 type mem struct {
 	tx *badger.Txn
-	m  map[string]*badger.Entry
+	m  map[uint64]*badger.Entry
 }
 
 func (m *mem) Iterator(prefix []byte, reversed bool) Iterator {
@@ -76,7 +77,7 @@ func (m *mem) newIterator(prefix []byte, readTs uint64, reversed bool) iterator 
 }
 
 func (m *mem) Get(key []byte) (Item, error) {
-	e, ok := m.m[string(key)]
+	e, ok := m.m[z.MemHash(key)]
 	if !ok {
 		if m.tx == nil {
 			return nil, badger.ErrKeyNotFound
@@ -98,11 +99,11 @@ func (m *mem) Get(key []byte) (Item, error) {
 }
 
 func (m *mem) Set(e *badger.Entry) {
-	m.m[string(e.Key)] = e
+	m.m[z.MemHash(e.Key)] = e
 }
 
 func (m *mem) Delete(key []byte) {
-	m.m[string(key)] = &badger.Entry{
+	m.m[z.MemHash(key)] = &badger.Entry{
 		Key:      key,
 		UserMeta: BitDelete,
 	}

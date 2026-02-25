@@ -91,20 +91,20 @@ func newWal(path string, tx *badger.Txn, m *mem, size int64) *wal {
 		y.Check(err)
 	}
 	if m == nil {
-		return &wal{f: f, m: make(map[uint32]*pointer)}
+		return &wal{f: f, m: make(map[uint64]*pointer)}
 	}
-	w := &wal{f: f, tx: tx, m: make(map[uint32]*pointer, len(m.m))}
+	w := &wal{f: f, tx: tx, m: make(map[uint64]*pointer, len(m.m))}
 	for _, e := range m.m {
 		y.Check(w.append(e))
 	}
-	m.m = make(map[string]*badger.Entry)
+	m.m = make(map[uint64]*badger.Entry)
 	return w
 }
 
 type wal struct {
 	tx  *badger.Txn
 	f   *z.MmapFile
-	m   map[uint32]*pointer
+	m   map[uint64]*pointer
 	pos int64
 	o   sync.Once
 }
@@ -124,7 +124,7 @@ func (w *wal) Iterator(prefix []byte, reversed bool) Iterator {
 }
 
 func (w *wal) Get(key []byte) (Item, error) {
-	p, ok := w.m[y.Hash(key)]
+	p, ok := w.m[z.MemHash(key)]
 	if !ok {
 		if w.tx == nil {
 			return nil, badger.ErrKeyNotFound
@@ -189,13 +189,13 @@ func (w *wal) append(e *badger.Entry) error {
 	h.encode(buf)
 	copy(buf[headerSize:], e.Key)
 	copy(buf[headerSize+int(h.klen):], e.Value)
-	w.m[y.Hash(e.Key)] = p
+	w.m[z.MemHash(e.Key)] = p
 	w.pos = int64(pos)
 	return nil
 }
 
-func (w *wal) read(key []byte) (*badger.Entry, error) {
-	p, ok := w.m[y.Hash(key)]
+func (w *wal) read(key []byte, cpy ...bool) (*badger.Entry, error) {
+	p, ok := w.m[z.MemHash(key)]
 	if !ok {
 		return nil, badger.ErrKeyNotFound
 	}
@@ -204,6 +204,10 @@ func (w *wal) read(key []byte) (*badger.Entry, error) {
 	e.h.decode(buf)
 	e.k = buf[headerSize : headerSize+e.h.klen]
 	e.v = buf[headerSize+e.h.klen : headerSize+e.h.klen+e.h.vlen]
+	if len(cpy) > 0 && cpy[0] {
+		e.k = y.SafeCopy(nil, e.k)
+		e.v = y.SafeCopy(nil, e.v)
+	}
 	return &badger.Entry{
 		Key:       e.k,
 		Value:     e.v,
@@ -214,7 +218,7 @@ func (w *wal) read(key []byte) (*badger.Entry, error) {
 
 func (w *wal) Replay(fn func(e *badger.Entry) error) error {
 	for _, v := range w.m {
-		e, err := w.read(v.key)
+		e, err := w.read(v.key, true)
 		if err != nil {
 			return err
 		}

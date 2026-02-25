@@ -24,7 +24,7 @@ import (
 	"testing"
 
 	"github.com/dgraph-io/badger/v3"
-	"github.com/dgraph-io/badger/v3/y"
+	"github.com/dgraph-io/ristretto/z"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -63,7 +63,7 @@ func TestWal(t *testing.T) {
 	t.Run("Set", func(t *testing.T) {
 		w.Set(e)
 		assert.Len(t, w.m, 1)
-		assert.Equal(t, &pointer{key: e.Key, len: s}, w.m[y.Hash(e.Key)])
+		assert.Equal(t, &pointer{key: e.Key, len: s}, w.m[z.MemHash(e.Key)])
 		require.NoError(t, w.Replay(func(e *badger.Entry) error {
 			assert.Equal(t, entries[0].Key, e.Key)
 			assert.Equal(t, entries[0].Value, e.Value)
@@ -74,7 +74,7 @@ func TestWal(t *testing.T) {
 	t.Run("Delete", func(t *testing.T) {
 		w.Delete(e.Key)
 		// memfile.AllocateSlice add 4 bytes where it stores the slice length
-		assert.Equal(t, &pointer{key: e.Key, offset: s + 4, len: uint32(headerSize + len(e.Key)), deleted: true}, w.m[y.Hash(e.Key)])
+		assert.Equal(t, &pointer{key: e.Key, offset: s + 4, len: uint32(headerSize + len(e.Key)), deleted: true}, w.m[z.MemHash(e.Key)])
 		require.NoError(t, w.Replay(func(e *badger.Entry) error {
 			assert.Equal(t, entries[0].Key, e.Key)
 			assert.Equal(t, BitDelete, e.UserMeta)
