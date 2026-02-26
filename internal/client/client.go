@@ -16,6 +16,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -355,7 +356,7 @@ func (t *txc) Commit(ctx context.Context) error {
 		return fmt.Errorf("no response")
 	}
 	if res.GetCommit().GetError() != nil {
-		return fmt.Errorf(res.GetCommit().GetError().GetValue())
+		return errors.New(res.GetCommit().GetError().GetValue())
 	}
 	return nil
 }

@@ -40,7 +40,7 @@ message MessageWithStaticKey {
 
 message Interface {
   option (protodb.enabled) = true;
-  string name = 1;
+  string name = 1 [(protodb.key) = true];
   google.protobuf.StringValue mac = 2 [(validate.rules).string = {pattern: "^([0-9A-F]{2}[:-]){5}([0-9A-F]{2})$"}];
   enum Status {
     option (go.enum).name = "InterfaceStatus";
@@ -48,7 +48,7 @@ message Interface {
     UP = 1 [(go.value).name = "StatusUp"];
     DOWN = 2 [(go.value).name = "StatusDown"];
   }
-  Status status = 3 [(validate.rules).enum = {defined_only: true}, (defaults.value).enum = 1];
+  Status status = 3 [(validate.rules).enum = {defined_only: true}, (defaults.value).enum = 1, (protodb.index) = {}];
   repeated IPAddress addresses = 4;
   uint32 mtu = 5 [(defaults.value).uint32 = 1500];
 }

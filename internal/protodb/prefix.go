@@ -24,6 +24,7 @@ import (
 const (
 	Data        = "_data"
 	Index       = "_index"
+	IndexDelta  = "_index_delta"
 	Descriptors = "_schema"
 	Internal    = "_internal"
 	Seq         = "_seq"

@@ -16,6 +16,7 @@ package db
 
 import (
 	"strings"
+	"time"
 
 	"github.com/dgraph-io/badger/v3"
 
@@ -102,6 +103,13 @@ func WithWireBreakingCheck(b bool) Option {
 	}
 }
 
+func WithIndexCompaction(interval time.Duration, batch int) Option {
+	return func(o *options) {
+		o.indexCompactionInterval = interval
+		o.indexCompactionBatch = batch
+	}
+}
+
 type options struct {
 	path                      string
 	inMemory                  bool
@@ -111,7 +119,9 @@ type options struct {
 	registerErrHandler        func(err error) error
 	badgerOptionsFunc         func(opts badger.Options) badger.Options
 	wireBreakingCheck         bool
-	// lowMemory                 bool
+	indexCompactionInterval   time.Duration
+	indexCompactionBatch      int
+	// lowMemory bool
 	onClose func()
 
 	repl []replication.Option

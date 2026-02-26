@@ -30,4 +30,15 @@ extend google.protobuf.MessageOptions {
 extend google.protobuf.FieldOptions {
   // key mark the field as message key
   optional bool key = 1191;
+  // index mark the field as message index
+  // only fields or repeated fields of the following types can be indexed:
+  // - scalar types: bool, int32, int64, uint32, uint64, sint32, sint64, fixed32, fixed64, sfixed32, sfixed64, float, double, string, bytes
+  // - enum types
+  // - google.protobuf.Timestamp
+  // - google.protobuf.Duration
+  optional Index index = 1192;
+}
+
+message Index {
+  optional bool unique = 1;
 }

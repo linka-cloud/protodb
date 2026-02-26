@@ -276,6 +276,70 @@ func KeyFor(m proto.Message) (key string, field string, err error) {
 	return "", field, fmt.Errorf("key / id not found in %s", m.ProtoReflect().Type().Descriptor().FullName())
 }
 
+func KeyFieldName(md protoreflect.MessageDescriptor) (string, bool) {
+	if md == nil {
+		return "", false
+	}
+	m := dynamicpb.NewMessage(md)
+	_, field, _ := KeyFor(m)
+	if field != "" {
+		return field, true
+	}
+	fields := md.Fields()
+	for i := 0; i < fields.Len(); i++ {
+		fd := fields.Get(i)
+		v, ok := keyProbeValue(fd)
+		if !ok {
+			continue
+		}
+		m.Set(fd, v)
+		_, field, err := KeyFor(m)
+		m.Clear(fd)
+		if err != nil {
+			continue
+		}
+		if field != string(fd.Name()) {
+			continue
+		}
+		return field, true
+	}
+	return "", false
+}
+
+func keyProbeValue(fd protoreflect.FieldDescriptor) (protoreflect.Value, bool) {
+	if fd == nil {
+		return protoreflect.Value{}, false
+	}
+	if fd.IsList() || fd.IsMap() {
+		return protoreflect.Value{}, false
+	}
+	switch fd.Kind() {
+	case protoreflect.BoolKind:
+		return protoreflect.ValueOfBool(true), true
+	case protoreflect.EnumKind:
+		return protoreflect.ValueOfEnum(1), true
+	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind:
+		return protoreflect.ValueOfInt32(1), true
+	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind:
+		return protoreflect.ValueOfUint32(1), true
+	case protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
+		return protoreflect.ValueOfInt64(1), true
+	case protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
+		return protoreflect.ValueOfUint64(1), true
+	case protoreflect.FloatKind:
+		return protoreflect.ValueOfFloat32(1), true
+	case protoreflect.DoubleKind:
+		return protoreflect.ValueOfFloat64(1), true
+	case protoreflect.StringKind:
+		return protoreflect.ValueOfString("x"), true
+	case protoreflect.BytesKind:
+		return protoreflect.ValueOfBytes([]byte("x")), true
+	case protoreflect.MessageKind, protoreflect.GroupKind:
+		return protoreflect.Value{}, false
+	}
+	return protoreflect.Value{}, false
+}
+
 func SeqKey(name string) string {
 	return fmt.Sprintf("%s/%s", Seq, name)
 }

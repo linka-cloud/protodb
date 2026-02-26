@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/dgraph-io/badger/v3"
 	bpb "github.com/dgraph-io/badger/v3/pb"
@@ -45,6 +46,7 @@ import (
 	"go.linka.cloud/protodb/internal/badgerd/replication"
 	"go.linka.cloud/protodb/internal/breaking"
 	"go.linka.cloud/protodb/internal/client"
+	idxstore "go.linka.cloud/protodb/internal/index"
 	"go.linka.cloud/protodb/internal/mutex"
 	"go.linka.cloud/protodb/internal/protodb"
 	"go.linka.cloud/protodb/internal/registry"
@@ -70,6 +72,7 @@ func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 		return nil, err
 	}
 	db := &db{opts: o, reg: reg, smu: mutex.NewKV(), ctxmu: mutex.NewContextKV()}
+	db.idx = idxstore.NewIndexer(db.reg, db.reg.Files, db.unmarshal)
 	if o.repl != nil {
 		h, err := server.NewServer(db)
 		if err != nil {
@@ -104,6 +107,23 @@ func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 			logger.C(ctx).WithError(err).Errorf("failed to watch schema changes")
 		}
 	}()
+	if o.indexCompactionInterval > 0 {
+		go func() {
+			ticker := time.NewTicker(o.indexCompactionInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					_, err := idxstore.CompactDeltas(ctx, db.bdb, o.indexCompactionBatch)
+					if err != nil && !errors.Is(err, context.Canceled) {
+						logger.C(ctx).WithError(err).Errorf("index delta compaction failed")
+					}
+				}
+			}
+		}()
+	}
 
 	if db.bdb.Replicated() {
 		if err = db.loadDescriptors(ctx); err != nil {
@@ -126,6 +146,7 @@ type db struct {
 
 	mu    sync.RWMutex
 	reg   *registry.Registry
+	idx   *idxstore.Indexer
 	smu   *mutex.KV
 	ctxmu *mutex.ContextKV
 	// repl replication.Replication
@@ -509,8 +530,6 @@ func (db *db) unmarshal(b []byte, m proto.Message) error {
 	case interface{ Unmarshal(b []byte) error }:
 		return v.Unmarshal(b)
 	default:
-		db.mu.RLock()
-		defer db.mu.RUnlock()
 		return proto.UnmarshalOptions{Resolver: db.reg}.Unmarshal(b, m)
 	}
 }
@@ -568,6 +587,11 @@ func (db *db) RegisterProto(ctx context.Context, file *descriptorpb.FileDescript
 	}
 	if err := txn.Commit(ctx); err != nil {
 		return err
+	}
+	if fd, err := db.reg.FindFileByPath(file.GetName()); err == nil {
+		if err := db.rebuildIndexes(ctx, fd); err != nil && !errors.Is(err, protodb.ErrNotLeader) {
+			return err
+		}
 	}
 	return nil
 }
@@ -768,6 +792,9 @@ func (db *db) load(ctx context.Context) error {
 		return err
 	}
 	if err := db.loadUID(ctx); err != nil && !errors.Is(err, protodb.ErrNotLeader) {
+		return err
+	}
+	if err := db.rebuildIndexes(ctx); err != nil && !errors.Is(err, protodb.ErrNotLeader) {
 		return err
 	}
 	return nil

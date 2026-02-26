@@ -35,6 +35,8 @@ A single interface that allows to switch with very little work between the diffe
 
 - Filtering (based on [protofilters](https://github.com/linka-cloud/protofilters)) and token based paging.
 
+- Experimental indexes support (API, behavior, and storage format may change)
+
 - Defaulting (using [protoc-gen-defaults](https://github.com/linka-cloud/protoc-gen-defaults) annotations)
 
 - Validation (using [protoc-gen-validate](https://github.com/buf/protoc-gen-validate))
@@ -42,7 +44,6 @@ A single interface that allows to switch with very little work between the diffe
 Planned:
 
 - Leases
-- Indexes support
 - [Reflection based CEL validation](https://github.com/bufbuild/protovalidate)
 - [CEL based filtering](https://github.com/google/cel-spec)
 - *Pointers support ?*

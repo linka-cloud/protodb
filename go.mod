@@ -1,8 +1,6 @@
 module go.linka.cloud/protodb
 
-go 1.23.1
-
-toolchain go1.24.0
+go 1.24.0
 
 require (
 	github.com/alta/protopatch v0.5.3
@@ -25,12 +23,12 @@ require (
 	github.com/prometheus/client_golang v1.22.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.3.0
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	go.linka.cloud/grpc-toolkit v0.4.5-0.20260226130700-3a67a95303d5
 	go.linka.cloud/protoc-gen-defaults v0.4.0
 	go.linka.cloud/protoc-gen-go-fields v0.4.0
 	go.linka.cloud/protoc-gen-proxy v0.0.0-20230802234945-cc173b85cf13
-	go.linka.cloud/protofilters v0.8.2-0.20250209153700-12f397dfb6a5
+	go.linka.cloud/protofilters v0.9.1-0.20260226141520-e8496a545e49
 	go.linka.cloud/pubsub v0.0.0-20220728154114-8213058139f3
 	go.opentelemetry.io/otel v1.36.0
 	go.opentelemetry.io/otel/trace v1.36.0
@@ -44,8 +42,10 @@ require (
 )
 
 require (
+	github.com/RoaringBitmap/roaring/v2 v2.14.4 // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/bits-and-blooms/bitset v1.24.2 // indirect
 	github.com/bufbuild/protocompile v0.14.1 // indirect
 	github.com/caitlinelfring/go-env-default v1.1.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
@@ -80,6 +80,7 @@ require (
 	github.com/justinas/alice v1.2.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/lyft/protoc-gen-star/v2 v2.0.4-0.20230330145011-496ad1ac90a4 // indirect
+	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pires/go-proxyproto v0.8.0 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
@@ -92,8 +93,10 @@ require (
 	github.com/spf13/afero v1.12.0 // indirect
 	github.com/spf13/pflag v1.0.6 // indirect
 	github.com/tailscale/peercred v0.0.0-20250107143737-35a0c7bd7edc // indirect
+	github.com/tidwall/btree v1.7.0 // indirect
 	github.com/tmc/grpc-websocket-proxy v0.0.0-20220101234140-673ab2c3ae75 // indirect
 	github.com/traefik/grpc-web v0.16.0 // indirect
+	github.com/weaviate/sroar v0.0.13 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/otel/metric v1.36.0 // indirect

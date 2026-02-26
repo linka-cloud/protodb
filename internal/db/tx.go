@@ -21,6 +21,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 
 	"github.com/dgraph-io/badger/v3"
@@ -85,6 +86,14 @@ type tx struct {
 	done bool
 
 	span trace.Span
+}
+
+func (tx *tx) Txn() badgerd.Tx {
+	return tx.txn
+}
+
+func (tx *tx) UID(ctx context.Context, key []byte, inc bool) (uint64, bool, error) {
+	return tx.uid(ctx, key, inc)
 }
 
 func (tx *tx) GetOne(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (proto.Message, bool, error) {
@@ -185,6 +194,107 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 
 	keyOnly := IsKeyOnlyFilter(o.Filter, field)
 	span.SetAttributes(attribute.Bool("key_only", keyOnly))
+	useIndex := false
+	idxr := tx.db.idx
+	if o.Filter != nil && !keyOnly {
+		ok, err := idxr.IndexableFilter(m, o.Filter)
+		if err != nil {
+			return nil, nil, err
+		}
+		useIndex = ok
+	}
+	span.SetAttributes(attribute.Bool("use_index", useIndex))
+	if useIndex {
+		keys, _, err := idxr.FindKeys(ctx, tx, m.ProtoReflect().Descriptor().FullName(), o.Filter)
+		if err != nil {
+			return nil, nil, err
+		}
+		sort.Strings(keys)
+		if o.Reverse {
+			for i, j := 0, len(keys)-1; i < j; i, j = i+1, j-1 {
+				keys[i], keys[j] = keys[j], keys[i]
+			}
+		}
+		var (
+			count        = uint64(0)
+			hasNext      = false
+			reads        int
+			readBytes    int
+			resultsBytes int
+		)
+		for _, key := range keys {
+			if err := ctx.Err(); err != nil {
+				return nil, nil, err
+			}
+			fullKey := []byte(key)
+			if !bytes.HasPrefix(fullKey, prefix) {
+				continue
+			}
+			if hasContinuationToken {
+				if !o.Reverse && bytes.Compare(fullKey, inToken.GetLastPrefix()) <= 0 {
+					continue
+				}
+				if o.Reverse && bytes.Compare(fullKey, inToken.GetLastPrefix()) >= 0 {
+					continue
+				}
+			}
+			item, err := tx.txn.Get(ctx, fullKey)
+			if err != nil {
+				if errors.Is(err, badger.ErrKeyNotFound) {
+					continue
+				}
+				return nil, nil, err
+			}
+			reads++
+			v := m.ProtoReflect().New().Interface()
+			var size int
+			if err := item.Value(func(val []byte) error {
+				size = len(val)
+				readBytes += len(val)
+				if err := tx.db.unmarshal(val, v); err != nil {
+					return err
+				}
+				return nil
+			}); err != nil {
+				return nil, nil, err
+			}
+			count++
+			if max := o.Paging.GetOffset() + o.Paging.GetLimit(); max != 0 {
+				if count == max+1 || (hasContinuationToken && count == o.Paging.GetLimit()+1) {
+					hasNext = true
+					break
+				}
+				if !hasContinuationToken && count <= o.Paging.GetOffset() {
+					continue
+				}
+			}
+			outToken.LastPrefix = append(outToken.LastPrefix[:0], fullKey...)
+			if o.FieldMask != nil {
+				if err := FilterFieldMask(v, o.FieldMask); err != nil {
+					return nil, nil, err
+				}
+			}
+			tx.txn.AddReadKey(fullKey)
+			out = append(out, v)
+			resultsBytes += int(size)
+			if o.One {
+				break
+			}
+		}
+		span.SetAttributes(
+			attribute.Bool("index", true),
+			attribute.Int64("reads", int64(reads)),
+			attribute.Int64("results", int64(count)),
+			attribute.Bool("has_next", hasNext),
+			attribute.Int("read_bytes", readBytes),
+			attribute.Int("results_bytes", resultsBytes),
+		)
+		tks, err := outToken.Encode()
+		if err != nil {
+			return nil, nil, err
+		}
+		return out, &protodb.PagingInfo{HasNext: hasNext, Token: tks}, nil
+	}
 	iterPrefix := prefix
 	if p, ok := MatchPrefixOnly(o.Filter); keyOnly && ok {
 		tx.db.opts.logger.Tracef("filtering optimized by key only filter prefix")
@@ -369,6 +479,7 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 			return nil, err
 		}
 	}
+	var oldMsg proto.Message
 	if o.FieldMask != nil {
 		span.SetAttributes(attribute.StringSlice("field_mask", o.FieldMask.GetPaths()))
 		item, err := tx.txn.Get(ctx, k)
@@ -381,17 +492,46 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 		}); err != nil {
 			return nil, err
 		}
+		oldMsg = proto.Clone(old.(proto.Message))
 		if err := ApplyFieldMask(m, old, o.FieldMask); err != nil {
 			return nil, err
 		}
 		m = old
+	} else if ok {
+		item, err := tx.txn.Get(ctx, k)
+		if err != nil {
+			if !errors.Is(err, badger.ErrKeyNotFound) {
+				return nil, err
+			}
+		} else {
+			old := m.ProtoReflect().New().Interface()
+			if err := item.Value(func(val []byte) error {
+				return tx.db.unmarshal(val, old)
+			}); err != nil {
+				return nil, err
+			}
+			oldMsg = old.(proto.Message)
+		}
 	}
 	if tx.db.opts.applyDefaults {
 		applyDefaults(m)
 	}
+	if err := tx.db.idx.EnforceUnique(ctx, tx, m, uid); err != nil {
+		return nil, err
+	}
 	b, err := tx.db.marshal(m)
 	if err != nil {
 		return nil, err
+	}
+	if ok {
+		if err := tx.db.idx.Update(ctx, tx, k, oldMsg, m); err != nil {
+			return nil, err
+		}
+	}
+	if !ok {
+		if err := tx.db.idx.Insert(ctx, tx, k, m); err != nil {
+			return nil, err
+		}
 	}
 	s := int64(len(b))
 	span.SetAttributes(attribute.Int64("size", s))
@@ -466,6 +606,22 @@ func (tx *tx) delete(ctx context.Context, m proto.Message) error {
 	if err := ctx.Err(); err != nil {
 		tx.close()
 		return err
+	}
+	item, err := tx.txn.Get(ctx, k)
+	if err != nil {
+		if !errors.Is(err, badger.ErrKeyNotFound) {
+			return err
+		}
+	} else {
+		old := m.ProtoReflect().New().Interface()
+		if err := item.Value(func(val []byte) error {
+			return tx.db.unmarshal(val, old)
+		}); err != nil {
+			return err
+		}
+		if err := tx.db.idx.Update(ctx, tx, k, old.(proto.Message), nil); err != nil {
+			return err
+		}
 	}
 	uk := protodb.UIDKey(uid)
 	tx.db.opts.logger.Tracef("delete key %q", uk)

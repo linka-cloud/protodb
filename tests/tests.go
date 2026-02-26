@@ -81,6 +81,8 @@ var Tests = []Case{
 	{Name: "TestFieldMask", Run: TestFieldMask},
 	{Name: "TestMessageWithKeyOption", Run: TestMessageWithKeyOption},
 	{Name: "TestStaticKey", Run: TestStaticKey},
+	{Name: "TestIndexCRUD", Run: TestIndexCRUD},
+	{Name: "TestIndexCreation", Run: TestIndexCreation},
 }
 
 func Test(t *testing.T, db protodb.Client) {

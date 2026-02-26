@@ -80,6 +80,7 @@ var (
 	WithWireBreakingCheck         = db.WithWireBreakingCheck
 	WithOnClose                   = db.WithOnClose
 	WithReplication               = db.WithReplication
+	WithIndexCompaction           = db.WithIndexCompaction
 )
 
 type GetOption = protodb.GetOption
