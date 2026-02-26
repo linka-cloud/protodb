@@ -15,7 +15,6 @@
 package generics
 
 import (
-	"context"
 	"testing"
 
 	"github.com/sirupsen/logrus"
@@ -27,8 +26,7 @@ import (
 )
 
 func Test(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	db, err := protodb.Open(ctx, protodb.WithPath(":memory:"))
 	if err != nil {

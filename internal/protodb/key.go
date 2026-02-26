@@ -77,7 +77,7 @@ func KeyFor(m proto.Message) (key string, field string, err error) {
 		return "", field, fmt.Errorf("key / id not found in %s", m.ProtoReflect().Type().Descriptor().FullName())
 
 	}
-	switch i := interface{}(m).(type) {
+	switch i := any(m).(type) {
 	case *dynamicpb.Message:
 		var fd protoreflect.FieldDescriptor
 		i.Range(func(descriptor protoreflect.FieldDescriptor, value protoreflect.Value) bool {

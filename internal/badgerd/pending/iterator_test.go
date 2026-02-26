@@ -165,7 +165,7 @@ func TestIterator(t *testing.T) {
 		assert.Equal(t, -1, i)
 	})
 
-	for i := 0; i < count; i++ {
+	for i := range count {
 		w.Delete(initial[i].Key)
 	}
 

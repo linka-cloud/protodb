@@ -184,7 +184,7 @@ func TestIndexCRUD(t *testing.T, db protodb.Client) {
 			require.NoError(err)
 			defer tx.Close()
 			step := count / div
-			for i := 0; i < count; i++ {
+			for i := range count {
 				key := fmt.Sprintf("k%06d", i)
 				status := fmt.Sprintf("s%06d", i)
 				_, err = tx.Set(ctx, newIndexCRUDMessage(md, key, status))
@@ -209,7 +209,7 @@ func TestIndexCRUD(t *testing.T, db protodb.Client) {
 			require.NoError(err)
 			defer tx.Close()
 			step := updateCount / div
-			for i := 0; i < updateCount; i++ {
+			for i := range updateCount {
 				id := updateStart + i
 				_, err = tx.Set(ctx, newIndexCRUDMessage(md, fmt.Sprintf("k%06d", id), newStatus))
 				require.NoError(err)
@@ -238,7 +238,7 @@ func TestIndexCRUD(t *testing.T, db protodb.Client) {
 			require.NoError(err)
 			defer tx.Close()
 			step := deleteCount / div
-			for i := 0; i < deleteCount; i++ {
+			for i := range deleteCount {
 				id := updateStart + i
 				require.NoError(tx.Delete(ctx, newIndexCRUDMessage(md, fmt.Sprintf("k%06d", id), newStatus)))
 				if i%step == 0 {
@@ -282,7 +282,7 @@ func TestIndexCreation(t *testing.T, db protodb.Client) {
 		require.NoError(err)
 		defer tx.Close()
 		step := count / div
-		for i := 0; i < count; i++ {
+		for i := range count {
 			key := fmt.Sprintf("k%06d", i)
 			status := fmt.Sprintf("s%06d", i)
 			_, err = tx.Set(ctx, newIndexCreationMessage(mdV1, key, status))

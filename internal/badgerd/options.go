@@ -27,11 +27,11 @@ var (
 )
 
 type Logger interface {
-	Errorf(string, ...interface{})
-	Warningf(string, ...interface{})
-	Infof(string, ...interface{})
-	Debugf(string, ...interface{})
-	Tracef(string, ...interface{})
+	Errorf(string, ...any)
+	Warningf(string, ...any)
+	Infof(string, ...any)
+	Debugf(string, ...any)
+	Tracef(string, ...any)
 }
 
 type Option func(o *options)

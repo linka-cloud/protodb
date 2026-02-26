@@ -17,6 +17,7 @@ package protodb
 import (
 	"bytes"
 	"fmt"
+	"maps"
 
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -125,9 +126,7 @@ func cmpField(f protoreflect.FieldDescriptor, v1, v2 protoreflect.Value, prefix 
 		if len(mdiff) == 0 {
 			return
 		}
-		for k, v := range mdiff {
-			diffs[k] = v
-		}
+		maps.Copy(diffs, mdiff)
 		return
 	}
 	if !equals {
@@ -179,10 +178,7 @@ func cmp(m1, m2 proto.Message, prefix string) map[string]*pb.FieldDiff {
 				}
 			}
 			if l2Length > l1Length {
-				start := l1Length - 1
-				if start < 0 {
-					start = 0
-				}
+				start := max(l1Length-1, 0)
 				for i := start; i < l2Length; i++ {
 					p := fmt.Sprintf("%s%s[%d]", prefix, f.Name(), i)
 					cmpField(f, protoreflect.Value{}, l2.Get(i), p, diffs)

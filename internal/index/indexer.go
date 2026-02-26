@@ -386,7 +386,7 @@ func indexHasEntries(ctx context.Context, tx Tx, md protoreflect.MessageDescript
 }
 
 func indexHasPrefix(ctx context.Context, tx badgerd.Tx, md protoreflect.MessageDescriptor, prefix string) (bool, error) {
-	pfx := []byte(fmt.Sprintf("%s/%s/", prefix, md.FullName()))
+	pfx := fmt.Appendf(nil, "%s/%s/", prefix, md.FullName())
 	it := tx.Iterator(badger.IteratorOptions{Prefix: pfx, PrefetchValues: false})
 	defer it.Close()
 	for it.Rewind(); it.Valid(); it.Next() {
@@ -399,7 +399,7 @@ func indexHasPrefix(ctx context.Context, tx badgerd.Tx, md protoreflect.MessageD
 }
 
 func indexSchemaKey(name protoreflect.FullName) []byte {
-	return []byte(fmt.Sprintf("%s/index/%s", protodb.Internal, name))
+	return fmt.Appendf(nil, "%s/index/%s", protodb.Internal, name)
 }
 
 func indexSchemaEntries(ctx context.Context, tx badgerd.Tx, md protoreflect.MessageDescriptor) ([]string, error) {
@@ -520,7 +520,7 @@ func (idx *Indexer) addIndexEntries(ctx context.Context, tx Tx, md protoreflect.
 		return ok, nil
 	}
 	partial := pfindex.New(newTxStore(tx.Txn(), idx.reg), selector)
-	dataPrefix := []byte(fmt.Sprintf("%s/%s/", protodb.Data, md.FullName()))
+	dataPrefix := fmt.Appendf(nil, "%s/%s/", protodb.Data, md.FullName())
 	dataIt := tx.Txn().Iterator(badger.IteratorOptions{Prefix: dataPrefix, PrefetchValues: false})
 	defer dataIt.Close()
 	for dataIt.Rewind(); dataIt.Valid(); dataIt.Next() {
@@ -578,7 +578,7 @@ func entryPath(entry string) string {
 }
 
 func scanIndexKeys(ctx context.Context, tx badgerd.Tx, md protoreflect.MessageDescriptor, removeSet map[string]struct{}, prefix string) ([][]byte, error) {
-	base := []byte(fmt.Sprintf("%s/%s/", prefix, md.FullName()))
+	base := fmt.Appendf(nil, "%s/%s/", prefix, md.FullName())
 	it := tx.Iterator(badger.IteratorOptions{Prefix: base, PrefetchValues: false})
 	defer it.Close()
 	var keys [][]byte

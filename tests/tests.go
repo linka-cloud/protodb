@@ -202,7 +202,7 @@ func TestBatchWatch(t *testing.T, db protodb.Client) {
 	count := 100_000
 	logCount := 1000
 	t.Logf("creating %d records", count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		if i%logCount == 0 {
 			t.Logf("creating: %d/%d", i, count)
 		}
@@ -211,7 +211,7 @@ func TestBatchWatch(t *testing.T, db protodb.Client) {
 	}
 	require.NoError(tx.Commit(ctx))
 	t.Logf("retrieving %d events", count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		if i%logCount == 0 {
 			t.Logf("retrieve create events: %d/%d", i, count)
 		}
@@ -227,7 +227,7 @@ func TestBatchWatch(t *testing.T, db protodb.Client) {
 	t.Logf("updating %d records", count)
 	tx, err = db.Tx(ctx)
 	require.NoError(err)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		if i%logCount == 0 {
 			t.Logf("updating: %d/%d", i, count)
 		}
@@ -235,7 +235,7 @@ func TestBatchWatch(t *testing.T, db protodb.Client) {
 		require.NoError(err)
 	}
 	require.NoError(tx.Commit(ctx))
-	for i := 0; i < count; i++ {
+	for i := range count {
 		if i%logCount == 0 {
 			t.Logf("retrieve update events: %d/%d", i, count)
 		}
@@ -251,14 +251,14 @@ func TestBatchWatch(t *testing.T, db protodb.Client) {
 	t.Logf("deleting %d records", count)
 	tx, err = db.Tx(ctx)
 	require.NoError(err)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		if i%logCount == 0 {
 			t.Logf("deleting: %d/%d", i, count)
 		}
 		require.NoError(tx.Delete(ctx, &testpb.KV{Key: fmt.Sprintf("%d", i)}))
 	}
 	require.NoError(tx.Commit(ctx))
-	for i := 0; i < count; i++ {
+	for i := range count {
 		if i%logCount == 0 {
 			t.Logf("retrieve delete events: %d/%d", i, count)
 		}
@@ -493,7 +493,7 @@ func TestBatchInsertAndQuery(t *testing.T, db protodb.Client) {
 	require.NoError(err)
 	start := time.Now()
 	max := 100_000
-	for i := 0; i < max; i++ {
+	for i := range max {
 		n := fmt.Sprintf("eth%d", i)
 		i := &testpb.Interface{
 			Name: n,
@@ -540,7 +540,7 @@ func TestOversizeBatchInsert(t *testing.T, db protodb.Client) {
 	require.NoError(err)
 	defer tx.Close()
 	max := 1_000_000
-	for i := 0; i < max; i++ {
+	for i := range max {
 		n := fmt.Sprintf("eth%d", i)
 		iface := &testpb.Interface{
 			Name: n,
@@ -561,7 +561,7 @@ func TestOversizeBatchInsert(t *testing.T, db protodb.Client) {
 func TestSeq(t *testing.T, db protodb.Client) {
 	require := require2.New(t)
 	assert := assert2.New(t)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		seq, err := db.NextSeq(context.Background(), "test")
 		require.NoError(err)
 		assert.Equal(uint64(i+1), seq)
@@ -696,7 +696,7 @@ func TestReplication(t *testing.T, data string, mode protodb.ReplicationMode) {
 	defer tx.Close()
 	insert := 25_000
 	logrus.Infof("inserting %d records", insert)
-	for i := 0; i < insert; i++ {
+	for i := range insert {
 		name := randString(10)
 		if i%(insert/100) == 0 {
 			logrus.Infof("inserted: %d/%d", i, insert)

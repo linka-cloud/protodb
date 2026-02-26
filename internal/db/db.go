@@ -524,7 +524,7 @@ func (db *db) closed() bool {
 }
 
 func (db *db) unmarshal(b []byte, m proto.Message) error {
-	switch v := interface{}(m).(type) {
+	switch v := any(m).(type) {
 	case interface{ UnmarshalVT(b []byte) error }:
 		return v.UnmarshalVT(b)
 	case interface{ Unmarshal(b []byte) error }:
@@ -535,7 +535,7 @@ func (db *db) unmarshal(b []byte, m proto.Message) error {
 }
 
 func (db *db) marshal(m proto.Message) ([]byte, error) {
-	switch v := interface{}(m).(type) {
+	switch v := any(m).(type) {
 	case interface{ MarshalVT() ([]byte, error) }:
 		return v.MarshalVT()
 	case interface{ Marshal() ([]byte, error) }:
@@ -955,7 +955,7 @@ func applyDefaults(m proto.Message) {
 	}
 }
 
-func isAlreadyRegistered(r interface{}) (bool, error) {
+func isAlreadyRegistered(r any) (bool, error) {
 	switch v := r.(type) {
 	case string:
 		return strings.Contains(v, "is already registered") || strings.Contains(v, "duplicate registration"), errors.New(strings.Split(v, "\n")[0])

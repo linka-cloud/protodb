@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"sync"
 	"sync/atomic"
 
@@ -87,12 +88,7 @@ func (r *tx) removeSteam(s *stream) {
 func (r *tx) hasStreams(s *stream) bool {
 	r.cmu.RLock()
 	defer r.cmu.RUnlock()
-	for _, v := range r.cs {
-		if v == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(r.cs, s)
 }
 
 func (r *tx) New(ctx context.Context, tx *badger.Txn) error {

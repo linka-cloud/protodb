@@ -811,7 +811,7 @@ func schemaEntries(ctx context.Context, db *db, md protoreflect.MessageDescripto
 }
 
 func indexFieldPrefixWithBase(name protoreflect.FullName, fieldPath string, base string) []byte {
-	basePrefix := []byte(fmt.Sprintf("%s/%s/", base, name))
+	basePrefix := fmt.Appendf(nil, "%s/%s/", base, name)
 	fieldBytes := []byte(fieldPath)
 	buf := make([]byte, 4)
 	binary.BigEndian.PutUint32(buf, uint32(len(fieldBytes)))
@@ -825,7 +825,7 @@ func indexFieldPrefixWithBase(name protoreflect.FullName, fieldPath string, base
 func deleteIndexPrefix(ctx context.Context, db *db, md protoreflect.MessageDescriptor) error {
 	var keys [][]byte
 	for _, base := range []string{protodb.Index, protodb.IndexDelta} {
-		prefix := []byte(fmt.Sprintf("%s/%s/", base, md.FullName()))
+		prefix := fmt.Appendf(nil, "%s/%s/", base, md.FullName())
 		if err := db.bdb.View(func(txn *badger.Txn) error {
 			it := txn.NewIterator(badger.IteratorOptions{Prefix: prefix, PrefetchValues: false})
 			defer it.Close()
@@ -856,7 +856,7 @@ func deleteIndexPrefix(ctx context.Context, db *db, md protoreflect.MessageDescr
 func countIndexKeys(db *db, md protoreflect.MessageDescriptor) (int, error) {
 	count := 0
 	for _, base := range []string{protodb.Index, protodb.IndexDelta} {
-		prefix := []byte(fmt.Sprintf("%s/%s/", base, md.FullName()))
+		prefix := fmt.Appendf(nil, "%s/%s/", base, md.FullName())
 		if err := db.bdb.View(func(txn *badger.Txn) error {
 			it := txn.NewIterator(badger.IteratorOptions{Prefix: prefix, PrefetchValues: false})
 			defer it.Close()

@@ -50,7 +50,7 @@ func (p *mod) InitContext(c pgs.BuildContext) {
 	p.ModuleBase.InitContext(c)
 	p.ctx = pgsgo.InitContext(c.Parameters())
 
-	tpl := template.New("protodb").Funcs(map[string]interface{}{
+	tpl := template.New("protodb").Funcs(map[string]any{
 		"package": p.ctx.PackageName,
 		"name":    p.ctx.Name,
 		"enabled": func(m pgs.Message) bool {

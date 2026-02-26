@@ -44,7 +44,7 @@ func newEntry(i int, size int64) *badger.Entry {
 
 func genEntries(count int, size int64) []*badger.Entry {
 	var entries []*badger.Entry
-	for i := 0; i < count; i++ {
+	for i := range count {
 		entries = append(entries, newEntry(i, size))
 	}
 	return entries

@@ -27,25 +27,25 @@ type logWrapper struct {
 	badger.Logger
 }
 
-func (l *logWrapper) Errorf(s string, i ...interface{}) {
+func (l *logWrapper) Errorf(s string, i ...any) {
 	l.log(l.Logger.Errorf, s, i...)
 }
 
-func (l *logWrapper) Warningf(s string, i ...interface{}) {
+func (l *logWrapper) Warningf(s string, i ...any) {
 	l.log(l.Logger.Warningf, s, i...)
 }
 
-func (l *logWrapper) Infof(s string, i ...interface{}) {
+func (l *logWrapper) Infof(s string, i ...any) {
 	l.log(l.Logger.Infof, s, i...)
 }
 
-func (l *logWrapper) Debugf(s string, i ...interface{}) {
+func (l *logWrapper) Debugf(s string, i ...any) {
 	l.log(l.Logger.Debugf, s, i...)
 }
 
-func (l *logWrapper) log(fn func(string, ...interface{}), s string, i ...interface{}) {
+func (l *logWrapper) log(fn func(string, ...any), s string, i ...any) {
 	msg := fmt.Sprintf(s, i...)
-	for _, v := range strings.Split(msg, "\n") {
+	for v := range strings.SplitSeq(msg, "\n") {
 		if v == "" {
 			continue
 		}

@@ -17,6 +17,7 @@ package breaking
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 
 	"google.golang.org/protobuf/proto"
@@ -634,12 +635,7 @@ func isFixed64Swap(a, b protoreflect.Kind) bool {
 }
 
 func isKindInSet(kind protoreflect.Kind, set []protoreflect.Kind) bool {
-	for _, candidate := range set {
-		if kind == candidate {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(set, kind)
 }
 
 func fieldTypeLabel(fd protoreflect.FieldDescriptor) string {

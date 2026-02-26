@@ -67,14 +67,14 @@ func (m *Map[T]) Delete(key string) {
 }
 
 func (m *Map[T]) Range(f func(key string, value T) bool) {
-	m.m.Range(func(key, value interface{}) bool {
+	m.m.Range(func(key, value any) bool {
 		return f(key.(string), value.(T))
 	})
 }
 
 func (m *Map[T]) Len() int {
 	var l int
-	m.m.Range(func(key, value interface{}) bool {
+	m.m.Range(func(key, value any) bool {
 		l++
 		return true
 	})
@@ -82,7 +82,7 @@ func (m *Map[T]) Len() int {
 }
 
 func (m *Map[T]) Clear() {
-	m.m.Range(func(key, value interface{}) bool {
+	m.m.Range(func(key, value any) bool {
 		m.m.Delete(key)
 		return true
 	})
@@ -90,7 +90,7 @@ func (m *Map[T]) Clear() {
 
 func (m *Map[T]) Values() []T {
 	var values []T
-	m.m.Range(func(key, value interface{}) bool {
+	m.m.Range(func(key, value any) bool {
 		values = append(values, value.(T))
 		return true
 	})
@@ -99,7 +99,7 @@ func (m *Map[T]) Values() []T {
 
 func (m *Map[T]) Keys() []string {
 	var keys []string
-	m.m.Range(func(key, value interface{}) bool {
+	m.m.Range(func(key, value any) bool {
 		keys = append(keys, key.(string))
 		return true
 	})

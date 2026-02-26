@@ -46,7 +46,7 @@ func (r *Gossip) Init(req *pb2.InitRequest, ss pb2.ReplicationService_InitServer
 		return gerrs.Internalf("failed to split host port: %v", err)
 	}
 	var found bool
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		for _, v := range r.clients() {
 			if found = addr == v.addr.String(); found {
 				break

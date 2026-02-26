@@ -43,7 +43,7 @@ type Cluster struct {
 func NewCluster(path string, count int, mode protodb.ReplicationMode, opts ...protodb.Option) *Cluster {
 	var addrs []string
 	var ports []int
-	for i := 0; i < count; i++ {
+	for i := range count {
 		offset++
 		ports = append(ports, 18800+offset)
 		addrs = append(addrs, fmt.Sprintf("127.0.0.1:%d", ports[i]))
@@ -55,7 +55,6 @@ func (c *Cluster) StartAll(ctx context.Context) error {
 	g := errgroup.Group{}
 	var mu sync.Mutex
 	for i := range c.dbs {
-		i := i
 		mu.Lock()
 		g.Go(func() error {
 			mu.Unlock()

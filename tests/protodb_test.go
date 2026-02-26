@@ -97,8 +97,7 @@ func TestServer(t *testing.T) {
 func TestEmbed(t *testing.T) {
 	for _, v := range Tests {
 		t.Run(v.Name, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
+			ctx := t.Context()
 
 			path := filepath.Join(data, v.Name)
 			if err := os.RemoveAll(path); err != nil {

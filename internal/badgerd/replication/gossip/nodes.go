@@ -295,7 +295,7 @@ func (r *Gossip) loadNodes() ([]string, error) {
 		return nil, err
 	}
 	var nodes []string
-	for _, v := range strings.Split(string(b), "\n") {
+	for v := range strings.SplitSeq(string(b), "\n") {
 		if v != "" && v != r.name {
 			nodes = append(nodes, v)
 		}
