@@ -13,8 +13,10 @@ require (
 	github.com/efficientgo/core v1.0.0-rc.2
 	github.com/envoyproxy/protoc-gen-validate v1.2.1
 	github.com/fullstorydev/grpchan v1.1.2-0.20220223040110-9b5ad76b6f3d
+	github.com/google/go-cmp v0.7.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.26.1
 	github.com/hashicorp/memberlist v0.5.3
+	github.com/jhump/protoreflect/v2 v2.0.0-beta.2
 	github.com/lyft/protoc-gen-star v0.6.2
 	github.com/mennanov/fmutils v0.3.0
 	github.com/miekg/dns v1.1.63
@@ -61,7 +63,6 @@ require (
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/flatbuffers v25.2.10+incompatible // indirect
-	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
@@ -76,7 +77,7 @@ require (
 	github.com/iancoleman/strcase v0.3.0 // indirect
 	github.com/improbable-eng/grpc-web v0.15.0 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
-	github.com/jhump/protoreflect v1.17.0 // indirect
+	github.com/jhump/protoreflect v1.17.1-0.20240913204751-8f5fd1dcb3c5 // indirect
 	github.com/justinas/alice v1.2.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/lyft/protoc-gen-star/v2 v2.0.4-0.20230330145011-496ad1ac90a4 // indirect

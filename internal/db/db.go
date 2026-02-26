@@ -20,7 +20,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 
@@ -37,7 +36,6 @@ import (
 	"google.golang.org/protobuf/proto"
 	pdesc "google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
-	preg "google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/dynamicpb"
 
@@ -46,16 +44,12 @@ import (
 	"go.linka.cloud/protodb/internal/client"
 	"go.linka.cloud/protodb/internal/mutex"
 	"go.linka.cloud/protodb/internal/protodb"
+	"go.linka.cloud/protodb/internal/registry"
 	"go.linka.cloud/protodb/internal/server"
 	"go.linka.cloud/protodb/pb"
 )
 
 var tracer = otel.Tracer("protodb")
-
-const (
-	protobufRegistrationConflictEnv    = "GOLANG_PROTOBUF_REGISTRATION_CONFLICT"
-	protobufRegistrationConflictPolicy = "ignore"
-)
 
 func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 	ctx, span := tracer.Start(ctx, "Open")
@@ -67,14 +61,12 @@ func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 	if o.logger == nil {
 		o.logger = logger.C(ctx).WithField("service", "protodb")
 	}
-	// TODO(adphi): Use custom registry to avoid this hack
-	if err := os.Setenv(protobufRegistrationConflictEnv, protobufRegistrationConflictPolicy); err != nil {
+
+	reg, err := registry.New()
+	if err != nil {
 		return nil, err
 	}
-	freg := preg.GlobalFiles
-	treg := preg.GlobalTypes
-
-	db := &db{opts: o, freg: freg, treg: treg, smu: mutex.NewKV(), ctxmu: mutex.NewContextKV()}
+	db := &db{opts: o, reg: reg, smu: mutex.NewKV(), ctxmu: mutex.NewContextKV()}
 	if o.repl != nil {
 		h, err := server.NewServer(db)
 		if err != nil {
@@ -84,7 +76,6 @@ func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 			pb.RegisterProtoDBServer(r, h)
 		}))
 	}
-	var err error
 	db.bdb, err = badgerd.Open(
 		ctx,
 		badgerd.WithLogger(o.logger),
@@ -100,6 +91,8 @@ func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 	ctx, db.scancel = context.WithCancel(ctx)
 	go func() {
 		if err := db.bdb.Subscribe(ctx, func(_ *badger.KVList) error {
+			db.mu.Lock()
+			defer db.mu.Unlock()
 			if err := db.loadDescriptors(ctx); err != nil {
 				logger.C(ctx).WithError(err).Errorf("failed to reload descriptors")
 			}
@@ -126,8 +119,7 @@ type db struct {
 	opts options
 
 	mu    sync.RWMutex
-	freg  *preg.Files
-	treg  *preg.Types
+	reg   *registry.Registry
 	smu   *mutex.KV
 	ctxmu *mutex.ContextKV
 	// repl replication.Replication
@@ -509,7 +501,9 @@ func (db *db) unmarshal(b []byte, m proto.Message) error {
 	case interface{ Unmarshal(b []byte) error }:
 		return v.Unmarshal(b)
 	default:
-		return proto.UnmarshalOptions{}.Unmarshal(b, m)
+		db.mu.RLock()
+		defer db.mu.RUnlock()
+		return proto.UnmarshalOptions{Resolver: db.reg}.Unmarshal(b, m)
 	}
 }
 
@@ -539,6 +533,8 @@ func (db *db) RegisterProto(ctx context.Context, file *descriptorpb.FileDescript
 		if err := c.RegisterProto(ctx, file); err != nil {
 			return err
 		}
+		db.mu.RLock()
+		defer db.mu.RUnlock()
 		return db.loadDescriptors(ctx)
 	}
 
@@ -573,7 +569,7 @@ func (db *db) Register(ctx context.Context, fd protoreflect.FileDescriptor) erro
 }
 
 func (db *db) Resolver() pdesc.Resolver {
-	return db.freg
+	return db.reg
 }
 
 func (db *db) Descriptors(ctx context.Context) ([]*descriptorpb.DescriptorProto, error) {
@@ -594,7 +590,7 @@ func (db *db) Descriptors(ctx context.Context) ([]*descriptorpb.DescriptorProto,
 		for it.Rewind(); it.Valid(); it.Next() {
 			if err := it.Item().Value(func(val []byte) error {
 				fdp := &descriptorpb.FileDescriptorProto{}
-				if err := db.unmarshal(val, fdp); err != nil {
+				if err := proto.Unmarshal(val, fdp); err != nil {
 					return err
 				}
 				m[fdp.GetName()] = fdp
@@ -632,7 +628,7 @@ func (db *db) FileDescriptors(ctx context.Context) ([]*descriptorpb.FileDescript
 		for it.Rewind(); it.Valid(); it.Next() {
 			if err := it.Item().Value(func(val []byte) error {
 				fdp := &descriptorpb.FileDescriptorProto{}
-				if err := db.unmarshal(val, fdp); err != nil {
+				if err := proto.Unmarshal(val, fdp); err != nil {
 					return err
 				}
 				out = append(out, fdp)
@@ -667,21 +663,21 @@ func (db *db) registerFileDescriptorProto(ctx context.Context, file *descriptorp
 			}
 		}
 	}()
-	fd, err := pdesc.NewFile(file, db.freg)
+	fd, err := pdesc.NewFile(file, db.reg)
 	if err != nil {
 		return db.handleRegisterErr(err)
 	}
-	if d, err := db.freg.FindFileByPath(fd.Path()); err == nil {
+	if d, err := db.reg.FindFileByPath(fd.Path()); err == nil {
 		if proto.Equal(pdesc.ToFileDescriptorProto(d), file) {
 			return nil
 		}
 	}
-	if err := db.freg.RegisterFile(fd); err != nil {
+	if err := db.reg.RegisterFile(fd); err != nil {
 		return db.handleRegisterErr(err)
 	}
 	for i := 0; i < fd.Messages().Len(); i++ {
 		m := fd.Messages().Get(i)
-		if err := db.treg.RegisterMessage(dynamicpb.NewMessageType(m)); err != nil {
+		if err := db.reg.RegisterMessage(dynamicpb.NewMessageType(m)); err != nil {
 			return db.handleRegisterErr(err)
 		}
 	}
@@ -721,7 +717,7 @@ func (db *db) load(ctx context.Context) error {
 
 func (db *db) saveDescriptors(ctx context.Context) error {
 	var fdps []*descriptorpb.FileDescriptorProto
-	db.freg.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
+	db.reg.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
 		// we can't register it now as the protogistry.globalMutex would dead lock
 		fdps = append(fdps, pdesc.ToFileDescriptorProto(fd))
 		return true
@@ -770,7 +766,7 @@ func (db *db) loadDescriptors(ctx context.Context) error {
 	for it.Rewind(); it.Valid(); it.Next() {
 		if err := it.Item().Value(func(val []byte) error {
 			fdp := &descriptorpb.FileDescriptorProto{}
-			if err := db.unmarshal(val, fdp); err != nil {
+			if err := proto.Unmarshal(val, fdp); err != nil {
 				return err
 			}
 			return db.registerFileDescriptorProto(ctx, fdp)
