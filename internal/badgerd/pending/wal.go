@@ -83,22 +83,34 @@ func newWal(path string, tx *badger.Txn, m *mem, size int64) *wal {
 			break
 		}
 	}
-	if size == 0 {
-		size = 1024 * 1024
-	}
-	f, err := z.OpenMmapFile(fp, os.O_RDWR|os.O_CREATE|os.O_TRUNC, int(size))
+	f, err := z.OpenMmapFile(fp, os.O_RDWR|os.O_CREATE|os.O_TRUNC, walInitSize(size))
 	if !errors.Is(err, z.NewFile) {
 		y.Check(err)
 	}
 	if m == nil {
-		return &wal{f: f, m: make(map[uint64]*pointer)}
+		return &wal{f: f, m: make(map[uint64]*pointer), dirty: true}
 	}
-	w := &wal{f: f, tx: tx, m: make(map[uint64]*pointer, len(m.m))}
+	w := &wal{f: f, tx: tx, m: make(map[uint64]*pointer, len(m.m)), dirty: true}
 	for _, e := range m.m {
 		y.Check(w.append(e))
 	}
 	m.m = make(map[uint64]*badger.Entry)
 	return w
+}
+
+func walInitSize(max int64) int {
+	const min = 1 << 20
+	const cap = 4 << 20
+	if max <= 0 {
+		return min
+	}
+	if max < min {
+		return int(max)
+	}
+	if max < cap {
+		return int(max)
+	}
+	return cap
 }
 
 type wal struct {
@@ -107,6 +119,10 @@ type wal struct {
 	m   map[uint64]*pointer
 	pos int64
 	o   sync.Once
+
+	asc   []*entry
+	desc  []*entry
+	dirty bool
 }
 
 func (w *wal) Iterator(prefix []byte, reversed bool) Iterator {
@@ -134,7 +150,7 @@ func (w *wal) Get(key []byte) (Item, error) {
 	if p.deleted {
 		return nil, badger.ErrKeyNotFound
 	}
-	e, err := w.read(key)
+	e, err := w.readPtr(p, false)
 	if err != nil {
 		return nil, err
 	}
@@ -190,21 +206,26 @@ func (w *wal) append(e *badger.Entry) error {
 	copy(buf[headerSize:], e.Key)
 	copy(buf[headerSize+int(h.klen):], e.Value)
 	w.m[z.MemHash(e.Key)] = p
+	w.dirty = true
 	w.pos = int64(pos)
 	return nil
 }
 
-func (w *wal) read(key []byte, cpy ...bool) (*badger.Entry, error) {
+func (w *wal) read(key []byte, cpy bool) (*badger.Entry, error) {
 	p, ok := w.m[z.MemHash(key)]
 	if !ok {
 		return nil, badger.ErrKeyNotFound
 	}
+	return w.readPtr(p, cpy)
+}
+
+func (w *wal) readPtr(p *pointer, cpy bool) (*badger.Entry, error) {
 	buf := w.f.Slice(int(p.offset))
 	var e walEntry
 	e.h.decode(buf)
 	e.k = buf[headerSize : headerSize+e.h.klen]
 	e.v = buf[headerSize+e.h.klen : headerSize+e.h.klen+e.h.vlen]
-	if len(cpy) > 0 && cpy[0] {
+	if cpy {
 		e.k = y.SafeCopy(nil, e.k)
 		e.v = y.SafeCopy(nil, e.v)
 	}
@@ -218,7 +239,7 @@ func (w *wal) read(key []byte, cpy ...bool) (*badger.Entry, error) {
 
 func (w *wal) Replay(fn func(e *badger.Entry) error) error {
 	for _, v := range w.m {
-		e, err := w.read(v.key, true)
+		e, err := w.readPtr(v, true)
 		if err != nil {
 			return err
 		}
@@ -230,24 +251,41 @@ func (w *wal) Replay(fn func(e *badger.Entry) error) error {
 }
 
 func (w *wal) newIterator(prefix []byte, readTs uint64, reversed bool) iterator {
-	if len(w.m) == 0 {
+	items := w.sortedEntries(reversed)
+	if len(items) == 0 {
 		return nil
 	}
-	items := make([]*entry, 0, len(w.m))
-	for _, v := range w.m {
-		items = append(items, &entry{key: v.key, p: v})
-	}
-	sort.Slice(items, func(i, j int) bool {
-		cmp := bytes.Compare(items[i].key, items[j].key)
-		if !reversed {
-			return cmp < 0
-		}
-		return cmp > 0
-	})
 	return &walIterator{w: w, prefix: prefix, items: items, reversed: reversed, readTs: readTs}
 }
 
+func (w *wal) sortedEntries(reversed bool) []*entry {
+	if w.dirty {
+		w.rebuildEntries()
+	}
+	if reversed {
+		return w.desc
+	}
+	return w.asc
+}
+
+func (w *wal) rebuildEntries() {
+	w.asc = make([]*entry, 0, len(w.m))
+	for h, p := range w.m {
+		w.asc = append(w.asc, &entry{h: h, key: p.key, p: p})
+	}
+	sort.Slice(w.asc, func(i, j int) bool {
+		return bytes.Compare(w.asc[i].key, w.asc[j].key) < 0
+	})
+	w.desc = make([]*entry, len(w.asc))
+	copy(w.desc, w.asc)
+	for i, j := 0, len(w.desc)-1; i < j; i, j = i+1, j-1 {
+		w.desc[i], w.desc[j] = w.desc[j], w.desc[i]
+	}
+	w.dirty = false
+}
+
 type entry struct {
+	h   uint64
 	key []byte
 	p   *pointer
 }
@@ -299,7 +337,11 @@ func (i *walIterator) Key() []byte {
 func (i *walIterator) Item() Item {
 	y.AssertTrue(i.Valid())
 	e := i.items[i.nextIdx]
-	entry, err := i.w.read(e.key)
+	p, ok := i.w.m[e.h]
+	if !ok {
+		p = e.p
+	}
+	entry, err := i.w.readPtr(p, false)
 	y.Check(err)
 	return &item{
 		readTs: i.readTs,

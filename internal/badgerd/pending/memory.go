@@ -28,14 +28,19 @@ const BitDelete byte = 1 << 0 // Set if the key has been deleted.
 
 func newMem(tx *badger.Txn) *mem {
 	return &mem{
-		tx: tx,
-		m:  make(map[uint64]*badger.Entry),
+		tx:    tx,
+		m:     make(map[uint64]*badger.Entry),
+		dirty: true,
 	}
 }
 
 type mem struct {
 	tx *badger.Txn
 	m  map[uint64]*badger.Entry
+
+	asc   []*badger.Entry
+	desc  []*badger.Entry
+	dirty bool
 }
 
 func (m *mem) Iterator(prefix []byte, reversed bool) Iterator {
@@ -59,15 +64,7 @@ func (m *mem) newIterator(prefix []byte, readTs uint64, reversed bool) iterator 
 			reversed: reversed,
 		}
 	}
-	entries := m.slice()
-	// Number of pending writes per transaction shouldn't be too big in general.
-	sort.Slice(entries, func(i, j int) bool {
-		cmp := bytes.Compare(entries[i].Key, entries[j].Key)
-		if !reversed {
-			return cmp < 0
-		}
-		return cmp > 0
-	})
+	entries := m.sortedEntries(reversed)
 	return &memIterator{
 		prefix:   prefix,
 		readTs:   readTs,
@@ -100,6 +97,7 @@ func (m *mem) Get(key []byte) (Item, error) {
 
 func (m *mem) Set(e *badger.Entry) {
 	m.m[z.MemHash(e.Key)] = e
+	m.dirty = true
 }
 
 func (m *mem) Delete(key []byte) {
@@ -107,6 +105,7 @@ func (m *mem) Delete(key []byte) {
 		Key:      key,
 		UserMeta: BitDelete,
 	}
+	m.dirty = true
 }
 
 func (m *mem) Replay(fn func(e *badger.Entry) error) error {
@@ -128,6 +127,29 @@ func (m *mem) slice() []*badger.Entry {
 		entries = append(entries, e)
 	}
 	return entries
+}
+
+func (m *mem) sortedEntries(reversed bool) []*badger.Entry {
+	if m.dirty {
+		m.rebuildEntries()
+	}
+	if reversed {
+		return m.desc
+	}
+	return m.asc
+}
+
+func (m *mem) rebuildEntries() {
+	m.asc = m.slice()
+	sort.Slice(m.asc, func(i, j int) bool {
+		return bytes.Compare(m.asc[i].Key, m.asc[j].Key) < 0
+	})
+	m.desc = make([]*badger.Entry, len(m.asc))
+	copy(m.desc, m.asc)
+	for i, j := 0, len(m.desc)-1; i < j; i, j = i+1, j-1 {
+		m.desc[i], m.desc[j] = m.desc[j], m.desc[i]
+	}
+	m.dirty = false
 }
 
 func (m *mem) empty() bool {
