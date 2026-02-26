@@ -77,6 +77,7 @@ var (
 	WithApplyDefaults             = db.WithApplyDefaults
 	WithIgnoreProtoRegisterErrors = db.WithIgnoreProtoRegisterErrors
 	WithProtoRegisterErrHandler   = db.WithProtoRegisterErrHandler
+	WithWireBreakingCheck         = db.WithWireBreakingCheck
 	WithOnClose                   = db.WithOnClose
 	WithReplication               = db.WithReplication
 )

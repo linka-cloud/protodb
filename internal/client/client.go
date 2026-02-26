@@ -101,8 +101,8 @@ func (c *client) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOp
 	}
 	var msgs []proto.Message
 	for _, v := range res.Results {
-		msg, err := anypb.UnmarshalNew(v, proto.UnmarshalOptions{})
-		if err != nil {
+		msg := m.ProtoReflect().New().Interface()
+		if err := anypb.UnmarshalTo(v, msg, proto.UnmarshalOptions{}); err != nil {
 			return nil, nil, err
 		}
 		msgs = append(msgs, msg)
@@ -128,8 +128,8 @@ func (c *client) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOp
 	if err != nil {
 		return nil, err
 	}
-	msg, err := anypb.UnmarshalNew(res.Result, proto.UnmarshalOptions{})
-	if err != nil {
+	msg := m.ProtoReflect().New().Interface()
+	if err := anypb.UnmarshalTo(res.Result, msg, proto.UnmarshalOptions{}); err != nil {
 		return nil, err
 	}
 	return msg, nil
@@ -277,8 +277,8 @@ func (t *txc) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 	}
 	var msgs []proto.Message
 	for _, v := range res.GetGet().GetResults() {
-		msg, err := anypb.UnmarshalNew(v, proto.UnmarshalOptions{})
-		if err != nil {
+		msg := m.ProtoReflect().New().Interface()
+		if err := anypb.UnmarshalTo(v, msg, proto.UnmarshalOptions{}); err != nil {
 			return nil, nil, err
 		}
 		msgs = append(msgs, msg)
@@ -314,8 +314,8 @@ func (t *txc) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 	if res.GetSet() == nil || res.GetSet().GetResult() == nil {
 		return nil, fmt.Errorf("no response")
 	}
-	msg, err := anypb.UnmarshalNew(res.GetSet().GetResult(), proto.UnmarshalOptions{})
-	if err != nil {
+	msg := m.ProtoReflect().New().Interface()
+	if err := anypb.UnmarshalTo(res.GetSet().GetResult(), msg, proto.UnmarshalOptions{}); err != nil {
 		return nil, err
 	}
 	return msg, nil

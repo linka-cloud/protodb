@@ -96,6 +96,12 @@ func WithReplication(opts ...replication.Option) Option {
 	}
 }
 
+func WithWireBreakingCheck(b bool) Option {
+	return func(o *options) {
+		o.wireBreakingCheck = b
+	}
+}
+
 type options struct {
 	path                      string
 	inMemory                  bool
@@ -104,6 +110,7 @@ type options struct {
 	ignoreProtoRegisterErrors bool
 	registerErrHandler        func(err error) error
 	badgerOptionsFunc         func(opts badger.Options) badger.Options
+	wireBreakingCheck         bool
 	// lowMemory                 bool
 	onClose func()
 
@@ -111,7 +118,8 @@ type options struct {
 }
 
 var defaultOptions = options{
-	path: DefaultPath,
+	path:              DefaultPath,
+	wireBreakingCheck: true,
 }
 
 func makeGetOpts(opts ...protodb.GetOption) protodb.GetOpts {

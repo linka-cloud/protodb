@@ -41,6 +41,7 @@ import (
 
 	"go.linka.cloud/protodb/internal/badgerd"
 	"go.linka.cloud/protodb/internal/badgerd/replication"
+	"go.linka.cloud/protodb/internal/breaking"
 	"go.linka.cloud/protodb/internal/client"
 	"go.linka.cloud/protodb/internal/mutex"
 	"go.linka.cloud/protodb/internal/protodb"
@@ -540,7 +541,7 @@ func (db *db) RegisterProto(ctx context.Context, file *descriptorpb.FileDescript
 
 	db.mu.Lock()
 	defer db.mu.Unlock()
-	if err := db.registerFileDescriptorProto(ctx, file); err != nil {
+	if err := db.registerFileDescriptorProto(ctx, file, db.opts.wireBreakingCheck); err != nil {
 		return err
 	}
 	txn, err := newTx(ctx, db)
@@ -650,7 +651,7 @@ func (db *db) FileDescriptors(ctx context.Context) ([]*descriptorpb.FileDescript
 // 	return err
 // }
 
-func (db *db) registerFileDescriptorProto(ctx context.Context, file *descriptorpb.FileDescriptorProto) (err error) {
+func (db *db) registerFileDescriptorProto(ctx context.Context, file *descriptorpb.FileDescriptorProto, check bool) (err error) {
 	defer func() {
 		if e := recover(); e != nil {
 			// var ok bool
@@ -672,6 +673,17 @@ func (db *db) registerFileDescriptorProto(ctx context.Context, file *descriptorp
 			return nil
 		}
 	}
+	if check {
+		prevSet := db.descriptorSetFromRegistry()
+		nextSet := replaceFileInDescriptorSet(prevSet, file)
+		violations, err := breaking.CheckWireBreaking(prevSet, nextSet)
+		if err != nil {
+			return db.handleRegisterErr(err)
+		}
+		if len(violations) > 0 {
+			return db.handleRegisterErr(formatWireViolations(violations))
+		}
+	}
 	if err := db.reg.RegisterFile(fd); err != nil {
 		return db.handleRegisterErr(err)
 	}
@@ -682,6 +694,42 @@ func (db *db) registerFileDescriptorProto(ctx context.Context, file *descriptorp
 		}
 	}
 	return nil
+}
+
+func (db *db) descriptorSetFromRegistry() *descriptorpb.FileDescriptorSet {
+	set := &descriptorpb.FileDescriptorSet{}
+	db.reg.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
+		set.File = append(set.File, pdesc.ToFileDescriptorProto(fd))
+		return true
+	})
+	return set
+}
+
+func replaceFileInDescriptorSet(prev *descriptorpb.FileDescriptorSet, next *descriptorpb.FileDescriptorProto) *descriptorpb.FileDescriptorSet {
+	if prev == nil {
+		prev = &descriptorpb.FileDescriptorSet{}
+	}
+	files := make([]*descriptorpb.FileDescriptorProto, 0, len(prev.File)+1)
+	for _, file := range prev.File {
+		if file.GetName() == next.GetName() {
+			continue
+		}
+		files = append(files, proto.Clone(file).(*descriptorpb.FileDescriptorProto))
+	}
+	files = append(files, proto.Clone(next).(*descriptorpb.FileDescriptorProto))
+	return &descriptorpb.FileDescriptorSet{File: files}
+}
+
+func formatWireViolations(violations []breaking.Violation) error {
+	if len(violations) == 0 {
+		return nil
+	}
+	lines := make([]string, 0, len(violations)+1)
+	lines = append(lines, "wire breaking changes detected")
+	for _, v := range violations {
+		lines = append(lines, fmt.Sprintf("- %s (%s): %s", v.Rule, v.Subject, v.Message))
+	}
+	return errors.New(strings.Join(lines, "\n"))
 }
 
 func (db *db) handleRegisterErr(err error) error {
@@ -728,7 +776,7 @@ func (db *db) saveDescriptors(ctx context.Context) error {
 	}
 	defer tx.Close()
 	for _, v := range fdps {
-		if err := db.registerFileDescriptorProto(ctx, v); err != nil {
+		if err := db.registerFileDescriptorProto(ctx, v, false); err != nil {
 			return err
 		}
 		b, err := db.marshal(v)
@@ -769,7 +817,7 @@ func (db *db) loadDescriptors(ctx context.Context) error {
 			if err := proto.Unmarshal(val, fdp); err != nil {
 				return err
 			}
-			return db.registerFileDescriptorProto(ctx, fdp)
+			return db.registerFileDescriptorProto(ctx, fdp, false)
 
 		}); err != nil {
 			errs = multierr.Append(errs, err)

@@ -24,12 +24,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jhump/protoreflect/v2/protobuilder"
 	"github.com/sirupsen/logrus"
 	assert2 "github.com/stretchr/testify/assert"
 	require2 "github.com/stretchr/testify/require"
 	"go.linka.cloud/grpc-toolkit/logger"
 	"go.linka.cloud/protofilters/filters"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/dynamicpb"
 
 	"go.linka.cloud/protodb"
 	"go.linka.cloud/protodb/pb"
@@ -353,8 +356,127 @@ func TestRegister(t *testing.T, db protodb.Client) {
 	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
+	var err error
 
-	require.NoError(db.Register(ctx, (&testpb.Interface{}).ProtoReflect().Descriptor().ParentFile()))
+	baseFile := buildDynamicFile(t, false)
+	require.NoError(db.Register(ctx, baseFile))
+	// when we run with async replication, the registration may not be immediately propagated to all nodes, so we wait a bit
+	time.Sleep(100 * time.Millisecond)
+
+	baseMsg := baseFile.Messages().ByName("Dyn")
+	if baseMsg == nil {
+		t.Fatalf("dynamic message Dyn not found")
+	}
+	dyn := dynamicpb.NewMessage(baseMsg)
+	setFieldValue(t, dyn, "name", protoreflect.ValueOfString("dyn0"))
+	setFieldValue(t, dyn, "value", protoreflect.ValueOfUint32(1200))
+	_, err = db.Set(ctx, dyn)
+	require.NoError(err)
+
+	query := dynamicpb.NewMessage(baseMsg)
+	setFieldValue(t, query, "name", protoreflect.ValueOfString("dyn0"))
+	got, ok, err := db.GetOne(ctx, query)
+	require.NoError(err)
+	require.True(ok)
+	require.True(proto.Equal(dyn, got))
+
+	updatedFile := buildDynamicFile(t, true)
+	require.NoError(db.Register(ctx, updatedFile))
+	// same as before, we wait a bit for the schema to propagate
+	time.Sleep(100 * time.Millisecond)
+
+	updatedMsg := updatedFile.Messages().ByName("Dyn")
+	if updatedMsg == nil {
+		t.Fatalf("dynamic message Dyn not found after update")
+	}
+	updatedQuery := dynamicpb.NewMessage(updatedMsg)
+	setFieldValue(t, updatedQuery, "name", protoreflect.ValueOfString("dyn0"))
+	updatedGot, ok, err := db.GetOne(ctx, updatedQuery)
+	require.NoError(err)
+	require.True(ok)
+	updatedExpected := dynamicpb.NewMessage(updatedMsg)
+	setFieldValue(t, updatedExpected, "name", protoreflect.ValueOfString("dyn0"))
+	setFieldValue(t, updatedExpected, "value", protoreflect.ValueOfUint32(1200))
+	require.True(proto.Equal(updatedExpected, updatedGot))
+
+	prevFile := buildBreakingFile(t, false)
+	require.NoError(db.Register(ctx, prevFile))
+	time.Sleep(100 * time.Millisecond)
+
+	updatedFile = buildBreakingFile(t, true)
+	err = db.Register(ctx, updatedFile)
+	require.Error(err)
+	require.Contains(err.Error(), "wire breaking changes detected")
+
+	compatiblePrev := buildCompatibleFile(t, false)
+	require.NoError(db.Register(ctx, compatiblePrev))
+
+	compatibleNext := buildCompatibleFile(t, true)
+	require.NoError(db.Register(ctx, compatibleNext))
+}
+
+func buildBreakingFile(t *testing.T, updated bool) protoreflect.FileDescriptor {
+	t.Helper()
+	msg := protobuilder.NewMessage("Break")
+	if !updated {
+		msg.AddField(protobuilder.NewField("name", protobuilder.FieldTypeString()).SetNumber(1))
+	}
+	file := protobuilder.NewFile("breaking.proto").
+		SetPackageName("acme.v1").
+		SetSyntax(protoreflect.Proto2).
+		AddMessage(msg)
+	fd, err := file.Build()
+	if err != nil {
+		t.Fatalf("build breaking file: %v", err)
+	}
+	return fd
+}
+
+func buildDynamicFile(t *testing.T, updated bool) protoreflect.FileDescriptor {
+	t.Helper()
+	msg := protobuilder.NewMessage("Dyn").
+		AddField(protobuilder.NewField("name", protobuilder.FieldTypeString()).SetNumber(1)).
+		AddField(protobuilder.NewField("value", protobuilder.FieldTypeUint32()).SetNumber(2))
+	if updated {
+		msg.AddField(protobuilder.NewField("extra", protobuilder.FieldTypeString()).SetNumber(3))
+	}
+	file := protobuilder.NewFile("dynamic.proto").
+		SetPackageName("acme.v1").
+		SetSyntax(protoreflect.Proto2).
+		AddMessage(msg)
+	fd, err := file.Build()
+	if err != nil {
+		t.Fatalf("build dynamic file: %v", err)
+	}
+	return fd
+}
+
+func buildCompatibleFile(t *testing.T, updated bool) protoreflect.FileDescriptor {
+	t.Helper()
+	msg := protobuilder.NewMessage("Compat")
+	fieldType := protobuilder.FieldTypeInt32()
+	if updated {
+		fieldType = protobuilder.FieldTypeUint32()
+	}
+	msg.AddField(protobuilder.NewField("values", fieldType).SetNumber(1).SetRepeated())
+	file := protobuilder.NewFile("compatible.proto").
+		SetPackageName("acme.v1").
+		SetSyntax(protoreflect.Proto2).
+		AddMessage(msg)
+	fd, err := file.Build()
+	if err != nil {
+		t.Fatalf("build compatible file: %v", err)
+	}
+	return fd
+}
+
+func setFieldValue(t *testing.T, msg proto.Message, name string, value protoreflect.Value) {
+	t.Helper()
+	fd := msg.ProtoReflect().Descriptor().Fields().ByName(protoreflect.Name(name))
+	if fd == nil {
+		t.Fatalf("field %s not found", name)
+	}
+	msg.ProtoReflect().Set(fd, value)
 }
 
 func TestBatchInsertAndQuery(t *testing.T, db protodb.Client) {
