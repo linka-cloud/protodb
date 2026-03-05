@@ -241,6 +241,7 @@ func TestUniqueIndexViolation(t *testing.T) {
 
 	_, err = db.Set(ctx, newUniqueUser(md, "u2", "a@example.com"))
 	require.Error(t, err)
+	require.ErrorContains(t, err, "unique index violation on email")
 }
 
 func TestIndexFallbackForNonIndexed(t *testing.T) {

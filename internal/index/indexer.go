@@ -188,6 +188,7 @@ func (idx *Indexer) EnforceUnique(ctx context.Context, tx Tx, m proto.Message, u
 			continue
 		}
 		fieldPath := fieldPathFromNumbers(uv.fds)
+		errPath := fieldPathFromNames(uv.fds)
 		bm, enc, err := valueBitmap(tx.Txn(), m.ProtoReflect().Descriptor().FullName(), fieldPath, uv.fds[len(uv.fds)-1], uv.value)
 		if err != nil {
 			return err
@@ -205,9 +206,9 @@ func (idx *Indexer) EnforceUnique(ctx context.Context, tx Tx, m proto.Message, u
 			if bm.Contains(uid) {
 				continue
 			}
-			return fmt.Errorf("unique index violation on %s", fieldPath)
+			return fmt.Errorf("unique index violation on %s", errPath)
 		}
-		return fmt.Errorf("unique index violation on %s", fieldPath)
+		return fmt.Errorf("unique index violation on %s", errPath)
 	}
 	return nil
 }
