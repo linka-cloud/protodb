@@ -898,6 +898,8 @@ go.linka.cloud/protoc-gen-proxy v0.0.0-20230802234945-cc173b85cf13 h1:u2ZyklIEjX
 go.linka.cloud/protoc-gen-proxy v0.0.0-20230802234945-cc173b85cf13/go.mod h1:Ftcr5FXhyqYUixiz/6z1XewMpMS8dgKwawEk/PaHhHs=
 go.linka.cloud/protofilters v0.9.1-0.20260226141520-e8496a545e49 h1:WgE+7/KFse9IUPWKi6zgm4NZKoBMHrnq8wVUBN1oEW8=
 go.linka.cloud/protofilters v0.9.1-0.20260226141520-e8496a545e49/go.mod h1:CTyTQrkSBCYR2Yn/mifQsP1c7KDmSxv/Kdh5DGgqWnc=
+go.linka.cloud/protofilters v0.9.1-0.20260305145701-8dffea6caa89 h1:gug/7sP8vr479qR/eCK1S6tMwsx3WqlG8zqIyBeEl/A=
+go.linka.cloud/protofilters v0.9.1-0.20260305145701-8dffea6caa89/go.mod h1:CTyTQrkSBCYR2Yn/mifQsP1c7KDmSxv/Kdh5DGgqWnc=
 go.linka.cloud/pubsub v0.0.0-20220728154114-8213058139f3 h1:8qfogYXX5OrCrDa8CI9w6K1NnEYCz27n32bDveCoCvM=
 go.linka.cloud/pubsub v0.0.0-20220728154114-8213058139f3/go.mod h1:n1VFgi7RahshaOFJYKThBv/LwaMxKoBTfymxVWRJHJk=
 go.opencensus.io v0.21.0/go.mod h1:mSImk1erAIZhrmZN+AvHh14ztQfjbGwt4TtuofqLduU=
