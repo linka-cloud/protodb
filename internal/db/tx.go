@@ -119,6 +119,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 		return nil, nil, badger.ErrDBClosed
 	}
 	o := makeGetOpts(opts...)
+	matcher := pf.NewMatcher()
 	prefix, field, value, _ := protodb.DataPrefix(m)
 	span.SetAttributes(
 		attribute.String("prefix", string(prefix)),
@@ -149,7 +150,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 			return nil, nil, err
 		}
 		if o.Filter != nil {
-			match, err := pf.Match(v, o.Filter)
+			match, err := matcher.Match(v, o.Filter)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -345,7 +346,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 					return err
 				}
 				if o.Filter != nil {
-					match, err = pf.Match(v, o.Filter)
+					match, err = matcher.Match(v, o.Filter)
 					if err != nil {
 						return err
 					}

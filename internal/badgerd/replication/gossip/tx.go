@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 
 	"github.com/dgraph-io/badger/v3"
+	"github.com/dgraph-io/badger/v3/y"
 	"go.linka.cloud/grpc-toolkit/logger"
 	"go.uber.org/multierr"
 	"google.golang.org/protobuf/encoding/protowire"
@@ -147,11 +148,13 @@ func (r *tx) Commit(ctx context.Context, at uint64) error {
 	}
 	b := r.db.NewWriteBatchAt(r.readTs)
 	defer b.Cancel()
-	if err := r.w.Replay(func(e *badger.Entry) error {
-		if e.UserMeta != 0 {
-			return b.DeleteAt(e.Key, at)
+	if err := r.w.ReplayRaw(func(key, value []byte, userMeta byte, expiresAt uint64) error {
+		k := y.SafeCopy(nil, key)
+		if userMeta != 0 {
+			return b.DeleteAt(k, at)
 		}
-		return b.SetEntryAt(e, at)
+		v := y.SafeCopy(nil, value)
+		return b.SetEntryAt(&badger.Entry{Key: k, Value: v, ExpiresAt: expiresAt, UserMeta: userMeta}, at)
 	}); err != nil {
 		return err
 	}
@@ -277,7 +280,7 @@ func deleteOpWireSize(key []byte) int {
 func (r *tx) send(ctx context.Context, req *pb.ReplicateRequest) error {
 	if r.mode == replication.ModeAsync {
 		for _, v := range r.streams() {
-			a := v.q.Send(req)
+			a := v.q.Send(req.CloneVT())
 			r.swg.Add(1)
 			go func(v *stream, a async.Async[*pb.Ack]) {
 				defer r.swg.Done()

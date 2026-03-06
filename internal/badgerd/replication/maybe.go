@@ -18,6 +18,7 @@ import (
 	"context"
 
 	"github.com/dgraph-io/badger/v3"
+	"github.com/dgraph-io/badger/v3/y"
 
 	"go.linka.cloud/protodb/internal/badgerd/pending"
 )
@@ -80,11 +81,13 @@ func (s *Maybe) CommitAt(ctx context.Context, at uint64) error {
 	}
 	b := s.DB.NewWriteBatchAt(s.readTs)
 	defer b.Cancel()
-	if err := s.w.Replay(func(e *badger.Entry) error {
-		if e.UserMeta != 0 {
-			return b.DeleteAt(e.Key, at)
+	if err := s.w.ReplayRaw(func(key, value []byte, userMeta byte, expiresAt uint64) error {
+		k := y.SafeCopy(nil, key)
+		if userMeta != 0 {
+			return b.DeleteAt(k, at)
 		}
-		return b.SetEntryAt(e, at)
+		v := y.SafeCopy(nil, value)
+		return b.SetEntryAt(&badger.Entry{Key: k, Value: v, ExpiresAt: expiresAt, UserMeta: userMeta}, at)
 	}); err != nil {
 		return err
 	}

@@ -88,9 +88,9 @@ func newWal(path string, tx *badger.Txn, m *mem, size int64) *wal {
 		y.Check(err)
 	}
 	if m == nil {
-		return &wal{f: f, m: make(map[uint64]*pointer), dirty: true}
+		return &wal{f: f, m: make(map[uint64]pointer), dirty: true}
 	}
-	w := &wal{f: f, tx: tx, m: make(map[uint64]*pointer, len(m.m)), dirty: true}
+	w := &wal{f: f, tx: tx, m: make(map[uint64]pointer, len(m.m)), dirty: true}
 	for _, e := range m.m {
 		y.Check(w.append(e))
 	}
@@ -116,7 +116,7 @@ func walInitSize(max int64) int {
 type wal struct {
 	tx  *badger.Txn
 	f   *z.MmapFile
-	m   map[uint64]*pointer
+	m   map[uint64]pointer
 	pos int64
 	o   sync.Once
 
@@ -190,7 +190,7 @@ func (w *wal) append(e *badger.Entry) error {
 	if err != nil {
 		return err
 	}
-	p := &pointer{
+	p := pointer{
 		key:     e.Key,
 		offset:  uint32(w.pos),
 		len:     l,
@@ -219,35 +219,47 @@ func (w *wal) read(key []byte, cpy bool) (*badger.Entry, error) {
 	return w.readPtr(p, cpy)
 }
 
-func (w *wal) readPtr(p *pointer, cpy bool) (*badger.Entry, error) {
+func (w *wal) readPtrRaw(p pointer) (k, v []byte, userMeta byte, expiresAt uint64) {
 	buf := w.f.Slice(int(p.offset))
-	var e walEntry
-	e.h.decode(buf)
-	e.k = buf[headerSize : headerSize+e.h.klen]
-	e.v = buf[headerSize+e.h.klen : headerSize+e.h.klen+e.h.vlen]
+	var h header
+	h.decode(buf)
+	k = buf[headerSize : headerSize+h.klen]
+	v = buf[headerSize+h.klen : headerSize+h.klen+h.vlen]
+	return k, v, h.userMeta, h.expiresAt
+}
+
+func (w *wal) readPtr(p pointer, cpy bool) (*badger.Entry, error) {
+	k, v, userMeta, expiresAt := w.readPtrRaw(p)
 	if cpy {
-		e.k = y.SafeCopy(nil, e.k)
-		e.v = y.SafeCopy(nil, e.v)
+		k = y.SafeCopy(nil, k)
+		v = y.SafeCopy(nil, v)
 	}
 	return &badger.Entry{
-		Key:       e.k,
-		Value:     e.v,
-		UserMeta:  e.h.userMeta,
-		ExpiresAt: e.h.expiresAt,
+		Key:       k,
+		Value:     v,
+		UserMeta:  userMeta,
+		ExpiresAt: expiresAt,
 	}, nil
 }
 
-func (w *wal) Replay(fn func(e *badger.Entry) error) error {
-	for _, v := range w.m {
-		e, err := w.readPtr(v, true)
-		if err != nil {
-			return err
-		}
-		if err := fn(e); err != nil {
+func (w *wal) ReplayRaw(fn func(key, value []byte, userMeta byte, expiresAt uint64) error) error {
+	for _, p := range w.m {
+		k, v, userMeta, expiresAt := w.readPtrRaw(p)
+		if err := fn(k, v, userMeta, expiresAt); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (w *wal) Replay(fn func(e *badger.Entry) error) error {
+	return w.ReplayRaw(func(key, value []byte, userMeta byte, expiresAt uint64) error {
+		e := &badger.Entry{Key: y.SafeCopy(nil, key), Value: y.SafeCopy(nil, value), UserMeta: userMeta, ExpiresAt: expiresAt}
+		if err := fn(e); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func (w *wal) newIterator(prefix []byte, readTs uint64, reversed bool) iterator {
@@ -287,7 +299,7 @@ func (w *wal) rebuildEntries() {
 type entry struct {
 	h   uint64
 	key []byte
-	p   *pointer
+	p   pointer
 }
 
 type walIterator struct {

@@ -23,6 +23,7 @@ type Writes interface {
 	Get(key []byte) (Item, error)
 	Set(e *badger.Entry)
 	Delete(key []byte)
+	ReplayRaw(fn func(key, value []byte, userMeta byte, expiresAt uint64) error) error
 	Replay(fn func(e *badger.Entry) error) error
 	Close() error
 }
@@ -94,6 +95,10 @@ func (w *writes) Delete(key []byte) {
 
 func (w *writes) Replay(fn func(e *badger.Entry) error) error {
 	return w.c.Replay(fn)
+}
+
+func (w *writes) ReplayRaw(fn func(key, value []byte, userMeta byte, expiresAt uint64) error) error {
+	return w.c.ReplayRaw(fn)
 }
 
 func (w *writes) Close() error {

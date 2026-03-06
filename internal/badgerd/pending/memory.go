@@ -117,6 +117,15 @@ func (m *mem) Replay(fn func(e *badger.Entry) error) error {
 	return nil
 }
 
+func (m *mem) ReplayRaw(fn func(key, value []byte, userMeta byte, expiresAt uint64) error) error {
+	for _, e := range m.m {
+		if err := fn(e.Key, e.Value, e.UserMeta, e.ExpiresAt); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (m *mem) Close() error {
 	return nil
 }

@@ -185,6 +185,7 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...protodb.GetOpt
 	}
 
 	o := makeGetOpts(opts...)
+	matcher := pf.NewMatcher()
 
 	k, _, _, _ := protodb.DataPrefix(m)
 	log := logger.C(ctx).WithFields("service", "protodb", "action", "watch", "key", string(k))
@@ -255,14 +256,14 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...protodb.GetOpt
 				}
 				var was bool
 				if old != nil {
-					was, err = pf.Match(old, o.Filter)
+					was, err = matcher.Match(old, o.Filter)
 					if err != nil {
 						return err
 					}
 				}
 				var is bool
 				if new != nil {
-					is, err = pf.Match(new, o.Filter)
+					is, err = matcher.Match(new, o.Filter)
 					if err != nil {
 						return err
 					}

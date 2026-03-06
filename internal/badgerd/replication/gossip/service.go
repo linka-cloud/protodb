@@ -105,11 +105,13 @@ func (r *Gossip) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 		defer r.txnMark.Done(cmsg.Commit.At)
 		log.Infof("commit transaction at %d", cmsg.Commit.At)
 		batch = r.db.NewWriteBatchAt(cmsg.Commit.At)
-		y.Check(w.Replay(func(e *badger.Entry) error {
-			if e.UserMeta != 0 {
-				return batch.DeleteAt(e.Key, cmsg.Commit.At)
+		y.Check(w.ReplayRaw(func(key, value []byte, userMeta byte, expiresAt uint64) error {
+			k := y.SafeCopy(nil, key)
+			if userMeta != 0 {
+				return batch.DeleteAt(k, cmsg.Commit.At)
 			}
-			return batch.SetEntryAt(e, cmsg.Commit.At)
+			v := y.SafeCopy(nil, value)
+			return batch.SetEntryAt(&badger.Entry{Key: k, Value: v, ExpiresAt: expiresAt, UserMeta: userMeta}, cmsg.Commit.At)
 		}))
 		y.Check(batch.Flush())
 		r.db.SetVersion(cmsg.Commit.At)
