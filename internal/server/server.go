@@ -27,9 +27,9 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
-	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
+	"go.linka.cloud/protodb/internal/anypb"
 	"go.linka.cloud/protodb/internal/protodb"
 	"go.linka.cloud/protodb/pb"
 )
@@ -368,7 +368,8 @@ func (s *server) maybeProxy(read bool) (pb.ProtoDBServer, bool, error) {
 	return pb.NewProtoDBProxy(pb.NewProtoDBClient(c)), true, nil
 }
 
-func toAnySlice(m ...proto.Message) (out []*anypb.Any, err error) {
+func toAnySlice(m ...proto.Message) ([]*anypb.Any, error) {
+	out := make([]*anypb.Any, 0, len(m))
 	for _, v := range m {
 		a, err := anypb.New(v)
 		if err != nil {
@@ -376,11 +377,11 @@ func toAnySlice(m ...proto.Message) (out []*anypb.Any, err error) {
 		}
 		out = append(out, a)
 	}
-	return
+	return out, nil
 }
 
 func (s *server) unmarshal(a *anypb.Any) (proto.Message, error) {
-	if m, err := a.UnmarshalNew(); err == nil {
+	if m, err := anypb.UnmarshalNew(a); err == nil {
 		return m, nil
 	}
 	desc, err := s.db.Resolver().FindDescriptorByName(a.MessageName())
@@ -392,7 +393,7 @@ func (s *server) unmarshal(a *anypb.Any) (proto.Message, error) {
 		return nil, fmt.Errorf("unexpected descriptor type: %T", md)
 	}
 	d := dynamicpb.NewMessage(md)
-	if err := anypb.UnmarshalTo(a, d, proto.UnmarshalOptions{}); err != nil {
+	if err := anypb.UnmarshalTo(a, d); err != nil {
 		return nil, err
 	}
 	return d, nil

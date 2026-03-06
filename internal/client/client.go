@@ -31,10 +31,10 @@ import (
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
-	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
+	"go.linka.cloud/protodb/internal/anypb"
 	"go.linka.cloud/protodb/internal/protodb"
 	"go.linka.cloud/protodb/pb"
 )
@@ -100,10 +100,10 @@ func (c *client) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOp
 	if err != nil {
 		return nil, nil, err
 	}
-	var msgs []proto.Message
+	msgs := make([]proto.Message, 0, len(res.Results))
 	for _, v := range res.Results {
 		msg := m.ProtoReflect().New().Interface()
-		if err := anypb.UnmarshalTo(v, msg, proto.UnmarshalOptions{}); err != nil {
+		if err := anypb.UnmarshalTo(v, msg); err != nil {
 			return nil, nil, err
 		}
 		msgs = append(msgs, msg)
@@ -130,7 +130,7 @@ func (c *client) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOp
 		return nil, err
 	}
 	msg := m.ProtoReflect().New().Interface()
-	if err := anypb.UnmarshalTo(res.Result, msg, proto.UnmarshalOptions{}); err != nil {
+	if err := anypb.UnmarshalTo(res.Result, msg); err != nil {
 		return nil, err
 	}
 	return msg, nil
@@ -276,10 +276,10 @@ func (t *txc) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 	if res.GetGet() == nil {
 		return nil, nil, fmt.Errorf("no response")
 	}
-	var msgs []proto.Message
+	msgs := make([]proto.Message, 0, len(res.GetGet().GetResults()))
 	for _, v := range res.GetGet().GetResults() {
 		msg := m.ProtoReflect().New().Interface()
-		if err := anypb.UnmarshalTo(v, msg, proto.UnmarshalOptions{}); err != nil {
+		if err := anypb.UnmarshalTo(v, msg); err != nil {
 			return nil, nil, err
 		}
 		msgs = append(msgs, msg)
@@ -316,7 +316,7 @@ func (t *txc) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 		return nil, fmt.Errorf("no response")
 	}
 	msg := m.ProtoReflect().New().Interface()
-	if err := anypb.UnmarshalTo(res.GetSet().GetResult(), msg, proto.UnmarshalOptions{}); err != nil {
+	if err := anypb.UnmarshalTo(res.GetSet().GetResult(), msg); err != nil {
 		return nil, err
 	}
 	return msg, nil
@@ -377,14 +377,14 @@ type eventc struct {
 func newEvent(e *pb.WatchEvent, err error) *eventc {
 	ev := &eventc{typ: e.Type, err: err}
 	if e.Old != nil {
-		m, err := anypb.UnmarshalNew(e.Old, proto.UnmarshalOptions{})
+		m, err := anypb.UnmarshalNew(e.Old)
 		if err != nil {
 			ev.err = multierr.Append(ev.err, fmt.Errorf("unmarshal old: %w", err))
 		}
 		ev.old = m
 	}
 	if e.New != nil {
-		m, err := anypb.UnmarshalNew(e.New, proto.UnmarshalOptions{})
+		m, err := anypb.UnmarshalNew(e.New)
 		if err != nil {
 			ev.err = multierr.Append(ev.err, fmt.Errorf("unmarshal new: %w", err))
 		}
