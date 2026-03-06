@@ -133,49 +133,45 @@ func (r *Gossip) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 	}
 	count := uint64(0)
 	for {
-		op, err := ss.Recv()
+		req, err := ss.Recv()
 		if err != nil {
 			return err
 		}
-		switch a := op.Action.(type) {
-		case *pb2.Op_New:
-			log.Debugf("new transaction at %d", a.New.At)
-			if err := ss.Send(&pb2.Ack{}); err != nil {
-				return gerrs.Internalf("failed to send ack: %v", err)
+		for _, op := range req.Ops {
+			switch a := op.Action.(type) {
+			case *pb2.Op_New:
+				log.Debugf("new transaction at %d", a.New.At)
+				if cmsg != nil && count == cid {
+					return commit()
+				}
+			case *pb2.Op_Set:
+				log.WithField("key", string(a.Set.Key)).Tracef("set key")
+				w.Set(&badger.Entry{
+					Key:       a.Set.Key,
+					Value:     a.Set.Value,
+					ExpiresAt: a.Set.ExpiresAt,
+				})
+				if cmsg != nil && count == cid {
+					return commit()
+				}
+			case *pb2.Op_Delete:
+				log.WithField("key", string(a.Delete.Key)).Tracef("delete key")
+				w.Delete(a.Delete.Key)
+				if cmsg != nil && count == cid {
+					return commit()
+				}
+			case *pb2.Op_Commit:
+				cmsg = a
+				cid = op.ID
+				if op.ID == count {
+					return commit()
+				}
 			}
-			if cmsg != nil && count == cid {
-				return commit()
-			}
-		case *pb2.Op_Set:
-			log.WithField("key", string(a.Set.Key)).Tracef("set key")
-			w.Set(&badger.Entry{
-				Key:       a.Set.Key,
-				Value:     a.Set.Value,
-				ExpiresAt: a.Set.ExpiresAt,
-			})
-			if err := ss.Send(&pb2.Ack{}); err != nil {
-				return gerrs.Internalf("failed to send ack: %v", err)
-			}
-			if cmsg != nil && count == cid {
-				return commit()
-			}
-		case *pb2.Op_Delete:
-			log.WithField("key", string(a.Delete.Key)).Tracef("delete key")
-			w.Delete(a.Delete.Key)
-			if err := ss.Send(&pb2.Ack{}); err != nil {
-				return gerrs.Internalf("failed to send ack: %v", err)
-			}
-			if cmsg != nil && count == cid {
-				return commit()
-			}
-		case *pb2.Op_Commit:
-			cmsg = a
-			cid = op.ID
-			if op.ID == count {
-				return commit()
-			}
+			count++
 		}
-		count++
+		if err := ss.Send(&pb2.Ack{}); err != nil {
+			return gerrs.Internalf("failed to send ack: %v", err)
+		}
 	}
 }
 

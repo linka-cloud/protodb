@@ -42,6 +42,12 @@ var InitResponseFields = struct {
 	Data: "data",
 }
 
+var ReplicateRequestFields = struct {
+	Ops string
+}{
+	Ops: "ops",
+}
+
 var OpFields = struct {
 	ID     string
 	New    string

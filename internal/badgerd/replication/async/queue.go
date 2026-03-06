@@ -177,6 +177,8 @@ func (q *Queue[Req, Res]) run() {
 				return
 			}
 			msg.ch <- &Result[Res]{}
+			closeSafe(q.close)
+			return
 		case <-q.close:
 			return
 		}

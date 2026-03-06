@@ -34,6 +34,9 @@ func (x *InitRequest) Default() {
 func (x *InitResponse) Default() {
 }
 
+func (x *ReplicateRequest) Default() {
+}
+
 func (x *Op) Default() {
 }
 

@@ -24,7 +24,7 @@ option (go.lint).all = true;
 
 service ReplicationService {
   rpc Init(InitRequest) returns (stream InitResponse) {}
-  rpc Replicate (stream Op) returns (stream Ack) {}
+  rpc Replicate (stream ReplicateRequest) returns (stream Ack) {}
   rpc Alive (stream Ack) returns (stream Ack) {}
   rpc Election (Message) returns (Message) {}
 }
@@ -36,6 +36,10 @@ message InitRequest {
 message InitResponse {
   uint64 last = 1;
   bytes data = 2;
+}
+
+message ReplicateRequest {
+  repeated Op ops = 1;
 }
 
 message Op {

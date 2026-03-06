@@ -231,7 +231,7 @@ func New(ctx context.Context, db replication.DB, opts ...replication.Option) (re
 		return nil, err
 	}
 
-	r.run(ctx)
+	r.run(r.ctx)
 	<-r.ready
 	log.Infof("init replication")
 	if err := r.init(ctx); err != nil {
@@ -277,9 +277,20 @@ func (r *Gossip) run(ctx context.Context) {
 	go r.handleEvents(ctx)
 	go func() {
 		log.Infof("waiting for leader or version to converge")
-		<-r.converged
+		select {
+		case <-r.converged:
+		case <-ctx.Done():
+			return
+		}
 		log.Infof("leader or version converged")
-		time.Sleep(time.Duration(rand.Intn(1000))*time.Millisecond + 100*time.Millisecond)
+		select {
+		case <-time.After(time.Duration(rand.Intn(1000))*time.Millisecond + 100*time.Millisecond):
+		case <-ctx.Done():
+			return
+		}
+		if ctx.Err() != nil {
+			return
+		}
 		r.Elect(ctx)
 	}()
 }

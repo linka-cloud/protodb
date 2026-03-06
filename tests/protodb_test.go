@@ -32,7 +32,7 @@ import (
 const data = "testdata"
 
 func TestServerReplicated(t *testing.T) {
-	for _, mode := range []protodb.ReplicationMode{protodb.ReplicationModeSync, protodb.ReplicationModeAsync} {
+	for _, mode := range []protodb.ReplicationMode{protodb.ReplicationModeAsync, protodb.ReplicationModeSync} {
 		t.Run(mode.String(), func(t *testing.T) {
 			for _, v := range Tests {
 				t.Run(v.Name, func(t *testing.T) {

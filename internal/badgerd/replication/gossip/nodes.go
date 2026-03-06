@@ -47,11 +47,17 @@ type node struct {
 
 func (r *Gossip) handleEvents(ctx context.Context) {
 	for e := range r.events {
-		go r.handleEvent(ctx, e)
+		if ctx.Err() != nil {
+			return
+		}
+		r.handleEvent(ctx, e)
 	}
 }
 
 func (r *Gossip) handleEvent(ctx context.Context, e memberlist.NodeEvent) {
+	if ctx.Err() != nil {
+		return
+	}
 	log := logger.C(ctx).WithField("component", "replication")
 	r.mu.Lock()
 	defer r.mu.Unlock()

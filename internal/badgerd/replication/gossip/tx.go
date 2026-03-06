@@ -26,6 +26,7 @@ import (
 	"github.com/dgraph-io/badger/v3"
 	"go.linka.cloud/grpc-toolkit/logger"
 	"go.uber.org/multierr"
+	"google.golang.org/protobuf/encoding/protowire"
 
 	"go.linka.cloud/protodb/internal/badgerd/pending"
 	"go.linka.cloud/protodb/internal/badgerd/replication"
@@ -34,23 +35,27 @@ import (
 )
 
 type stream struct {
-	q *async.Queue[*pb.Op, *pb.Ack]
+	q *async.Queue[*pb.ReplicateRequest, *pb.Ack]
+	s pb.ReplicationService_ReplicateClient
 	n string
 }
 
 func (r *Gossip) NewTx(ctx context.Context) (replication.Tx, error) {
 	log := logger.C(ctx)
 	var cs []*stream
-	if r.mode == replication.ModeAsync {
-		ctx = context.Background()
-	}
 	for _, v := range r.clients() {
 		log.Infof("Starting replicated transaction with %v", v.name)
 		c, err := v.repl.Replicate(ctx)
 		if err != nil {
 			return nil, err
 		}
-		cs = append(cs, &stream{n: v.name, q: async.NewQueue(c)})
+		s := &stream{n: v.name}
+		if r.mode == replication.ModeAsync {
+			s.q = async.NewQueue(c)
+		} else {
+			s.s = c
+		}
+		cs = append(cs, s)
 		log.Infof("Started replicated transaction with %v", v.name)
 	}
 	return &tx{db: r.db, mode: r.mode, cs: cs}, nil
@@ -61,9 +66,13 @@ type tx struct {
 	mode   replication.Mode
 	cs     []*stream
 	cmu    sync.RWMutex
+	bmu    sync.Mutex
+	swg    sync.WaitGroup
 	count  atomic.Uint64
 	readTs uint64
 	w      pending.Writes
+	buf    *pb.ReplicateRequest
+	bufSz  int
 	o      sync.Once
 }
 
@@ -114,16 +123,28 @@ func (r *tx) Set(ctx context.Context, key, value []byte, expiresAt uint64) error
 		Value:    value,
 		UserMeta: 0,
 	})
-	return r.do(ctx, &pb.Op{Action: &pb.Op_Set{Set: &pb.Set{Key: key, Value: value, ExpiresAt: expiresAt}}})
+	return r.doSized(ctx, &pb.Op{Action: &pb.Op_Set{Set: &pb.Set{Key: key, Value: value, ExpiresAt: expiresAt}}}, setOpWireSize(key, value))
 }
 
 func (r *tx) Delete(ctx context.Context, key []byte) error {
 	r.w.Delete(key)
-	return r.do(ctx, &pb.Op{Action: &pb.Op_Delete{Delete: &pb.Delete{Key: key}}})
+	return r.doSized(ctx, &pb.Op{Action: &pb.Op_Delete{Delete: &pb.Delete{Key: key}}}, deleteOpWireSize(key))
 }
 
 func (r *tx) Commit(ctx context.Context, at uint64) error {
-	go r.do(ctx, &pb.Op{Action: &pb.Op_Commit{Commit: &pb.Commit{At: at}}})
+	if r.mode == replication.ModeAsync {
+		r.swg.Add(1)
+		go func() {
+			defer r.swg.Done()
+			if err := r.do(ctx, &pb.Op{Action: &pb.Op_Commit{Commit: &pb.Commit{At: at}}}); err != nil {
+				logger.C(ctx).WithError(err).Error("failed to replicate commit")
+			}
+		}()
+	} else {
+		if err := r.do(ctx, &pb.Op{Action: &pb.Op_Commit{Commit: &pb.Commit{At: at}}}); err != nil {
+			return err
+		}
+	}
 	b := r.db.NewWriteBatchAt(r.readTs)
 	defer b.Cancel()
 	if err := r.w.Replay(func(e *badger.Entry) error {
@@ -148,13 +169,17 @@ func (r *tx) cancel(ctx context.Context) error {
 	var merr error
 	r.o.Do(func() {
 		merr := r.w.Close()
+		r.swg.Wait()
 		cs := r.streams()
 		ch := make(chan error, len(cs))
 		for _, v := range cs {
 			go func(v *stream) {
-				err := v.q.Close()
-				if r.mode == replication.ModeSync {
-					ch <- v.q.Close()
+				var err error
+				if r.mode == replication.ModeAsync {
+					err = v.q.Close()
+				} else {
+					err = v.s.CloseSend()
+					ch <- err
 				}
 				if err != nil {
 					logger.C(ctx).WithError(err).WithField("peer", v.n).Error("failed to close replication stream")
@@ -172,21 +197,110 @@ func (r *tx) cancel(ctx context.Context) error {
 }
 
 func (r *tx) do(ctx context.Context, msg *pb.Op) error {
+	return r.doSized(ctx, msg, opWireSize(msg))
+}
+
+func (r *tx) doSized(ctx context.Context, msg *pb.Op, sz int) error {
 	msg.ID = r.count.Load()
 	defer r.count.Add(1)
+	if _, ok := msg.Action.(*pb.Op_New); ok {
+		if err := r.flush(ctx); err != nil {
+			return err
+		}
+		return r.send(ctx, &pb.ReplicateRequest{Ops: []*pb.Op{msg}})
+	}
+	if _, ok := msg.Action.(*pb.Op_Commit); ok {
+		if r.mode == replication.ModeSync {
+			r.bmu.Lock()
+			if r.buf == nil {
+				r.buf = &pb.ReplicateRequest{}
+			}
+			r.buf.Ops = append(r.buf.Ops, msg)
+			req := r.buf
+			r.buf = nil
+			r.bufSz = 0
+			r.bmu.Unlock()
+			return r.send(ctx, req)
+		}
+		if err := r.flush(ctx); err != nil {
+			return err
+		}
+		return r.send(ctx, &pb.ReplicateRequest{Ops: []*pb.Op{msg}})
+	}
+	r.bmu.Lock()
+	if r.buf == nil {
+		r.buf = &pb.ReplicateRequest{}
+	}
+	r.buf.Ops = append(r.buf.Ops, msg)
+	r.bufSz += sz
+	flush := false
+	if r.bufSz >= replication.MaxMsgSize {
+		flush = true
+	}
+	r.bmu.Unlock()
+	if flush {
+		return r.flush(ctx)
+	}
+	return nil
+}
+
+func (r *tx) flush(ctx context.Context) error {
+	r.bmu.Lock()
+	if r.buf == nil || len(r.buf.Ops) == 0 {
+		r.bmu.Unlock()
+		return nil
+	}
+	req := r.buf
+	r.buf = nil
+	r.bufSz = 0
+	r.bmu.Unlock()
+	return r.send(ctx, req)
+}
+
+func opWireSize(op *pb.Op) int {
+	s := op.SizeVT()
+	return 1 + protowire.SizeVarint(uint64(s)) + s
+}
+
+func setOpWireSize(key, value []byte) int {
+	// 1 byte op field tag + varint(message length) + upper-bound payload size.
+	// We intentionally overestimate a bit to avoid exceeding MaxMsgSize.
+	s := 64 + len(key) + len(value)
+	return 1 + protowire.SizeVarint(uint64(s)) + s
+}
+
+func deleteOpWireSize(key []byte) int {
+	s := 32 + len(key)
+	return 1 + protowire.SizeVarint(uint64(s)) + s
+}
+
+func (r *tx) send(ctx context.Context, req *pb.ReplicateRequest) error {
+	if r.mode == replication.ModeAsync {
+		for _, v := range r.streams() {
+			a := v.q.Send(req)
+			r.swg.Add(1)
+			go func(v *stream, a async.Async[*pb.Ack]) {
+				defer r.swg.Done()
+				if err := r.handleErr(ctx, async.NewResult(v, a.WaitSent())); err != nil {
+					return
+				}
+				if _, err := a.Wait(); err != nil {
+					r.handleErr(ctx, async.NewResult(v, err))
+				}
+			}(v, a)
+		}
+		return nil
+	}
 	cs := r.streams()
 	ch := make(chan error, len(cs))
 	for _, v := range cs {
 		go func(v *stream) {
-			a := v.q.Send(msg.CloneVT())
 			switch r.mode {
-			case replication.ModeAsync:
-				ch <- r.handleErr(ctx, async.NewResult(v, a.WaitSent()))
-				if _, err := a.Wait(); err != nil {
-					r.handleErr(ctx, async.NewResult(v, err))
-				}
 			case replication.ModeSync:
-				_, err := a.Wait()
+				err := v.s.Send(req)
+				if err == nil {
+					_, err = v.s.Recv()
+				}
 				ch <- r.handleErr(ctx, async.NewResult(v, err))
 			}
 		}(v)
