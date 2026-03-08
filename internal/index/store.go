@@ -55,6 +55,19 @@ const (
 
 var tracer = otel.Tracer("protodb.index")
 
+func maybeStartSpan(ctx context.Context, name string, attrs ...attribute.KeyValue) (context.Context, func()) {
+	if !trace.SpanFromContext(ctx).IsRecording() {
+		return ctx, func() {}
+	}
+	var span trace.Span
+	if len(attrs) == 0 {
+		ctx, span = tracer.Start(ctx, name)
+	} else {
+		ctx, span = tracer.Start(ctx, name, trace.WithAttributes(attrs...))
+	}
+	return ctx, func() { span.End() }
+}
+
 type Store struct {
 	db       badgerd.DB
 	resolver protodesc.Resolver
@@ -70,44 +83,44 @@ func newTxStore(txn badgerd.Tx, resolver protodesc.Resolver) *TxStore {
 }
 
 func (s *TxStore) Tx(ctx context.Context) (pfindex.Tx, error) {
-	ctx, span := tracer.Start(ctx, "Index.TxStore.Tx")
-	defer span.End()
+	ctx, end := maybeStartSpan(ctx, "Index.TxStore.Tx")
+	defer end()
 	return &tx{store: &Store{resolver: s.resolver}, txn: s.txn, owned: false}, nil
 }
 
 func (s *TxStore) For(ctx context.Context, name protoreflect.FullName) (pfindex.FieldReader, error) {
-	ctx, span := tracer.Start(ctx, "Index.TxStore.For", trace.WithAttributes(attribute.String("message", string(name))))
-	defer span.End()
+	ctx, end := maybeStartSpan(ctx, "Index.TxStore.For", attribute.String("message", string(name)))
+	defer end()
 	return buildFieldReader(s.txn, s.resolver, name, true, nil)
 }
 
 func (s *TxStore) Add(ctx context.Context, key string, v protoreflect.Value, fds ...protoreflect.FieldDescriptor) error {
-	ctx, span := tracer.Start(ctx, "Index.TxStore.Add", trace.WithAttributes(attribute.Int("key_len", len(key))))
-	defer span.End()
+	ctx, end := maybeStartSpan(ctx, "Index.TxStore.Add", attribute.Int("key_len", len(key)))
+	defer end()
 	return (&tx{store: &Store{resolver: s.resolver}, txn: s.txn, owned: false}).Add(ctx, key, v, fds...)
 }
 
 func (s *TxStore) Remove(ctx context.Context, key string, f protoreflect.FieldDescriptor, v protoreflect.Value) error {
-	ctx, span := tracer.Start(ctx, "Index.TxStore.Remove", trace.WithAttributes(attribute.Int("key_len", len(key))))
-	defer span.End()
+	ctx, end := maybeStartSpan(ctx, "Index.TxStore.Remove", attribute.Int("key_len", len(key)))
+	defer end()
 	return (&tx{store: &Store{resolver: s.resolver}, txn: s.txn, owned: false}).Remove(ctx, key, f, v)
 }
 
 func (s *TxStore) Keys(ctx context.Context, uid uint64) ([]string, error) {
-	ctx, span := tracer.Start(ctx, "Index.TxStore.Keys", trace.WithAttributes(attribute.Int64("uid", int64(uid))))
-	defer span.End()
+	ctx, end := maybeStartSpan(ctx, "Index.TxStore.Keys", attribute.Int64("uid", int64(uid)))
+	defer end()
 	return (&tx{store: &Store{resolver: s.resolver}, txn: s.txn, owned: false}).Keys(ctx, uid)
 }
 
 func (s *TxStore) Clear(ctx context.Context, key string) error {
-	ctx, span := tracer.Start(ctx, "Index.TxStore.Clear", trace.WithAttributes(attribute.Int("key_len", len(key))))
-	defer span.End()
+	ctx, end := maybeStartSpan(ctx, "Index.TxStore.Clear", attribute.Int("key_len", len(key)))
+	defer end()
 	return (&tx{store: &Store{resolver: s.resolver}, txn: s.txn, owned: false}).Clear(ctx, key)
 }
 
 func (s *Store) Tx(ctx context.Context) (pfindex.Tx, error) {
-	ctx, span := tracer.Start(ctx, "Index.Store.Tx")
-	defer span.End()
+	ctx, end := maybeStartSpan(ctx, "Index.Store.Tx")
+	defer end()
 	txn, err := s.db.NewTransaction(ctx, true)
 	if err != nil {
 		return nil, err
@@ -116,8 +129,8 @@ func (s *Store) Tx(ctx context.Context) (pfindex.Tx, error) {
 }
 
 func (s *Store) For(ctx context.Context, name protoreflect.FullName) (pfindex.FieldReader, error) {
-	ctx, span := tracer.Start(ctx, "Index.Store.For", trace.WithAttributes(attribute.String("message", string(name))))
-	defer span.End()
+	ctx, end := maybeStartSpan(ctx, "Index.Store.For", attribute.String("message", string(name)))
+	defer end()
 	txn, err := s.db.NewTransaction(ctx, false)
 	if err != nil {
 		return nil, err
@@ -131,8 +144,8 @@ func (s *Store) For(ctx context.Context, name protoreflect.FullName) (pfindex.Fi
 }
 
 func (s *Store) Add(ctx context.Context, key string, v protoreflect.Value, fds ...protoreflect.FieldDescriptor) error {
-	ctx, span := tracer.Start(ctx, "Index.Store.Add", trace.WithAttributes(attribute.Int("key_len", len(key))))
-	defer span.End()
+	ctx, end := maybeStartSpan(ctx, "Index.Store.Add", attribute.Int("key_len", len(key)))
+	defer end()
 	txn, err := s.db.NewTransaction(ctx, true)
 	if err != nil {
 		return err
@@ -145,8 +158,8 @@ func (s *Store) Add(ctx context.Context, key string, v protoreflect.Value, fds .
 }
 
 func (s *Store) Remove(ctx context.Context, key string, f protoreflect.FieldDescriptor, v protoreflect.Value) error {
-	ctx, span := tracer.Start(ctx, "Index.Store.Remove", trace.WithAttributes(attribute.Int("key_len", len(key))))
-	defer span.End()
+	ctx, end := maybeStartSpan(ctx, "Index.Store.Remove", attribute.Int("key_len", len(key)))
+	defer end()
 	txn, err := s.db.NewTransaction(ctx, true)
 	if err != nil {
 		return err
@@ -159,8 +172,8 @@ func (s *Store) Remove(ctx context.Context, key string, f protoreflect.FieldDesc
 }
 
 func (s *Store) Keys(ctx context.Context, uid uint64) ([]string, error) {
-	ctx, span := tracer.Start(ctx, "Index.Store.Keys", trace.WithAttributes(attribute.Int64("uid", int64(uid))))
-	defer span.End()
+	ctx, end := maybeStartSpan(ctx, "Index.Store.Keys", attribute.Int64("uid", int64(uid)))
+	defer end()
 	txn, err := s.db.NewTransaction(ctx, false)
 	if err != nil {
 		return nil, err
@@ -170,8 +183,8 @@ func (s *Store) Keys(ctx context.Context, uid uint64) ([]string, error) {
 }
 
 func (s *Store) Clear(ctx context.Context, key string) error {
-	ctx, span := tracer.Start(ctx, "Index.Store.Clear", trace.WithAttributes(attribute.Int("key_len", len(key))))
-	defer span.End()
+	ctx, end := maybeStartSpan(ctx, "Index.Store.Clear", attribute.Int("key_len", len(key)))
+	defer end()
 	txn, err := s.db.NewTransaction(ctx, true)
 	if err != nil {
 		return err
@@ -204,14 +217,14 @@ func (t *tx) Close() error {
 }
 
 func (t *tx) For(ctx context.Context, name protoreflect.FullName) (pfindex.FieldReader, error) {
-	ctx, span := tracer.Start(ctx, "Index.Tx.For", trace.WithAttributes(attribute.String("message", string(name))))
-	defer span.End()
+	ctx, end := maybeStartSpan(ctx, "Index.Tx.For", attribute.String("message", string(name)))
+	defer end()
 	return buildFieldReader(t.txn, t.store.resolver, name, false, t)
 }
 
 func (t *tx) Add(ctx context.Context, key string, v protoreflect.Value, fds ...protoreflect.FieldDescriptor) error {
-	ctx, span := tracer.Start(ctx, "Index.Tx.Add", trace.WithAttributes(attribute.Int("key_len", len(key))))
-	defer span.End()
+	ctx, end := maybeStartSpan(ctx, "Index.Tx.Add", attribute.Int("key_len", len(key)))
+	defer end()
 	if len(fds) == 0 {
 		return nil
 	}
@@ -230,8 +243,8 @@ func (t *tx) Add(ctx context.Context, key string, v protoreflect.Value, fds ...p
 }
 
 func (t *tx) Remove(ctx context.Context, key string, f protoreflect.FieldDescriptor, v protoreflect.Value) error {
-	ctx, span := tracer.Start(ctx, "Index.Tx.Remove", trace.WithAttributes(attribute.Int("key_len", len(key))))
-	defer span.End()
+	ctx, end := maybeStartSpan(ctx, "Index.Tx.Remove", attribute.Int("key_len", len(key)))
+	defer end()
 	if f.IsMap() {
 		return nil
 	}
@@ -253,8 +266,8 @@ func (t *tx) Remove(ctx context.Context, key string, f protoreflect.FieldDescrip
 }
 
 func (t *tx) Keys(ctx context.Context, uid uint64) ([]string, error) {
-	ctx, span := tracer.Start(ctx, "Index.Tx.Keys", trace.WithAttributes(attribute.Int64("uid", int64(uid))))
-	defer span.End()
+	ctx, end := maybeStartSpan(ctx, "Index.Tx.Keys", attribute.Int64("uid", int64(uid)))
+	defer end()
 	item, err := t.txn.Get(ctx, protodb.UIDKey(uid))
 	if err != nil {
 		if errors.Is(err, badger.ErrKeyNotFound) {
@@ -262,19 +275,19 @@ func (t *tx) Keys(ctx context.Context, uid uint64) ([]string, error) {
 		}
 		return nil, err
 	}
-	var out []byte
+	var out string
 	if err := item.Value(func(val []byte) error {
-		out = append(out[:0], val...)
+		out = string(val)
 		return nil
 	}); err != nil {
 		return nil, err
 	}
-	return []string{string(out)}, nil
+	return []string{out}, nil
 }
 
 func (t *tx) Clear(ctx context.Context, key string) error {
-	ctx, span := tracer.Start(ctx, "Index.Tx.Clear", trace.WithAttributes(attribute.Int("key_len", len(key))))
-	defer span.End()
+	ctx, end := maybeStartSpan(ctx, "Index.Tx.Clear", attribute.Int("key_len", len(key)))
+	defer end()
 	uid, err := t.uid(ctx, key)
 	if err != nil {
 		if errors.Is(err, badger.ErrKeyNotFound) {

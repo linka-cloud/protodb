@@ -22,7 +22,10 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
+	"time"
+	"unsafe"
 
 	"github.com/dgraph-io/badger/v3"
 	"github.com/dgraph-io/badger/v3/y"
@@ -30,6 +33,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"go.linka.cloud/protodb/internal/badgerd"
 	"go.linka.cloud/protodb/internal/protodb"
@@ -101,8 +105,12 @@ func (tx *tx) GetOne(ctx context.Context, m proto.Message, opts ...protodb.GetOp
 }
 
 func (tx *tx) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOption) (out []proto.Message, info *protodb.PagingInfo, err error) {
-	ctx, span := tracer.Start(ctx, "Tx.Get", trace.WithAttributes(attribute.String("message", string(m.ProtoReflect().Descriptor().FullName()))))
-	defer span.End()
+	span := trace.SpanFromContext(ctx)
+	if span.IsRecording() {
+		ctx, span = tracer.Start(ctx, "Tx.Get")
+		span.SetAttributes(attribute.String("message", string(m.ProtoReflect().Descriptor().FullName())))
+		defer span.End()
+	}
 	defer metrics.Tx.Get.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 	tx.count++
 	out, info, err = tx.get(ctx, m, opts...)
@@ -120,6 +128,11 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 	}
 	o := makeGetOpts(opts...)
 	matcher := pf.NewMatcher()
+	if o.One {
+		out = make([]proto.Message, 0, 1)
+	} else if lim := o.Paging.GetLimit(); lim > 0 {
+		out = make([]proto.Message, 0, lim)
+	}
 	prefix, field, value, _ := protodb.DataPrefix(m)
 	span.SetAttributes(
 		attribute.String("prefix", string(prefix)),
@@ -217,17 +230,25 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 			}
 		}
 		var (
-			count        = uint64(0)
 			hasNext      = false
+			matched      = uint64(0)
 			reads        int
 			readBytes    int
 			resultsBytes int
 		)
+		windowStart := uint64(0)
+		windowLimit := o.Paging.GetLimit()
+		if !hasContinuationToken {
+			windowStart = o.Paging.GetOffset()
+		}
+		if o.One && (windowLimit == 0 || windowLimit > 1) {
+			windowLimit = 1
+		}
 		for _, key := range keys {
 			if err := ctx.Err(); err != nil {
 				return nil, nil, err
 			}
-			fullKey := []byte(key)
+			fullKey := stringToBytesNoCopy(key)
 			if !bytes.HasPrefix(fullKey, prefix) {
 				continue
 			}
@@ -238,6 +259,14 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 				if o.Reverse && bytes.Compare(fullKey, inToken.GetLastPrefix()) >= 0 {
 					continue
 				}
+			}
+			matched++
+			if matched <= windowStart {
+				continue
+			}
+			if windowLimit != 0 && uint64(len(out)) >= windowLimit {
+				hasNext = true
+				break
 			}
 			item, err := tx.txn.Get(ctx, fullKey)
 			if err != nil {
@@ -259,16 +288,6 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 			}); err != nil {
 				return nil, nil, err
 			}
-			count++
-			if max := o.Paging.GetOffset() + o.Paging.GetLimit(); max != 0 {
-				if count == max+1 || (hasContinuationToken && count == o.Paging.GetLimit()+1) {
-					hasNext = true
-					break
-				}
-				if !hasContinuationToken && count <= o.Paging.GetOffset() {
-					continue
-				}
-			}
 			outToken.LastPrefix = append(outToken.LastPrefix[:0], fullKey...)
 			if o.FieldMask != nil {
 				if err := FilterFieldMask(v, o.FieldMask); err != nil {
@@ -285,7 +304,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 		span.SetAttributes(
 			attribute.Bool("index", true),
 			attribute.Int64("reads", int64(reads)),
-			attribute.Int64("results", int64(count)),
+			attribute.Int64("results", int64(len(out))),
 			attribute.Bool("has_next", hasNext),
 			attribute.Int("read_bytes", readBytes),
 			attribute.Int("results_bytes", resultsBytes),
@@ -322,19 +341,19 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 		}
 		var size int
 		item := it.Item()
-		key := string(item.Key()[len(prefix):])
+		itemKey := item.Key()
 		if item.Version() <= inToken.Ts &&
 			count < o.Paging.GetOffset() {
 			// could be inlined, but it is easier to read this way
-			if !o.Reverse && bytes.Compare(item.Key(), inToken.GetLastPrefix()) <= 0 {
+			if !o.Reverse && bytes.Compare(itemKey, inToken.GetLastPrefix()) <= 0 {
 				continue
 			}
-			if o.Reverse && bytes.Compare(item.Key(), inToken.GetLastPrefix()) >= 0 {
+			if o.Reverse && bytes.Compare(itemKey, inToken.GetLastPrefix()) >= 0 {
 				continue
 			}
 		}
 
-		tx.db.opts.logger.Tracef("checking %q", string(item.Key()))
+		tx.db.opts.logger.Tracef("checking %q", string(itemKey))
 		reads++
 		v := m.ProtoReflect().New().Interface()
 
@@ -359,6 +378,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 				continue
 			}
 		} else {
+			key := string(itemKey[len(prefix):])
 			match, err = MatchKey(o.Filter, key)
 			if err != nil {
 				return nil, nil, err
@@ -376,7 +396,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 				return nil, nil, err
 			}
 		}
-		tx.db.opts.logger.Tracef("key %q match filter", string(item.Key()))
+		tx.db.opts.logger.Tracef("key %q match filter", string(itemKey))
 		count++
 		if max := o.Paging.GetOffset() + o.Paging.GetLimit(); max != 0 {
 			if count == max+1 || (hasContinuationToken && count == o.Paging.GetLimit()+1) {
@@ -387,13 +407,13 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 				continue
 			}
 		}
-		outToken.LastPrefix = item.KeyCopy(outToken.LastPrefix)
+		outToken.LastPrefix = append(outToken.LastPrefix[:0], itemKey...)
 		if o.FieldMask != nil {
 			if err := FilterFieldMask(v, o.FieldMask); err != nil {
 				return nil, nil, err
 			}
 		}
-		tx.txn.AddReadKey(item.Key())
+		tx.txn.AddReadKey(itemKey)
 		out = append(out, v)
 		resultsBytes += int(size)
 		if o.One {
@@ -427,8 +447,12 @@ func (tx *tx) getRaw(ctx context.Context, key []byte) ([]byte, error) {
 }
 
 func (tx *tx) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOption) (proto.Message, error) {
-	ctx, span := tracer.Start(ctx, "Tx.Set", trace.WithAttributes(attribute.String("message", string(m.ProtoReflect().Descriptor().FullName()))))
-	defer span.End()
+	span := trace.SpanFromContext(ctx)
+	if span.IsRecording() {
+		ctx, span = tracer.Start(ctx, "Tx.Set")
+		span.SetAttributes(attribute.String("message", string(m.ProtoReflect().Descriptor().FullName())))
+		defer span.End()
+	}
 	defer metrics.Tx.Set.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 	tx.count++
 	out, err := tx.set(ctx, m, opts...)
@@ -458,12 +482,14 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 	if err != nil {
 		return nil, err
 	}
-	span.SetAttributes(
-		attribute.String("prefix", string(k)),
-		attribute.String("key", value),
-		attribute.String("key_field", field),
-		attribute.Int64("uid", int64(uid)),
-	)
+	if span.IsRecording() {
+		span.SetAttributes(
+			attribute.String("prefix", string(k)),
+			attribute.String("key", value),
+			attribute.String("key_field", field),
+			attribute.Int64("uid", int64(uid)),
+		)
+	}
 	if !ok {
 		if err := ctx.Err(); err != nil {
 			tx.close()
@@ -481,8 +507,11 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 		}
 	}
 	var oldMsg proto.Message
+	skipIndexUpdate := false
 	if o.FieldMask != nil {
-		span.SetAttributes(attribute.StringSlice("field_mask", o.FieldMask.GetPaths()))
+		if span.IsRecording() {
+			span.SetAttributes(attribute.StringSlice("field_mask", o.FieldMask.GetPaths()))
+		}
 		item, err := tx.txn.Get(ctx, k)
 		if err != nil {
 			return nil, err
@@ -497,6 +526,7 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 		if err := ApplyFieldMask(m, old, o.FieldMask); err != nil {
 			return nil, err
 		}
+		skipIndexUpdate = !fieldMaskTouchesIndexed(old.(proto.Message).ProtoReflect().Descriptor(), o.FieldMask.GetPaths(), tx.db.idx.CollectEntries(old.(proto.Message).ProtoReflect().Descriptor()))
 		m = old
 	} else if ok {
 		item, err := tx.txn.Get(ctx, k)
@@ -524,7 +554,7 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 	if err != nil {
 		return nil, err
 	}
-	if ok {
+	if ok && !skipIndexUpdate {
 		if err := tx.db.idx.Update(ctx, tx, k, oldMsg, m); err != nil {
 			return nil, err
 		}
@@ -535,19 +565,23 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 		}
 	}
 	s := int64(len(b))
-	span.SetAttributes(attribute.Int64("size", s))
+	if span.IsRecording() {
+		span.SetAttributes(attribute.Int64("size", s))
+	}
 	tx.size += s
-	e := badger.NewEntry(k, b)
+	expiresAt := uint64(0)
 	if o.TTL != 0 {
-		e = e.WithTTL(o.TTL)
-		span.SetAttributes(attribute.String("ttl", o.TTL.String()))
+		expiresAt = uint64(time.Now().Add(o.TTL).Unix())
+		if span.IsRecording() {
+			span.SetAttributes(attribute.String("ttl", o.TTL.String()))
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		tx.close()
 		return nil, err
 	}
 	tx.db.opts.logger.Tracef("set key %q", string(k))
-	return m, tx.txn.Set(ctx, e.Key, e.Value, e.ExpiresAt)
+	return m, tx.txn.Set(ctx, k, b, expiresAt)
 }
 
 func (tx *tx) setRaw(ctx context.Context, key, val []byte) error {
@@ -563,8 +597,12 @@ func (tx *tx) setRaw(ctx context.Context, key, val []byte) error {
 }
 
 func (tx *tx) Delete(ctx context.Context, m proto.Message) error {
-	ctx, span := tracer.Start(ctx, "Tx.Delete", trace.WithAttributes(attribute.String("message", string(m.ProtoReflect().Descriptor().FullName()))))
-	defer span.End()
+	span := trace.SpanFromContext(ctx)
+	if span.IsRecording() {
+		ctx, span = tracer.Start(ctx, "Tx.Delete")
+		span.SetAttributes(attribute.String("message", string(m.ProtoReflect().Descriptor().FullName())))
+		defer span.End()
+	}
 	defer metrics.Tx.Delete.Start(string(m.ProtoReflect().Descriptor().FullName())).End()
 	tx.count++
 	if err := tx.delete(ctx, m); err != nil {
@@ -681,8 +719,11 @@ func (tx *tx) uid(ctx context.Context, key []byte, inc bool) (uint64, bool, erro
 }
 
 func (tx *tx) Commit(ctx context.Context) error {
-	ctx, span := tracer.Start(ctx, "Tx.Commit")
-	defer span.End()
+	span := trace.SpanFromContext(ctx)
+	if span.IsRecording() {
+		ctx, span = tracer.Start(ctx, "Tx.Commit")
+		defer span.End()
+	}
 	if tx.closed() {
 		return badger.ErrDBClosed
 	}
@@ -729,6 +770,68 @@ func (tx *tx) close() {
 	tx.m.Unlock()
 }
 
+func fieldMaskTouchesIndexed(md protoreflect.MessageDescriptor, maskPaths []string, entries []string) bool {
+	if len(maskPaths) == 0 || len(entries) == 0 {
+		return true
+	}
+	indexed := make([]string, 0, len(entries))
+	for _, e := range entries {
+		p := e
+		if i := strings.IndexByte(e, '|'); i >= 0 {
+			p = e[:i]
+		}
+		if p != "" {
+			indexed = append(indexed, p)
+		}
+	}
+	if len(indexed) == 0 {
+		return false
+	}
+	for _, mp := range maskPaths {
+		np, err := fieldMaskPathToNumberPath(md, mp)
+		if err != nil {
+			return true
+		}
+		for _, ip := range indexed {
+			if np == ip || strings.HasPrefix(np, ip+".") || strings.HasPrefix(ip, np+".") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func fieldMaskPathToNumberPath(md protoreflect.MessageDescriptor, p string) (string, error) {
+	if p == "" {
+		return "", fmt.Errorf("empty field mask path")
+	}
+	parts := strings.Split(p, ".")
+	cur := md
+	nums := make([]string, 0, len(parts))
+	for i, part := range parts {
+		fd := cur.Fields().ByName(protoreflect.Name(part))
+		if fd == nil {
+			return "", fmt.Errorf("field mask path %q not found", p)
+		}
+		nums = append(nums, fmt.Sprintf("%d", fd.Number()))
+		if i == len(parts)-1 {
+			break
+		}
+		if fd.Kind() != protoreflect.MessageKind {
+			return "", fmt.Errorf("field mask path %q is invalid", p)
+		}
+		cur = fd.Message()
+	}
+	return strings.Join(nums, "."), nil
+}
+
+func stringToBytesNoCopy(s string) []byte {
+	if len(s) == 0 {
+		return nil
+	}
+	return unsafe.Slice(unsafe.StringData(s), len(s))
+}
+
 func hash(f protodb.Filter) (hash string, err error) {
 	var b []byte
 	if f != nil {
@@ -737,8 +840,6 @@ func hash(f protodb.Filter) (hash string, err error) {
 			return "", err
 		}
 	}
-	sha := sha512.New()
-	sha.Write(b)
-	h := sha.Sum(nil)
-	return base64.StdEncoding.EncodeToString(h), nil
+	h := sha512.Sum512(b)
+	return base64.StdEncoding.EncodeToString(h[:]), nil
 }
