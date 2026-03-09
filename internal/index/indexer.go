@@ -61,6 +61,12 @@ type Indexer struct {
 	entries   map[protoreflect.FullName]entryCache
 }
 
+type FindOpts struct {
+	Offset  uint64
+	Limit   uint64
+	Reverse bool
+}
+
 type entryCache struct {
 	sig     string
 	entries []string
@@ -270,9 +276,43 @@ func (idx *Indexer) FindKeys(ctx context.Context, tx Tx, name protoreflect.FullN
 	ctx, span := idxTracer.Start(ctx, "Indexer.FindKeys")
 	defer span.End()
 	span.SetAttributes(attribute.String("index.type", string(name)))
-	ix := pfindex.New(newTxStore(tx.Txn(), idx.reg), idx.Selector)
-	keys, collisions, err := ix.Find(ctx, name, f)
-	return keys, collisions, err
+	uids, err := idx.FindUIDs(ctx, tx, name, f, FindOpts{})
+	if err != nil {
+		return nil, nil, err
+	}
+	keys := make([]string, 0)
+	for _, uid := range uids {
+		item, err := tx.Txn().Get(ctx, protodb.UIDKey(uid))
+		if err != nil {
+			if errors.Is(err, badger.ErrKeyNotFound) {
+				continue
+			}
+			return nil, nil, err
+		}
+		var key string
+		if err := item.Value(func(val []byte) error {
+			key = string(val)
+			return nil
+		}); err != nil {
+			return nil, nil, err
+		}
+		if key != "" {
+			keys = append(keys, key)
+		}
+	}
+	return keys, nil, nil
+}
+
+func (idx *Indexer) FindUIDs(ctx context.Context, tx Tx, name protoreflect.FullName, f protodb.Filter, opts FindOpts) ([]uint64, error) {
+	ix := pfindex.NewUID(newUIDTxStore(tx.Txn(), idx.reg), idx.Selector)
+	out := make([]uint64, 0)
+	for uid, err := range ix.Find(ctx, name, f, pfindex.FindOptions{Offset: opts.Offset, Limit: opts.Limit, Reverse: opts.Reverse}) {
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, uid)
+	}
+	return out, nil
 }
 
 func (idx *Indexer) Insert(ctx context.Context, tx Tx, key []byte, m proto.Message) error {
@@ -281,8 +321,15 @@ func (idx *Indexer) Insert(ctx context.Context, tx Tx, key []byte, m proto.Messa
 	if m != nil {
 		span.SetAttributes(attribute.String("index.type", string(m.ProtoReflect().Descriptor().FullName())))
 	}
-	ix := pfindex.New(newTxStore(tx.Txn(), idx.reg), idx.Selector)
-	return ix.Insert(ctx, string(key), m)
+	uid, ok, err := tx.UID(ctx, key, false)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return badger.ErrKeyNotFound
+	}
+	ix := pfindex.NewUID(newUIDTxStore(tx.Txn(), idx.reg), idx.Selector)
+	return ix.Insert(ctx, uid, m)
 }
 
 func (idx *Indexer) Update(ctx context.Context, tx Tx, key []byte, oldMsg, newMsg proto.Message) error {
@@ -295,25 +342,31 @@ func (idx *Indexer) Update(ctx context.Context, tx Tx, key []byte, oldMsg, newMs
 		attribute.Bool("index.has_old", oldMsg != nil),
 		attribute.Bool("index.has_new", newMsg != nil),
 	)
-	ix := pfindex.New(newTxStore(tx.Txn(), idx.reg), idx.Selector)
+	uid, ok, err := tx.UID(ctx, key, false)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return badger.ErrKeyNotFound
+	}
+	ix := pfindex.NewUID(newUIDTxStore(tx.Txn(), idx.reg), idx.Selector)
 	if oldMsg != nil {
-		txv, err := newTxStore(tx.Txn(), idx.reg).Tx(ctx)
+		txv, err := newUIDTxStore(tx.Txn(), idx.reg).Tx(ctx)
 		if err != nil {
 			return err
 		}
-		if err := idx.removeValues(ctx, txv, key, oldMsg.ProtoReflect()); err != nil {
+		if err := idx.removeValues(ctx, txv, uid, oldMsg.ProtoReflect()); err != nil {
 			return err
 		}
 	}
 	if newMsg == nil {
 		return nil
 	}
-	return ix.Insert(ctx, string(key), newMsg)
+	return ix.Insert(ctx, uid, newMsg)
 }
 
-func (idx *Indexer) removeValues(ctx context.Context, tx pfindex.Tx, key []byte, msg protoreflect.Message, fds ...protoreflect.FieldDescriptor) error {
+func (idx *Indexer) removeValues(ctx context.Context, tx pfindex.UIDTx, uid uint64, msg protoreflect.Message, fds ...protoreflect.FieldDescriptor) error {
 	fields := msg.Descriptor().Fields()
-	keyStr := string(key)
 	for i := 0; i < fields.Len(); i++ {
 		fd := fields.Get(i)
 		path := append(fds, fd)
@@ -326,7 +379,7 @@ func (idx *Indexer) removeValues(ctx context.Context, tx pfindex.Tx, key []byte,
 				list := rval.List()
 				for j := 0; j < list.Len(); j++ {
 					child := list.Get(j).Message()
-					if err := idx.removeValues(ctx, tx, key, child, path...); err != nil {
+					if err := idx.removeValues(ctx, tx, uid, child, path...); err != nil {
 						return err
 					}
 				}
@@ -341,7 +394,7 @@ func (idx *Indexer) removeValues(ctx context.Context, tx pfindex.Tx, key []byte,
 			}
 			list := rval.List()
 			for j := 0; j < list.Len(); j++ {
-				if err := tx.Remove(ctx, keyStr, fd, list.Get(j)); err != nil {
+				if err := tx.RemoveUID(ctx, uid, fd, list.Get(j)); err != nil {
 					return err
 				}
 			}
@@ -351,7 +404,7 @@ func (idx *Indexer) removeValues(ctx context.Context, tx pfindex.Tx, key []byte,
 			if !rval.Message().IsValid() {
 				continue
 			}
-			if err := idx.removeValues(ctx, tx, key, rval.Message(), path...); err != nil {
+			if err := idx.removeValues(ctx, tx, uid, rval.Message(), path...); err != nil {
 				return err
 			}
 			continue
@@ -366,7 +419,7 @@ func (idx *Indexer) removeValues(ctx context.Context, tx pfindex.Tx, key []byte,
 		if !ok {
 			continue
 		}
-		if err := tx.Remove(ctx, keyStr, fd, rval); err != nil {
+		if err := tx.RemoveUID(ctx, uid, fd, rval); err != nil {
 			return err
 		}
 	}
@@ -520,7 +573,7 @@ func (idx *Indexer) addIndexEntries(ctx context.Context, tx Tx, md protoreflect.
 		_, ok := allowed[path]
 		return ok, nil
 	}
-	partial := pfindex.New(newTxStore(tx.Txn(), idx.reg), selector)
+	partial := pfindex.NewUID(newUIDTxStore(tx.Txn(), idx.reg), selector)
 	dataPrefix := fmt.Appendf(nil, "%s/%s/", protodb.Data, md.FullName())
 	dataIt := tx.Txn().Iterator(badger.IteratorOptions{Prefix: dataPrefix, PrefetchValues: false})
 	defer dataIt.Close()
@@ -550,7 +603,7 @@ func (idx *Indexer) addIndexEntries(ctx context.Context, tx Tx, md protoreflect.
 				return err
 			}
 		}
-		if err := partial.Insert(ctx, string(key), msg); err != nil {
+		if err := partial.Insert(ctx, uid, msg); err != nil {
 			return err
 		}
 	}

@@ -21,7 +21,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +35,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"go.linka.cloud/protodb/internal/badgerd"
+	idxstore "go.linka.cloud/protodb/internal/index"
 	"go.linka.cloud/protodb/internal/protodb"
 	"go.linka.cloud/protodb/internal/token"
 )
@@ -219,56 +219,66 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 	}
 	span.SetAttributes(attribute.Bool("use_index", useIndex))
 	if useIndex {
-		keys, _, err := idxr.FindKeys(ctx, tx, m.ProtoReflect().Descriptor().FullName(), o.Filter)
+		windowLimit := o.Paging.GetLimit()
+		if o.One && (windowLimit == 0 || windowLimit > 1) {
+			windowLimit = 1
+		}
+		findOpts := idxstore.FindOpts{Reverse: o.Reverse}
+		if !hasContinuationToken {
+			findOpts.Offset = o.Paging.GetOffset()
+			if windowLimit != 0 {
+				findOpts.Limit = windowLimit + 1
+			}
+		}
+		uids, err := idxr.FindUIDs(ctx, tx, m.ProtoReflect().Descriptor().FullName(), o.Filter, findOpts)
 		if err != nil {
 			return nil, nil, err
 		}
-		sort.Strings(keys)
-		if o.Reverse {
-			for i, j := 0, len(keys)-1; i < j; i, j = i+1, j-1 {
-				keys[i], keys[j] = keys[j], keys[i]
-			}
+		hasNext := false
+		if !hasContinuationToken && windowLimit != 0 && uint64(len(uids)) > windowLimit {
+			hasNext = true
+			uids = uids[:windowLimit]
 		}
 		var (
-			hasNext      = false
-			matched      = uint64(0)
 			reads        int
 			readBytes    int
 			resultsBytes int
 		)
-		windowStart := uint64(0)
-		windowLimit := o.Paging.GetLimit()
-		if !hasContinuationToken {
-			windowStart = o.Paging.GetOffset()
-		}
-		if o.One && (windowLimit == 0 || windowLimit > 1) {
-			windowLimit = 1
-		}
-		for _, key := range keys {
+		for _, uid := range uids {
 			if err := ctx.Err(); err != nil {
 				return nil, nil, err
 			}
-			fullKey := stringToBytesNoCopy(key)
-			if !bytes.HasPrefix(fullKey, prefix) {
+			uidItem, err := tx.txn.Get(ctx, protodb.UIDKey(uid))
+			if err != nil {
+				if errors.Is(err, badger.ErrKeyNotFound) {
+					continue
+				}
+				return nil, nil, err
+			}
+			var fullKey string
+			if err := uidItem.Value(func(val []byte) error {
+				fullKey = string(val)
+				return nil
+			}); err != nil {
+				return nil, nil, err
+			}
+			fullKeyBytes := stringToBytesNoCopy(fullKey)
+			if !bytes.HasPrefix(fullKeyBytes, prefix) {
 				continue
 			}
 			if hasContinuationToken {
-				if !o.Reverse && bytes.Compare(fullKey, inToken.GetLastPrefix()) <= 0 {
+				if !o.Reverse && bytes.Compare(fullKeyBytes, inToken.GetLastPrefix()) <= 0 {
 					continue
 				}
-				if o.Reverse && bytes.Compare(fullKey, inToken.GetLastPrefix()) >= 0 {
+				if o.Reverse && bytes.Compare(fullKeyBytes, inToken.GetLastPrefix()) >= 0 {
 					continue
 				}
+				if windowLimit != 0 && uint64(len(out)) >= windowLimit {
+					hasNext = true
+					break
+				}
 			}
-			matched++
-			if matched <= windowStart {
-				continue
-			}
-			if windowLimit != 0 && uint64(len(out)) >= windowLimit {
-				hasNext = true
-				break
-			}
-			item, err := tx.txn.Get(ctx, fullKey)
+			item, err := tx.txn.Get(ctx, fullKeyBytes)
 			if err != nil {
 				if errors.Is(err, badger.ErrKeyNotFound) {
 					continue
@@ -288,13 +298,13 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 			}); err != nil {
 				return nil, nil, err
 			}
-			outToken.LastPrefix = append(outToken.LastPrefix[:0], fullKey...)
+			outToken.LastPrefix = append(outToken.LastPrefix[:0], fullKeyBytes...)
 			if o.FieldMask != nil {
 				if err := FilterFieldMask(v, o.FieldMask); err != nil {
 					return nil, nil, err
 				}
 			}
-			tx.txn.AddReadKey(fullKey)
+			tx.txn.AddReadKey(fullKeyBytes)
 			out = append(out, v)
 			resultsBytes += int(size)
 			if o.One {

@@ -28,7 +28,7 @@ require (
 	go.linka.cloud/protoc-gen-defaults v0.4.0
 	go.linka.cloud/protoc-gen-go-fields v0.4.0
 	go.linka.cloud/protoc-gen-proxy v0.0.0-20230802234945-cc173b85cf13
-	go.linka.cloud/protofilters v0.9.1-0.20260305145701-8dffea6caa89
+	go.linka.cloud/protofilters v0.9.1-0.20260308143537-aeb5a53b4953
 	go.linka.cloud/pubsub v0.0.0-20220728154114-8213058139f3
 	go.opentelemetry.io/otel v1.36.0
 	go.opentelemetry.io/otel/trace v1.36.0

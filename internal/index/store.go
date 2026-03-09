@@ -73,52 +73,46 @@ type Store struct {
 	resolver protodesc.Resolver
 }
 
-type TxStore struct {
+type UIDTxStore struct {
 	txn      badgerd.Tx
 	resolver protodesc.Resolver
 }
 
-func newTxStore(txn badgerd.Tx, resolver protodesc.Resolver) *TxStore {
-	return &TxStore{txn: txn, resolver: resolver}
+func newUIDTxStore(txn badgerd.Tx, resolver protodesc.Resolver) *UIDTxStore {
+	return &UIDTxStore{txn: txn, resolver: resolver}
 }
 
-func (s *TxStore) Tx(ctx context.Context) (pfindex.Tx, error) {
-	ctx, end := maybeStartSpan(ctx, "Index.TxStore.Tx")
+func (s *UIDTxStore) Tx(ctx context.Context) (pfindex.UIDTx, error) {
+	ctx, end := maybeStartSpan(ctx, "Index.UIDTxStore.Tx")
 	defer end()
 	return &tx{store: &Store{resolver: s.resolver}, txn: s.txn, owned: false}, nil
 }
 
-func (s *TxStore) For(ctx context.Context, name protoreflect.FullName) (pfindex.FieldReader, error) {
-	ctx, end := maybeStartSpan(ctx, "Index.TxStore.For", attribute.String("message", string(name)))
+func (s *UIDTxStore) For(ctx context.Context, name protoreflect.FullName) (pfindex.FieldReader, error) {
+	ctx, end := maybeStartSpan(ctx, "Index.UIDTxStore.For", attribute.String("message", string(name)))
 	defer end()
 	return buildFieldReader(s.txn, s.resolver, name, true, nil)
 }
 
-func (s *TxStore) Add(ctx context.Context, key string, v protoreflect.Value, fds ...protoreflect.FieldDescriptor) error {
-	ctx, end := maybeStartSpan(ctx, "Index.TxStore.Add", attribute.Int("key_len", len(key)))
+func (s *UIDTxStore) AddUID(ctx context.Context, uid uint64, v protoreflect.Value, fds ...protoreflect.FieldDescriptor) error {
+	ctx, end := maybeStartSpan(ctx, "Index.UIDTxStore.AddUID", attribute.Int64("uid", int64(uid)))
 	defer end()
-	return (&tx{store: &Store{resolver: s.resolver}, txn: s.txn, owned: false}).Add(ctx, key, v, fds...)
+	return (&tx{store: &Store{resolver: s.resolver}, txn: s.txn, owned: false}).AddUID(ctx, uid, v, fds...)
 }
 
-func (s *TxStore) Remove(ctx context.Context, key string, f protoreflect.FieldDescriptor, v protoreflect.Value) error {
-	ctx, end := maybeStartSpan(ctx, "Index.TxStore.Remove", attribute.Int("key_len", len(key)))
+func (s *UIDTxStore) RemoveUID(ctx context.Context, uid uint64, f protoreflect.FieldDescriptor, v protoreflect.Value) error {
+	ctx, end := maybeStartSpan(ctx, "Index.UIDTxStore.RemoveUID", attribute.Int64("uid", int64(uid)))
 	defer end()
-	return (&tx{store: &Store{resolver: s.resolver}, txn: s.txn, owned: false}).Remove(ctx, key, f, v)
+	return (&tx{store: &Store{resolver: s.resolver}, txn: s.txn, owned: false}).RemoveUID(ctx, uid, f, v)
 }
 
-func (s *TxStore) Keys(ctx context.Context, uid uint64) ([]string, error) {
-	ctx, end := maybeStartSpan(ctx, "Index.TxStore.Keys", attribute.Int64("uid", int64(uid)))
+func (s *UIDTxStore) ClearUID(ctx context.Context, uid uint64) error {
+	ctx, end := maybeStartSpan(ctx, "Index.UIDTxStore.ClearUID", attribute.Int64("uid", int64(uid)))
 	defer end()
-	return (&tx{store: &Store{resolver: s.resolver}, txn: s.txn, owned: false}).Keys(ctx, uid)
+	return (&tx{store: &Store{resolver: s.resolver}, txn: s.txn, owned: false}).ClearUID(ctx, uid)
 }
 
-func (s *TxStore) Clear(ctx context.Context, key string) error {
-	ctx, end := maybeStartSpan(ctx, "Index.TxStore.Clear", attribute.Int("key_len", len(key)))
-	defer end()
-	return (&tx{store: &Store{resolver: s.resolver}, txn: s.txn, owned: false}).Clear(ctx, key)
-}
-
-func (s *Store) Tx(ctx context.Context) (pfindex.Tx, error) {
+func (s *Store) Tx(ctx context.Context) (pfindex.UIDTx, error) {
 	ctx, end := maybeStartSpan(ctx, "Index.Store.Tx")
 	defer end()
 	txn, err := s.db.NewTransaction(ctx, true)
@@ -143,54 +137,43 @@ func (s *Store) For(ctx context.Context, name protoreflect.FullName) (pfindex.Fi
 	return reader, nil
 }
 
-func (s *Store) Add(ctx context.Context, key string, v protoreflect.Value, fds ...protoreflect.FieldDescriptor) error {
-	ctx, end := maybeStartSpan(ctx, "Index.Store.Add", attribute.Int("key_len", len(key)))
+func (s *Store) AddUID(ctx context.Context, uid uint64, v protoreflect.Value, fds ...protoreflect.FieldDescriptor) error {
+	ctx, end := maybeStartSpan(ctx, "Index.Store.AddUID", attribute.Int64("uid", int64(uid)))
 	defer end()
 	txn, err := s.db.NewTransaction(ctx, true)
 	if err != nil {
 		return err
 	}
 	defer txn.Close(ctx)
-	if err := (&tx{store: s, txn: txn}).Add(ctx, key, v, fds...); err != nil {
+	if err := (&tx{store: s, txn: txn}).AddUID(ctx, uid, v, fds...); err != nil {
 		return err
 	}
 	return txn.Commit(ctx)
 }
 
-func (s *Store) Remove(ctx context.Context, key string, f protoreflect.FieldDescriptor, v protoreflect.Value) error {
-	ctx, end := maybeStartSpan(ctx, "Index.Store.Remove", attribute.Int("key_len", len(key)))
+func (s *Store) RemoveUID(ctx context.Context, uid uint64, f protoreflect.FieldDescriptor, v protoreflect.Value) error {
+	ctx, end := maybeStartSpan(ctx, "Index.Store.RemoveUID", attribute.Int64("uid", int64(uid)))
 	defer end()
 	txn, err := s.db.NewTransaction(ctx, true)
 	if err != nil {
 		return err
 	}
 	defer txn.Close(ctx)
-	if err := (&tx{store: s, txn: txn}).Remove(ctx, key, f, v); err != nil {
+	if err := (&tx{store: s, txn: txn}).RemoveUID(ctx, uid, f, v); err != nil {
 		return err
 	}
 	return txn.Commit(ctx)
 }
 
-func (s *Store) Keys(ctx context.Context, uid uint64) ([]string, error) {
-	ctx, end := maybeStartSpan(ctx, "Index.Store.Keys", attribute.Int64("uid", int64(uid)))
-	defer end()
-	txn, err := s.db.NewTransaction(ctx, false)
-	if err != nil {
-		return nil, err
-	}
-	defer txn.Close(ctx)
-	return (&tx{store: s, txn: txn}).Keys(ctx, uid)
-}
-
-func (s *Store) Clear(ctx context.Context, key string) error {
-	ctx, end := maybeStartSpan(ctx, "Index.Store.Clear", attribute.Int("key_len", len(key)))
+func (s *Store) ClearUID(ctx context.Context, uid uint64) error {
+	ctx, end := maybeStartSpan(ctx, "Index.Store.ClearUID", attribute.Int64("uid", int64(uid)))
 	defer end()
 	txn, err := s.db.NewTransaction(ctx, true)
 	if err != nil {
 		return err
 	}
 	defer txn.Close(ctx)
-	if err := (&tx{store: s, txn: txn}).Clear(ctx, key); err != nil {
+	if err := (&tx{store: s, txn: txn}).ClearUID(ctx, uid); err != nil {
 		return err
 	}
 	return txn.Commit(ctx)
@@ -222,15 +205,9 @@ func (t *tx) For(ctx context.Context, name protoreflect.FullName) (pfindex.Field
 	return buildFieldReader(t.txn, t.store.resolver, name, false, t)
 }
 
-func (t *tx) Add(ctx context.Context, key string, v protoreflect.Value, fds ...protoreflect.FieldDescriptor) error {
-	ctx, end := maybeStartSpan(ctx, "Index.Tx.Add", attribute.Int("key_len", len(key)))
-	defer end()
+func (t *tx) AddUID(ctx context.Context, uid uint64, v protoreflect.Value, fds ...protoreflect.FieldDescriptor) error {
 	if len(fds) == 0 {
 		return nil
-	}
-	uid, err := t.uid(ctx, key)
-	if err != nil {
-		return err
 	}
 	fieldPath := fieldPathFromNumbers(fds)
 	encoded, err := encodeValue(fds[len(fds)-1], v)
@@ -242,18 +219,12 @@ func (t *tx) Add(ctx context.Context, key string, v protoreflect.Value, fds ...p
 	return t.writeDelta(ctx, keyBytes, deltaAdd)
 }
 
-func (t *tx) Remove(ctx context.Context, key string, f protoreflect.FieldDescriptor, v protoreflect.Value) error {
-	ctx, end := maybeStartSpan(ctx, "Index.Tx.Remove", attribute.Int("key_len", len(key)))
-	defer end()
+func (t *tx) RemoveUID(ctx context.Context, uid uint64, f protoreflect.FieldDescriptor, v protoreflect.Value) error {
 	if f.IsMap() {
 		return nil
 	}
 	if f.Kind() == protoreflect.MessageKind && !pfreflect.IsWKType(f.Message().FullName()) {
 		return nil
-	}
-	uid, err := t.uid(ctx, key)
-	if err != nil {
-		return err
 	}
 	fieldPath := fieldPathFromNumbers([]protoreflect.FieldDescriptor{f})
 	encoded, err := encodeValue(f, v)
@@ -265,36 +236,7 @@ func (t *tx) Remove(ctx context.Context, key string, f protoreflect.FieldDescrip
 	return t.writeDelta(ctx, keyBytes, deltaRemove)
 }
 
-func (t *tx) Keys(ctx context.Context, uid uint64) ([]string, error) {
-	ctx, end := maybeStartSpan(ctx, "Index.Tx.Keys", attribute.Int64("uid", int64(uid)))
-	defer end()
-	item, err := t.txn.Get(ctx, protodb.UIDKey(uid))
-	if err != nil {
-		if errors.Is(err, badger.ErrKeyNotFound) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	var out string
-	if err := item.Value(func(val []byte) error {
-		out = string(val)
-		return nil
-	}); err != nil {
-		return nil, err
-	}
-	return []string{out}, nil
-}
-
-func (t *tx) Clear(ctx context.Context, key string) error {
-	ctx, end := maybeStartSpan(ctx, "Index.Tx.Clear", attribute.Int("key_len", len(key)))
-	defer end()
-	uid, err := t.uid(ctx, key)
-	if err != nil {
-		if errors.Is(err, badger.ErrKeyNotFound) {
-			return nil
-		}
-		return err
-	}
+func (t *tx) ClearUID(ctx context.Context, uid uint64) error {
 	shard, low := uidShard(uid)
 	for _, pfx := range [][]byte{[]byte(protodb.Index + "/"), []byte(protodb.IndexDelta + "/")} {
 		it := t.txn.Iterator(badger.IteratorOptions{Prefix: pfx, PrefetchValues: false})
@@ -326,24 +268,6 @@ func (t *tx) Clear(ctx context.Context, key string) error {
 		it.Close()
 	}
 	return nil
-}
-
-func (t *tx) uid(ctx context.Context, key string) (uint64, error) {
-	item, err := t.txn.Get(ctx, protodb.UIDRevKey([]byte(key)))
-	if err != nil {
-		return 0, err
-	}
-	var uid uint64
-	if err := item.Value(func(val []byte) error {
-		if len(val) != 8 {
-			return fmt.Errorf("invalid uid value for key %q: %s", key, string(val))
-		}
-		uid = y.BytesToU64(val)
-		return nil
-	}); err != nil {
-		return 0, err
-	}
-	return uid, nil
 }
 
 func (t *tx) readBitmap(ctx context.Context, key []byte) (bitmap.Bitmap, error) {
@@ -965,7 +889,7 @@ func decodeValue(fd protoreflect.FieldDescriptor, encoded []byte) (protoreflect.
 	}
 }
 
-var _ pfindex.Store = (*tx)(nil)
-var _ pfindex.Tx = (*tx)(nil)
-var _ pfindex.Store = (*Store)(nil)
-var _ pfindex.Txer = (*Store)(nil)
+var _ pfindex.UIDStore = (*tx)(nil)
+var _ pfindex.UIDTx = (*tx)(nil)
+var _ pfindex.UIDStore = (*Store)(nil)
+var _ pfindex.UIDTxer = (*Store)(nil)
