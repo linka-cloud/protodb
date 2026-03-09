@@ -28,7 +28,6 @@ import (
 
 	"github.com/dgraph-io/badger/v3"
 	"github.com/dgraph-io/badger/v3/y"
-	pf "go.linka.cloud/protofilters"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
@@ -127,7 +126,6 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 		return nil, nil, badger.ErrDBClosed
 	}
 	o := makeGetOpts(opts...)
-	matcher := pf.NewMatcher()
 	if o.One {
 		out = make([]proto.Message, 0, 1)
 	} else if lim := o.Paging.GetLimit(); lim > 0 {
@@ -163,7 +161,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 			return nil, nil, err
 		}
 		if o.Filter != nil {
-			match, err := matcher.Match(v, o.Filter)
+			match, err := tx.db.matcher.Match(v, o.Filter)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -375,7 +373,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 					return err
 				}
 				if o.Filter != nil {
-					match, err = matcher.Match(v, o.Filter)
+					match, err = tx.db.matcher.Match(v, o.Filter)
 					if err != nil {
 						return err
 					}

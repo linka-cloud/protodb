@@ -72,6 +72,7 @@ func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 		return nil, err
 	}
 	db := &db{opts: o, reg: reg, smu: mutex.NewKV(), ctxmu: mutex.NewContextKV()}
+	db.matcher = pf.NewMatcher()
 	db.idx = idxstore.NewIndexer(db.reg, db.reg.Files, db.unmarshal)
 	if o.repl != nil {
 		h, err := server.NewServer(db)
@@ -153,6 +154,8 @@ type db struct {
 
 	uid atomic.Uint64
 
+	matcher pf.CachingMatcher
+
 	cmu     sync.RWMutex
 	scancel context.CancelFunc
 	close   bool
@@ -185,7 +188,7 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...protodb.GetOpt
 	}
 
 	o := makeGetOpts(opts...)
-	matcher := pf.NewMatcher()
+	matcher := db.matcher
 
 	k, _, _, _ := protodb.DataPrefix(m)
 	log := logger.C(ctx).WithFields("service", "protodb", "action", "watch", "key", string(k))
@@ -725,6 +728,7 @@ func (db *db) registerFileDescriptorProto(ctx context.Context, file *descriptorp
 			return db.handleRegisterErr(err)
 		}
 	}
+	db.matcher.Clear()
 	return nil
 }
 
