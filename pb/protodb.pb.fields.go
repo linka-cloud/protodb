@@ -72,6 +72,7 @@ var GetRequestFields = struct {
 	FieldMask string
 	Reverse   string
 	One       string
+	OrderBy   string
 }{
 	Search:    "search",
 	Filter:    "filter",
@@ -79,6 +80,15 @@ var GetRequestFields = struct {
 	FieldMask: "field_mask",
 	Reverse:   "reverse",
 	One:       "one",
+	OrderBy:   "order_by",
+}
+
+var OrderByFields = struct {
+	Field     string
+	Direction string
+}{
+	Field:     "field",
+	Direction: "direction",
 }
 
 var GetResponseFields = struct {

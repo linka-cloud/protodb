@@ -105,6 +105,53 @@ func TestIndexCRUD(t *testing.T, db protodb.Client) {
 		})
 	})
 
+	t.Run("order-by", func(t *testing.T) {
+		m0 := newIndexCRUDMessage(md, "k0", "down")
+		m1 := newIndexCRUDMessage(md, "k2", "up")
+		m2 := newIndexCRUDMessage(md, "k1", "up")
+		tx, err := db.Tx(ctx)
+		require.NoError(err)
+		defer tx.Close()
+		_, err = tx.Set(ctx, m0)
+		require.NoError(err)
+		_, err = tx.Set(ctx, m1)
+		require.NoError(err)
+		_, err = tx.Set(ctx, m2)
+		require.NoError(err)
+		require.NoError(tx.Commit(ctx))
+
+		res, pi, err := db.Get(ctx, dynamicpb.NewMessage(md), protodb.WithOrderByAsc("status"), protodb.WithPaging(&protodb.Paging{Limit: 2}))
+		require.NoError(err)
+		require.Len(res, 2)
+		require.True(pi.GetHasNext())
+		require.Equal("k0", keyFromDynamic(t, res[0]))
+		require.Equal("k1", keyFromDynamic(t, res[1]))
+
+		res, pi, err = db.Get(ctx, dynamicpb.NewMessage(md), protodb.WithOrderByAsc("status"), protodb.WithPaging(&protodb.Paging{Limit: 2, Token: pi.GetToken()}))
+		require.NoError(err)
+		require.Len(res, 1)
+		require.False(pi.GetHasNext())
+		require.Equal("k2", keyFromDynamic(t, res[0]))
+
+		res, _, err = db.Get(ctx, dynamicpb.NewMessage(md), protodb.WithOrderByDesc("key"))
+		require.NoError(err)
+		require.Len(res, 3)
+		require.Equal("k2", keyFromDynamic(t, res[0]))
+		require.Equal("k1", keyFromDynamic(t, res[1]))
+		require.Equal("k0", keyFromDynamic(t, res[2]))
+
+		_, _, err = db.Get(ctx, dynamicpb.NewMessage(md), protodb.WithOrderByAsc("status"), protodb.WithReverse())
+		require.Error(err)
+
+		tx, err = db.Tx(ctx)
+		require.NoError(err)
+		defer tx.Close()
+		require.NoError(tx.Delete(ctx, m0))
+		require.NoError(tx.Delete(ctx, m1))
+		require.NoError(tx.Delete(ctx, m2))
+		require.NoError(tx.Commit(ctx))
+	})
+
 	t.Run("unique", func(t *testing.T) {
 		ufd := buildIndexCRUDUniqueFile(t)
 		require.NoError(db.Register(ctx, ufd))

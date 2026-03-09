@@ -678,6 +678,35 @@ func (m *GetRequest) validate(all bool) error {
 
 	// no validation rules for One
 
+	if all {
+		switch v := interface{}(m.GetOrderBy()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, GetRequestValidationError{
+					field:  "OrderBy",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, GetRequestValidationError{
+					field:  "OrderBy",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetOrderBy()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return GetRequestValidationError{
+				field:  "OrderBy",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	if len(errors) > 0 {
 		return GetRequestMultiError(errors)
 	}
@@ -754,6 +783,108 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = GetRequestValidationError{}
+
+// Validate checks the field values on OrderBy with the rules defined in the
+// proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *OrderBy) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on OrderBy with the rules defined in the
+// proto definition for this message. If any rules are violated, the result is
+// a list of violation errors wrapped in OrderByMultiError, or nil if none found.
+func (m *OrderBy) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *OrderBy) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	// no validation rules for Field
+
+	// no validation rules for Direction
+
+	if len(errors) > 0 {
+		return OrderByMultiError(errors)
+	}
+
+	return nil
+}
+
+// OrderByMultiError is an error wrapping multiple validation errors returned
+// by OrderBy.ValidateAll() if the designated constraints aren't met.
+type OrderByMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m OrderByMultiError) Error() string {
+	msgs := make([]string, 0, len(m))
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m OrderByMultiError) AllErrors() []error { return m }
+
+// OrderByValidationError is the validation error returned by OrderBy.Validate
+// if the designated constraints aren't met.
+type OrderByValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e OrderByValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e OrderByValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e OrderByValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e OrderByValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e OrderByValidationError) ErrorName() string { return "OrderByValidationError" }
+
+// Error satisfies the builtin error interface
+func (e OrderByValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sOrderBy.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = OrderByValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = OrderByValidationError{}
 
 // Validate checks the field values on GetResponse with the rules defined in
 // the proto definition for this message. If any rules are violated, the first

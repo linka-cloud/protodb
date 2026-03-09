@@ -92,6 +92,9 @@ var (
 	WithReadFieldMask      = protodb.WithReadFieldMask
 	WithReverse            = protodb.WithReverse
 	WithOne                = protodb.WithOne
+	WithOrderBy            = protodb.WithOrderBy
+	WithOrderByAsc         = protodb.WithOrderByAsc
+	WithOrderByDesc        = protodb.WithOrderByDesc
 )
 
 type TxOption = protodb.TxOption
@@ -138,6 +141,15 @@ type (
 	PagingInfo = pb.PagingInfo
 	FilterExpr = filters.Expression
 	Filter     = filters.FieldFilterer
+	OrderBy    = pb.OrderBy
+)
+
+type OrderDirection = pb.OrderDirection
+
+const (
+	OrderDirectionUnspecified = pb.OrderDirectionUnspecified
+	OrderDirectionAsc         = pb.OrderDirectionAsc
+	OrderDirectionDesc        = pb.OrderDirectionDesc
 )
 
 type Client = client.Client

@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"iter"
 	"sort"
 	"strconv"
 	"strings"
@@ -312,6 +313,144 @@ func (idx *Indexer) FindUIDs(ctx context.Context, tx Tx, name protoreflect.FullN
 		}
 		out = append(out, uid)
 	}
+	return out, nil
+}
+
+func (idx *Indexer) OrderedUIDGroupsSeq(ctx context.Context, tx Tx, name protoreflect.FullName, fds []protoreflect.FieldDescriptor, reverse bool) (iter.Seq2[[]uint64, error], error) {
+	if len(fds) == 0 {
+		return nil, errors.New("empty order field descriptors")
+	}
+	fieldPath := fieldPathFromNumbers(fds)
+	deltaValues, err := collectOrderedDeltaValues(ctx, tx.Txn(), name, fieldPath, reverse)
+	if err != nil {
+		return nil, err
+	}
+	return func(yield func([]uint64, error) bool) {
+		basePrefix := typePrefix(name)
+		baseIt := tx.Txn().Iterator(badger.IteratorOptions{Prefix: basePrefix, PrefetchValues: false, Reverse: reverse})
+		defer baseIt.Close()
+		var streamErr error
+
+		nextBaseValue := func(last []byte) ([]byte, bool) {
+			for ; baseIt.Valid(); baseIt.Next() {
+				if err := ctx.Err(); err != nil {
+					streamErr = err
+					return nil, false
+				}
+				k := baseIt.Item().Key()
+				fp, val, ok := parseFieldValue(basePrefix, k)
+				if !ok || fp != fieldPath {
+					continue
+				}
+				if len(last) != 0 && bytes.Equal(last, val) {
+					continue
+				}
+				return append([]byte(nil), val...), true
+			}
+			return nil, false
+		}
+
+		baseIt.Rewind()
+		deltaIdx := 0
+		var lastBase []byte
+		baseVal, hasBase := nextBaseValue(nil)
+
+		for {
+			if streamErr != nil {
+				yield(nil, streamErr)
+				return
+			}
+			if err := ctx.Err(); err != nil {
+				yield(nil, err)
+				return
+			}
+			hasDelta := deltaIdx < len(deltaValues)
+			if !hasBase && !hasDelta {
+				return
+			}
+
+			var val []byte
+			takeBase := false
+			switch {
+			case hasBase && !hasDelta:
+				takeBase = true
+			case !hasBase && hasDelta:
+				takeBase = false
+			default:
+				cmp := bytes.Compare(baseVal, deltaValues[deltaIdx])
+				if cmp == 0 {
+					val = baseVal
+					lastBase = baseVal
+					baseIt.Next()
+					baseVal, hasBase = nextBaseValue(lastBase)
+					deltaIdx++
+				} else {
+					if reverse {
+						takeBase = cmp > 0
+					} else {
+						takeBase = cmp < 0
+					}
+				}
+			}
+
+			if val == nil {
+				if takeBase {
+					val = baseVal
+					lastBase = baseVal
+					baseIt.Next()
+					baseVal, hasBase = nextBaseValue(lastBase)
+				} else {
+					val = deltaValues[deltaIdx]
+					deltaIdx++
+				}
+			}
+
+			bm, err := readValueBitmap(tx.Txn(), valuePrefix(name, fieldPath, val))
+			if err != nil {
+				yield(nil, err)
+				return
+			}
+			if bm.Cardinality() == 0 {
+				continue
+			}
+			uids := make([]uint64, 0, bm.Cardinality())
+			for uid := range bm.Iter() {
+				uids = append(uids, uid)
+			}
+			sort.Slice(uids, func(i, j int) bool { return uids[i] < uids[j] })
+			if !yield(uids, nil) {
+				return
+			}
+		}
+	}, nil
+}
+
+func collectOrderedDeltaValues(ctx context.Context, txn badgerd.Tx, name protoreflect.FullName, fieldPath string, reverse bool) ([][]byte, error) {
+	deltaPrefix := deltaTypePrefix(name)
+	it := txn.Iterator(badger.IteratorOptions{Prefix: deltaPrefix, PrefetchValues: false})
+	defer it.Close()
+	seen := make(map[string]struct{})
+	for it.Rewind(); it.Valid(); it.Next() {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		k := it.Item().Key()
+		fp, val, ok := parseFieldValueWithSuffix(deltaPrefix, k, uidShardSize+uidSize)
+		if !ok || fp != fieldPath {
+			continue
+		}
+		seen[string(val)] = struct{}{}
+	}
+	out := make([][]byte, 0, len(seen))
+	for v := range seen {
+		out = append(out, []byte(v))
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if reverse {
+			return bytes.Compare(out[i], out[j]) > 0
+		}
+		return bytes.Compare(out[i], out[j]) < 0
+	})
 	return out, nil
 }
 
@@ -873,14 +1012,15 @@ func isIndexableFieldPathDescriptors(fds []protoreflect.FieldDescriptor) bool {
 			}
 		}
 	}
-	return isIndexableLeaf(last)
+	return IsIndexableLeaf(last)
 }
 
 func isIndexableField(fd protoreflect.FieldDescriptor) bool {
-	return isIndexableLeaf(fd)
+	return IsIndexableLeaf(fd)
 }
 
-func isIndexableLeaf(fd protoreflect.FieldDescriptor) bool {
+// IsIndexableLeaf reports whether a field descriptor supports index ordering/lookup.
+func IsIndexableLeaf(fd protoreflect.FieldDescriptor) bool {
 	switch fd.Kind() {
 	case protoreflect.BoolKind,
 		protoreflect.Int32Kind,

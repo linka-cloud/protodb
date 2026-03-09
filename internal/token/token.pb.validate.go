@@ -66,6 +66,8 @@ func (m *Token) validate(all bool) error {
 
 	// no validation rules for Reverse
 
+	// no validation rules for OrderHash
+
 	if len(errors) > 0 {
 		return TokenMultiError(errors)
 	}

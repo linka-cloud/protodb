@@ -96,7 +96,7 @@ func (c *client) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOp
 	if o.Filter != nil {
 		f = o.Filter.Expr()
 	}
-	res, err := c.c.Get(ctx, &pb.GetRequest{Search: a, Filter: f, Paging: o.Paging, FieldMask: o.FieldMask, Reverse: o.Reverse, One: o.One})
+	res, err := c.c.Get(ctx, &pb.GetRequest{Search: a, Filter: f, Paging: o.Paging, FieldMask: o.FieldMask, Reverse: o.Reverse, One: o.One, OrderBy: o.OrderBy})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -264,7 +264,7 @@ func (t *txc) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 	}
 	if err := t.txn.Send(&pb.TxRequest{
 		Request: &pb.TxRequest_Get{
-			Get: &pb.GetRequest{Search: a, Filter: f, Paging: o.Paging, FieldMask: o.FieldMask, One: o.One},
+			Get: &pb.GetRequest{Search: a, Filter: f, Paging: o.Paging, FieldMask: o.FieldMask, Reverse: o.Reverse, One: o.One, OrderBy: o.OrderBy},
 		},
 	}); err != nil {
 		return nil, nil, err

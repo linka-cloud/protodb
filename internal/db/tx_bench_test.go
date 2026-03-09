@@ -136,6 +136,55 @@ func BenchmarkTxGet(b *testing.B) {
 			require.NoError(b, err)
 		}
 	})
+
+	b.Run("ordered_indexed", func(b *testing.B) {
+		query := dynamicpb.NewMessage(md)
+		opts := []iprotodb.GetOption{
+			iprotodb.WithOrderByAsc("status"),
+			iprotodb.WithPaging(&pb.Paging{Limit: 50}),
+		}
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			tx, err := newTx(ctx, db, iprotodb.WithReadOnly())
+			require.NoError(b, err)
+			_, _, err = tx.get(ctx, query, opts...)
+			tx.Close()
+			require.NoError(b, err)
+		}
+	})
+
+	b.Run("ordered_fallback_scan_sort", func(b *testing.B) {
+		query := dynamicpb.NewMessage(md)
+		opts := []iprotodb.GetOption{
+			iprotodb.WithFilter(filters.Where("payload").StringHasPrefix("seed-payload")),
+			iprotodb.WithOrderByAsc("status"),
+			iprotodb.WithPaging(&pb.Paging{Limit: 50}),
+		}
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			tx, err := newTx(ctx, db, iprotodb.WithReadOnly())
+			require.NoError(b, err)
+			_, _, err = tx.get(ctx, query, opts...)
+			tx.Close()
+			require.NoError(b, err)
+		}
+	})
+
+	b.Run("ordered_key_desc_fallback", func(b *testing.B) {
+		query := dynamicpb.NewMessage(md)
+		opts := []iprotodb.GetOption{
+			iprotodb.WithOrderByDesc("key"),
+			iprotodb.WithPaging(&pb.Paging{Limit: 50}),
+		}
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			tx, err := newTx(ctx, db, iprotodb.WithReadOnly())
+			require.NoError(b, err)
+			_, _, err = tx.get(ctx, query, opts...)
+			tx.Close()
+			require.NoError(b, err)
+		}
+	})
 }
 
 func openBenchDB(b *testing.B) (*db, protoreflect.MessageDescriptor) {

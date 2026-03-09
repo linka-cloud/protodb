@@ -93,6 +93,18 @@ message GetRequest {
   bool reverse = 5;
   // one is a flag to indicate that request must stop after the first result
   bool one = 6;
+  OrderBy order_by = 7;
+}
+
+enum OrderDirection {
+  ORDER_DIRECTION_UNSPECIFIED = 0;
+  ORDER_DIRECTION_ASC = 1;
+  ORDER_DIRECTION_DESC = 2;
+}
+
+message OrderBy {
+  string field = 1;
+  OrderDirection direction = 2;
 }
 
 message GetResponse {

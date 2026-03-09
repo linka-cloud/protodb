@@ -16,11 +16,13 @@ package db
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/sha512"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -28,15 +30,20 @@ import (
 
 	"github.com/dgraph-io/badger/v3"
 	"github.com/dgraph-io/badger/v3/y"
+	pfreflect "go.linka.cloud/protofilters/reflect"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
+	"go.linka.cloud/protofilters/index/bitmap"
+
 	"go.linka.cloud/protodb/internal/badgerd"
 	idxstore "go.linka.cloud/protodb/internal/index"
 	"go.linka.cloud/protodb/internal/protodb"
 	"go.linka.cloud/protodb/internal/token"
+	"go.linka.cloud/protodb/pb"
+	protopts "go.linka.cloud/protodb/protodb"
 )
 
 func newTx(ctx context.Context, db *db, opts ...protodb.TxOption) (*tx, error) {
@@ -126,6 +133,12 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 		return nil, nil, badger.ErrDBClosed
 	}
 	o := makeGetOpts(opts...)
+	if o.OrderBy != nil {
+		if o.Reverse {
+			return nil, nil, errors.New("reverse and order_by cannot be combined")
+		}
+		return tx.getOrdered(ctx, m, o)
+	}
 	if o.One {
 		out = make([]proto.Message, 0, 1)
 	} else if lim := o.Paging.GetLimit(); lim > 0 {
@@ -838,6 +851,461 @@ func stringToBytesNoCopy(s string) []byte {
 		return nil
 	}
 	return unsafe.Slice(unsafe.StringData(s), len(s))
+}
+
+type orderField struct {
+	path      []protoreflect.FieldDescriptor
+	fieldPath string
+	direction pb.OrderDirection
+	key       bool
+	seconds   protoreflect.FieldDescriptor
+	nanos     protoreflect.FieldDescriptor
+}
+
+type orderedResult struct {
+	msg proto.Message
+	key []byte
+}
+
+func (tx *tx) getOrdered(ctx context.Context, m proto.Message, o protodb.GetOpts) ([]proto.Message, *protodb.PagingInfo, error) {
+	span := trace.SpanFromContext(ctx)
+	if span.IsRecording() {
+		ctx, span = tracer.Start(ctx, "Tx.getOrdered")
+		span.SetAttributes(
+			attribute.String("message", string(m.ProtoReflect().Descriptor().FullName())),
+			attribute.Bool("filtered", o.Filter != nil),
+			attribute.Bool("continuation", o.Paging.GetToken() != ""),
+		)
+		defer span.End()
+	}
+	plan, err := buildOrderPlan(m.ProtoReflect().New(), o.OrderBy)
+	if err != nil {
+		return nil, nil, err
+	}
+	hasContinuationToken := o.Paging.GetToken() != ""
+	inToken := &token.Token{}
+	if err := inToken.Decode(o.Paging.GetToken()); err != nil {
+		return nil, nil, err
+	}
+	fhash, err := hash(o.Filter)
+	if err != nil {
+		return nil, nil, fmt.Errorf("hash filter: %w", err)
+	}
+	ohash := orderHash(plan)
+	outToken := &token.Token{
+		Ts:          tx.txn.ReadTs(),
+		Type:        string(m.ProtoReflect().Descriptor().FullName()),
+		FiltersHash: fhash,
+		Reverse:     false,
+		OrderHash:   ohash,
+	}
+	if err := outToken.ValidateFor(inToken); err != nil {
+		return nil, nil, err
+	}
+	out, info, ok, err := tx.getOrderedIndexed(ctx, m, o, plan, inToken, outToken, hasContinuationToken)
+	if err != nil {
+		return nil, nil, err
+	}
+	if ok {
+		return out, info, nil
+	}
+	return tx.getOrderedFallbackScanSort(ctx, m, o, plan, inToken, outToken, hasContinuationToken)
+}
+
+func (tx *tx) getOrderedIndexed(ctx context.Context, m proto.Message, o protodb.GetOpts, plan orderField, inToken, outToken *token.Token, hasContinuationToken bool) ([]proto.Message, *protodb.PagingInfo, bool, error) {
+	span := trace.SpanFromContext(ctx)
+	if span.IsRecording() {
+		ctx, span = tracer.Start(ctx, "Tx.getOrderedIndexed")
+		span.SetAttributes(
+			attribute.String("message", string(m.ProtoReflect().Descriptor().FullName())),
+			attribute.String("order_field", plan.fieldPath),
+			attribute.Bool("order_desc", plan.direction == pb.OrderDirectionDesc),
+			attribute.Bool("filtered", o.Filter != nil),
+			attribute.Bool("continuation", hasContinuationToken),
+		)
+		defer span.End()
+	}
+	if plan.key {
+		span.SetAttributes(attribute.Bool("fallback", true), attribute.String("fallback_reason", "key_order"))
+		return nil, nil, false, nil
+	}
+	prefix, _, _, _ := protodb.DataPrefix(m)
+	if o.Filter != nil {
+		ok, err := tx.db.idx.IndexableFilter(m, o.Filter)
+		if err != nil {
+			return nil, nil, false, err
+		}
+		if !ok {
+			span.SetAttributes(attribute.Bool("fallback", true), attribute.String("fallback_reason", "non_indexable_filter"))
+			return nil, nil, false, nil
+		}
+	}
+	var allowed bitmap.Bitmap
+	if o.Filter != nil {
+		uids, err := tx.db.idx.FindUIDs(ctx, tx, m.ProtoReflect().Descriptor().FullName(), o.Filter, idxstore.FindOpts{})
+		if err != nil {
+			return nil, nil, false, err
+		}
+		allowed = bitmap.NewWith(len(uids))
+		for _, uid := range uids {
+			allowed.Set(uid)
+		}
+	}
+	windowLimit := o.Paging.GetLimit()
+	if o.One && (windowLimit == 0 || windowLimit > 1) {
+		windowLimit = 1
+	}
+	off := o.Paging.GetOffset()
+	count := uint64(0)
+	selectedKeys := make([][]byte, 0)
+	hasNext := false
+	continuationFound := !hasContinuationToken
+	seq, err := tx.db.idx.OrderedUIDGroupsSeq(ctx, tx, m.ProtoReflect().Descriptor().FullName(), plan.path, plan.direction == pb.OrderDirectionDesc)
+	if err != nil {
+		return nil, nil, false, err
+	}
+	groupsSeen := 0
+	for uids, err := range seq {
+		if err != nil {
+			return nil, nil, false, err
+		}
+		groupsSeen++
+		keys := make([][]byte, 0, len(uids))
+		for _, uid := range uids {
+			if err := ctx.Err(); err != nil {
+				return nil, nil, false, err
+			}
+			if allowed != nil && !allowed.Contains(uid) {
+				continue
+			}
+			uidItem, err := tx.txn.Get(ctx, protodb.UIDKey(uid))
+			if err != nil {
+				if errors.Is(err, badger.ErrKeyNotFound) {
+					continue
+				}
+				return nil, nil, false, err
+			}
+			var fullKey []byte
+			if err := uidItem.Value(func(val []byte) error {
+				fullKey = append(fullKey[:0], val...)
+				return nil
+			}); err != nil {
+				return nil, nil, false, err
+			}
+			if !bytes.HasPrefix(fullKey, prefix) {
+				continue
+			}
+			keys = append(keys, fullKey)
+		}
+		slices.SortStableFunc(keys, func(a, b []byte) int { return bytes.Compare(a, b) })
+		for _, key := range keys {
+			if hasContinuationToken && !continuationFound {
+				if bytes.Equal(key, inToken.GetLastPrefix()) {
+					continuationFound = true
+				}
+				continue
+			}
+			count++
+			if !hasContinuationToken && off > 0 && count <= off {
+				continue
+			}
+			if windowLimit > 0 && uint64(len(selectedKeys)) >= windowLimit {
+				hasNext = true
+				break
+			}
+			selectedKeys = append(selectedKeys, key)
+		}
+		if hasNext || (o.One && len(selectedKeys) > 0) {
+			break
+		}
+	}
+	if hasContinuationToken && !continuationFound {
+		return nil, nil, false, fmt.Errorf("%w: continuation key not found", token.ErrInvalid)
+	}
+	out := make([]proto.Message, 0, len(selectedKeys))
+	for _, key := range selectedKeys {
+		item, err := tx.txn.Get(ctx, key)
+		if err != nil {
+			if errors.Is(err, badger.ErrKeyNotFound) {
+				continue
+			}
+			return nil, nil, false, err
+		}
+		v := m.ProtoReflect().New().Interface()
+		if err := item.Value(func(val []byte) error { return tx.db.unmarshal(val, v) }); err != nil {
+			return nil, nil, false, err
+		}
+		if o.FieldMask != nil {
+			if err := FilterFieldMask(v, o.FieldMask); err != nil {
+				return nil, nil, false, err
+			}
+		}
+		tx.txn.AddReadKey(key)
+		out = append(out, v)
+		outToken.LastPrefix = append(outToken.LastPrefix[:0], key...)
+	}
+	tks, err := outToken.Encode()
+	if err != nil {
+		return nil, nil, false, err
+	}
+	span.SetAttributes(
+		attribute.Bool("fallback", false),
+		attribute.Int("groups_seen", groupsSeen),
+		attribute.Int("selected_keys", len(selectedKeys)),
+		attribute.Bool("has_next", hasNext),
+	)
+	return out, &protodb.PagingInfo{HasNext: hasNext, Token: tks}, true, nil
+}
+
+func (tx *tx) getOrderedFallbackScanSort(ctx context.Context, m proto.Message, o protodb.GetOpts, plan orderField, inToken, outToken *token.Token, hasContinuationToken bool) ([]proto.Message, *protodb.PagingInfo, error) {
+	span := trace.SpanFromContext(ctx)
+	if span.IsRecording() {
+		ctx, span = tracer.Start(ctx, "Tx.getOrderedFallbackScanSort")
+		span.SetAttributes(
+			attribute.String("message", string(m.ProtoReflect().Descriptor().FullName())),
+			attribute.String("order_field", plan.fieldPath),
+			attribute.Bool("order_desc", plan.direction == pb.OrderDirectionDesc),
+			attribute.Bool("filtered", o.Filter != nil),
+			attribute.Bool("continuation", hasContinuationToken),
+		)
+		defer span.End()
+	}
+
+	baseOpts := make([]protodb.GetOption, 0, 1)
+	if o.Filter != nil {
+		baseOpts = append(baseOpts, protodb.WithFilter(o.Filter))
+	}
+	all, _, err := tx.get(ctx, m, baseOpts...)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	ordered := make([]orderedResult, 0, len(all))
+	for _, item := range all {
+		key, _, _, err := protodb.DataPrefix(item)
+		if err != nil {
+			return nil, nil, err
+		}
+		ordered = append(ordered, orderedResult{msg: item, key: append([]byte(nil), key...)})
+	}
+
+	slices.SortStableFunc(ordered, func(a, b orderedResult) int {
+		av, aok := fieldValue(a.msg.ProtoReflect(), plan.path)
+		bv, bok := fieldValue(b.msg.ProtoReflect(), plan.path)
+		c := compareMaybeValue(plan, av, aok, bv, bok)
+		if c == 0 {
+			return bytes.Compare(a.key, b.key)
+		}
+		if plan.direction == pb.OrderDirectionDesc {
+			return -c
+		}
+		return c
+	})
+
+	start := 0
+	if hasContinuationToken {
+		if len(inToken.GetLastPrefix()) == 0 {
+			return nil, nil, fmt.Errorf("%w: missing continuation key", token.ErrInvalid)
+		}
+		found := false
+		for i, item := range ordered {
+			if bytes.Equal(item.key, inToken.GetLastPrefix()) {
+				start = i + 1
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, nil, fmt.Errorf("%w: continuation key not found", token.ErrInvalid)
+		}
+	} else if off := o.Paging.GetOffset(); off > 0 {
+		start = int(min(off, uint64(len(ordered))))
+	}
+
+	windowLimit := o.Paging.GetLimit()
+	if o.One && (windowLimit == 0 || windowLimit > 1) {
+		windowLimit = 1
+	}
+
+	end := len(ordered)
+	if windowLimit > 0 {
+		end = min(end, start+int(windowLimit))
+	}
+	hasNext := end < len(ordered)
+
+	out := make([]proto.Message, 0, end-start)
+	for _, item := range ordered[start:end] {
+		v := item.msg
+		if o.FieldMask != nil {
+			if err := FilterFieldMask(v, o.FieldMask); err != nil {
+				return nil, nil, err
+			}
+		}
+		tx.txn.AddReadKey(item.key)
+		out = append(out, v)
+		outToken.LastPrefix = append(outToken.LastPrefix[:0], item.key...)
+	}
+	tks, err := outToken.Encode()
+	if err != nil {
+		return nil, nil, err
+	}
+	span.SetAttributes(
+		attribute.Int("ordered_candidates", len(ordered)),
+		attribute.Int("selected", len(out)),
+		attribute.Bool("has_next", hasNext),
+	)
+	return out, &protodb.PagingInfo{HasNext: hasNext, Token: tks}, nil
+}
+
+func buildOrderPlan(msg protoreflect.Message, orderBy *pb.OrderBy) (orderField, error) {
+	if orderBy == nil {
+		return orderField{}, errors.New("order_by cannot be empty")
+	}
+	md := msg.Descriptor()
+	keyField, hasKey := protodb.KeyFieldName(md)
+	fieldPath := strings.TrimSpace(orderBy.GetField())
+	if fieldPath == "" {
+		return orderField{}, errors.New("order_by field cannot be empty")
+	}
+	fds, err := pfreflect.Lookup(msg, fieldPath)
+	if err != nil {
+		return orderField{}, fmt.Errorf("invalid order_by field %q: %w", fieldPath, err)
+	}
+	if !isOrderableFieldPath(fds) {
+		return orderField{}, fmt.Errorf("order_by field %q is not sortable", fieldPath)
+	}
+	isKey := hasKey && len(fds) == 1 && string(fds[0].Name()) == keyField
+	if !isKey {
+		fd := fds[len(fds)-1]
+		if !proto.HasExtension(fd.Options(), protopts.E_Index) {
+			return orderField{}, fmt.Errorf("order_by field %q must be indexed", fieldPath)
+		}
+	}
+	direction := orderBy.GetDirection()
+	if direction == pb.OrderDirectionUnspecified {
+		direction = pb.OrderDirectionAsc
+	}
+	if direction != pb.OrderDirectionAsc && direction != pb.OrderDirectionDesc {
+		return orderField{}, fmt.Errorf("order_by field %q has invalid direction %v", fieldPath, orderBy.GetDirection())
+	}
+	pl := orderField{path: fds, fieldPath: fieldPath, direction: direction, key: isKey}
+	if fds[len(fds)-1].Kind() == protoreflect.MessageKind {
+		mfd := fds[len(fds)-1]
+		if n := mfd.Message().FullName(); n == "google.protobuf.Timestamp" || n == "google.protobuf.Duration" {
+			pl.seconds = mfd.Message().Fields().Get(0)
+			pl.nanos = mfd.Message().Fields().Get(1)
+		}
+	}
+	return pl, nil
+}
+
+func isOrderableFieldPath(fds []protoreflect.FieldDescriptor) bool {
+	if len(fds) == 0 {
+		return false
+	}
+	for i, fd := range fds {
+		if fd.IsMap() || fd.IsList() {
+			return false
+		}
+		if i == len(fds)-1 {
+			break
+		}
+		if fd.Kind() != protoreflect.MessageKind || pfreflect.IsWKType(fd.Message().FullName()) {
+			return false
+		}
+	}
+	return isOrderableLeaf(fds[len(fds)-1])
+}
+
+func isOrderableLeaf(fd protoreflect.FieldDescriptor) bool {
+	return idxstore.IsIndexableLeaf(fd)
+}
+
+func fieldValue(msg protoreflect.Message, path []protoreflect.FieldDescriptor) (protoreflect.Value, bool) {
+	cur := msg
+	for i, fd := range path {
+		v := cur.Get(fd)
+		if i == len(path)-1 {
+			if fd.Kind() == protoreflect.MessageKind && !v.Message().IsValid() {
+				return protoreflect.Value{}, false
+			}
+			return v, true
+		}
+		if fd.Kind() != protoreflect.MessageKind || !v.Message().IsValid() {
+			return protoreflect.Value{}, false
+		}
+		cur = v.Message()
+	}
+	return protoreflect.Value{}, false
+}
+
+func compareMaybeValue(of orderField, av protoreflect.Value, aok bool, bv protoreflect.Value, bok bool) int {
+	if !aok && !bok {
+		return 0
+	}
+	if !aok {
+		return -1
+	}
+	if !bok {
+		return 1
+	}
+	return compareValue(of, av, bv)
+}
+
+func compareValue(of orderField, av, bv protoreflect.Value) int {
+	fd := of.path[len(of.path)-1]
+	switch fd.Kind() {
+	case protoreflect.BoolKind:
+		ab, bb := av.Bool(), bv.Bool()
+		switch {
+		case ab == bb:
+			return 0
+		case !ab && bb:
+			return -1
+		default:
+			return 1
+		}
+	case protoreflect.StringKind:
+		return strings.Compare(av.String(), bv.String())
+	case protoreflect.BytesKind:
+		return bytes.Compare(av.Bytes(), bv.Bytes())
+	case protoreflect.EnumKind:
+		return cmp.Compare(int32(av.Enum()), int32(bv.Enum()))
+	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind,
+		protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
+		return cmp.Compare(av.Int(), bv.Int())
+	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind,
+		protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
+		return cmp.Compare(av.Uint(), bv.Uint())
+	case protoreflect.FloatKind, protoreflect.DoubleKind:
+		return cmp.Compare(av.Float(), bv.Float())
+	case protoreflect.MessageKind:
+		am := av.Message()
+		bm := bv.Message()
+		asec := am.Get(of.seconds).Int()
+		bsec := bm.Get(of.seconds).Int()
+		if c := cmp.Compare(asec, bsec); c != 0 {
+			return c
+		}
+		ananos := am.Get(of.nanos).Int()
+		bnanos := bm.Get(of.nanos).Int()
+		return cmp.Compare(ananos, bnanos)
+	default:
+		return 0
+	}
+}
+
+func orderHash(orderBy orderField) string {
+	if orderBy.fieldPath == "" {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(orderBy.fieldPath)
+	b.WriteByte(':')
+	b.WriteString(fmt.Sprintf("%d", orderBy.direction))
+	b.WriteByte(';')
+	h := sha512.Sum512([]byte(b.String()))
+	return base64.StdEncoding.EncodeToString(h[:])
 }
 
 func hash(f protodb.Filter) (hash string, err error) {

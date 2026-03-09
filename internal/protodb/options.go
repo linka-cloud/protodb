@@ -53,6 +53,20 @@ func WithReverse() GetOption {
 	}
 }
 
+func WithOrderBy(field string, direction pb.OrderDirection) GetOption {
+	return func(o *GetOpts) {
+		o.OrderBy = &pb.OrderBy{Field: field, Direction: direction}
+	}
+}
+
+func WithOrderByAsc(field string) GetOption {
+	return WithOrderBy(field, pb.OrderDirectionAsc)
+}
+
+func WithOrderByDesc(field string) GetOption {
+	return WithOrderBy(field, pb.OrderDirectionDesc)
+}
+
 func WithReadFieldMaskPaths(paths ...string) GetOption {
 	return func(o *GetOpts) {
 		o.FieldMask = &fieldmaskpb.FieldMask{Paths: paths}
@@ -89,6 +103,7 @@ type GetOpts struct {
 	FieldMask *fieldmaskpb.FieldMask
 	Reverse   bool
 	One       bool
+	OrderBy   *pb.OrderBy
 }
 
 type SetOption func(o *SetOpts)

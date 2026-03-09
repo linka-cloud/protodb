@@ -43,6 +43,9 @@ func (x *DeleteResponse) Default() {
 func (x *GetRequest) Default() {
 }
 
+func (x *OrderBy) Default() {
+}
+
 func (x *GetResponse) Default() {
 }
 

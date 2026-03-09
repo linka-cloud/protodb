@@ -63,5 +63,8 @@ func (x *Token) ValidateFor(prev *Token) error {
 	if x.Reverse != prev.Reverse {
 		return fmt.Errorf("%w: reverse mismatch", ErrInvalid)
 	}
+	if prev.GetOrderHash() != "" && x.GetOrderHash() != prev.GetOrderHash() {
+		return fmt.Errorf("%w: order mismatch", ErrInvalid)
+	}
 	return nil
 }

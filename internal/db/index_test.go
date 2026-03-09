@@ -357,6 +357,110 @@ func TestIndexReversePaging(t *testing.T) {
 	require.Equal(t, "k2", keyFromMessage(t, res[0]))
 }
 
+func TestOrderByIndexedPagingAndKeyTieBreak(t *testing.T) {
+	ctx := context.Background()
+	path := t.TempDir()
+
+	dbif, err := Open(ctx, WithPath(path), WithApplyDefaults(true))
+	require.NoError(t, err)
+	defer dbif.Close()
+
+	db := dbif.(*db)
+	fd := buildIndexedFileDescriptor(t)
+	require.NoError(t, db.RegisterProto(ctx, fd))
+
+	md, err := lookupMessage(db, "tests.index.Indexed")
+	require.NoError(t, err)
+
+	_, err = db.Set(ctx, newIndexedMessage(md, "k2", "up", nil, "admin", "a"))
+	require.NoError(t, err)
+	_, err = db.Set(ctx, newIndexedMessage(md, "k1", "up", nil, "admin", "b"))
+	require.NoError(t, err)
+	_, err = db.Set(ctx, newIndexedMessage(md, "k0", "down", nil, "admin", "c"))
+	require.NoError(t, err)
+
+	paging := &protodb.Paging{Limit: 2}
+	res, pi, err := db.Get(ctx, dynamicpb.NewMessage(md), protodb.WithOrderByAsc("status"), protodb.WithPaging(paging))
+	require.NoError(t, err)
+	require.Len(t, res, 2)
+	require.True(t, pi.GetHasNext())
+	require.Equal(t, []string{"k0", "k1"}, keysFromMessages(t, res))
+
+	paging = &protodb.Paging{Limit: 2, Token: pi.GetToken()}
+	res, pi, err = db.Get(ctx, dynamicpb.NewMessage(md), protodb.WithOrderByAsc("status"), protodb.WithPaging(paging))
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	require.False(t, pi.GetHasNext())
+	require.Equal(t, []string{"k2"}, keysFromMessages(t, res))
+}
+
+func TestOrderByKeyDesc(t *testing.T) {
+	ctx := context.Background()
+	path := t.TempDir()
+
+	dbif, err := Open(ctx, WithPath(path), WithApplyDefaults(true))
+	require.NoError(t, err)
+	defer dbif.Close()
+
+	db := dbif.(*db)
+	fd := buildIndexedFileDescriptor(t)
+	require.NoError(t, db.RegisterProto(ctx, fd))
+
+	md, err := lookupMessage(db, "tests.index.Indexed")
+	require.NoError(t, err)
+
+	_, err = db.Set(ctx, newIndexedMessage(md, "k1", "up", nil, "admin", "a"))
+	require.NoError(t, err)
+	_, err = db.Set(ctx, newIndexedMessage(md, "k3", "up", nil, "admin", "b"))
+	require.NoError(t, err)
+	_, err = db.Set(ctx, newIndexedMessage(md, "k2", "up", nil, "admin", "c"))
+	require.NoError(t, err)
+
+	res, _, err := db.Get(ctx, dynamicpb.NewMessage(md), protodb.WithOrderByDesc("key"))
+	require.NoError(t, err)
+	require.Equal(t, []string{"k3", "k2", "k1"}, keysFromMessages(t, res))
+}
+
+func TestOrderByRejectsNonIndexedField(t *testing.T) {
+	ctx := context.Background()
+	path := t.TempDir()
+
+	dbif, err := Open(ctx, WithPath(path), WithApplyDefaults(true))
+	require.NoError(t, err)
+	defer dbif.Close()
+
+	db := dbif.(*db)
+	fd := buildIndexedFileDescriptor(t)
+	require.NoError(t, db.RegisterProto(ctx, fd))
+
+	md, err := lookupMessage(db, "tests.index.Indexed")
+	require.NoError(t, err)
+
+	_, _, err = db.Get(ctx, dynamicpb.NewMessage(md), protodb.WithOrderByAsc("description"))
+	require.Error(t, err)
+	require.ErrorContains(t, err, "must be indexed")
+}
+
+func TestOrderByRejectsReverseCombination(t *testing.T) {
+	ctx := context.Background()
+	path := t.TempDir()
+
+	dbif, err := Open(ctx, WithPath(path), WithApplyDefaults(true))
+	require.NoError(t, err)
+	defer dbif.Close()
+
+	db := dbif.(*db)
+	fd := buildIndexedFileDescriptor(t)
+	require.NoError(t, db.RegisterProto(ctx, fd))
+
+	md, err := lookupMessage(db, "tests.index.Indexed")
+	require.NoError(t, err)
+
+	_, _, err = db.Get(ctx, dynamicpb.NewMessage(md), protodb.WithOrderByAsc("status"), protodb.WithReverse())
+	require.Error(t, err)
+	require.ErrorContains(t, err, "cannot be combined")
+}
+
 func TestIndexAndOr(t *testing.T) {
 	ctx := context.Background()
 	path := t.TempDir()
@@ -738,6 +842,14 @@ func keyFromMessage(t *testing.T, msg proto.Message) string {
 	fd := pm.Descriptor().Fields().ByName("key")
 	require.NotNil(t, fd)
 	return pm.Get(fd).String()
+}
+
+func keysFromMessages(t *testing.T, msgs []proto.Message) []string {
+	out := make([]string, 0, len(msgs))
+	for _, msg := range msgs {
+		out = append(out, keyFromMessage(t, msg))
+	}
+	return out
 }
 
 func countIndexFieldKeys(db *db, md protoreflect.MessageDescriptor, fieldPath string) (int, error) {

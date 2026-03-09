@@ -403,6 +403,12 @@ func getOpts(r *pb.GetRequest) (opts []protodb.GetOption) {
 	if r.One {
 		opts = append(opts, protodb.WithOne())
 	}
+	if r.Reverse {
+		opts = append(opts, protodb.WithReverse())
+	}
+	if r.GetOrderBy() != nil {
+		opts = append(opts, protodb.WithOrderBy(r.GetOrderBy().GetField(), r.GetOrderBy().GetDirection()))
+	}
 	return append(opts, protodb.WithFilter(r.Filter), protodb.WithPaging(r.Paging), protodb.WithReadFieldMask(r.FieldMask))
 }
 
