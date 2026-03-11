@@ -31,3 +31,7 @@ func UIDRevKey(key []byte) []byte {
 func UIDLastKey() []byte {
 	return []byte(UIDLast)
 }
+
+func StorageVersionKey() []byte {
+	return bytes.Join([][]byte{[]byte(Internal), []byte(Storage)}, []byte("/"))
+}

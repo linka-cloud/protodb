@@ -31,6 +31,7 @@ const (
 	UID         = "_uid"
 	UIDRev      = "_uid_rev"
 	UIDLast     = "_uid_last"
+	Storage     = "storage_version"
 )
 
 func DataPrefix(m proto.Message) (key []byte, field string, value string, err error) {

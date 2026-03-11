@@ -56,6 +56,10 @@ import (
 
 var tracer = otel.Tracer("protodb")
 
+const storageVersion uint64 = 1
+
+var errUnsupportedStorageVersion = errors.New("unsupported storage version")
+
 func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 	ctx, span := tracer.Start(ctx, "Open")
 	defer span.End()
@@ -128,6 +132,9 @@ func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 
 	if db.bdb.Replicated() {
 		if err = db.loadDescriptors(ctx); err != nil {
+			return nil, multierr.Combine(err, db.bdb.Close())
+		}
+		if err = db.ensureStorage(ctx); err != nil && !errors.Is(err, protodb.ErrNotLeader) {
 			return nil, multierr.Combine(err, db.bdb.Close())
 		}
 		if err = db.loadUID(ctx); err != nil {
@@ -796,6 +803,9 @@ func (db *db) load(ctx context.Context) error {
 	if err := db.loadDescriptors(ctx); err != nil && !errors.Is(err, protodb.ErrNotLeader) {
 		return err
 	}
+	if err := db.ensureStorage(ctx); err != nil && !errors.Is(err, protodb.ErrNotLeader) {
+		return err
+	}
 	if err := db.loadUID(ctx); err != nil && !errors.Is(err, protodb.ErrNotLeader) {
 		return err
 	}
@@ -822,6 +832,150 @@ func (db *db) loadUID(ctx context.Context) error {
 		}
 		return nil
 	})
+}
+
+func (db *db) ensureStorage(ctx context.Context) error {
+	tx, err := db.bdb.NewTransaction(ctx, true)
+	if err != nil {
+		return err
+	}
+	defer tx.Close(ctx)
+	storedVersion, err := db.storageVersion(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if storedVersion > storageVersion {
+		return fmt.Errorf("%w: stored=%d supported=%d", errUnsupportedStorageVersion, storedVersion, storageVersion)
+	}
+	if storedVersion == storageVersion {
+		return nil
+	}
+	maxUID, err := db.ensureUIDs(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if err := tx.Set(ctx, protodb.UIDLastKey(), y.U64ToBytes(maxUID), 0); err != nil {
+		return err
+	}
+	if err := tx.Set(ctx, protodb.StorageVersionKey(), y.U64ToBytes(storageVersion), 0); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	db.uid.Store(maxUID)
+	return nil
+}
+
+func (db *db) storageVersion(ctx context.Context, tx badgerd.Tx) (uint64, error) {
+	item, err := tx.Get(ctx, protodb.StorageVersionKey())
+	if err != nil {
+		if errors.Is(err, badger.ErrKeyNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	var version uint64
+	if err := item.Value(func(val []byte) error {
+		if len(val) != 8 {
+			return fmt.Errorf("invalid storage version value: %v", val)
+		}
+		version = y.BytesToU64(val)
+		return nil
+	}); err != nil {
+		return 0, err
+	}
+	return version, nil
+}
+
+func (db *db) ensureUIDs(ctx context.Context, tx badgerd.Tx) (uint64, error) {
+	maxUID, err := db.uidLast(ctx, tx)
+	if err != nil {
+		return 0, err
+	}
+	it := tx.Iterator(badger.IteratorOptions{Prefix: []byte(protodb.Data + "/"), PrefetchValues: false})
+	defer it.Close()
+	for it.Rewind(); it.Valid(); it.Next() {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		item := it.Item()
+		if item.IsDeletedOrExpired() {
+			continue
+		}
+		dataKey := item.KeyCopy(nil)
+		revKey := protodb.UIDRevKey(dataKey)
+		revItem, err := tx.Get(ctx, revKey)
+		if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
+			return 0, err
+		}
+		var uid uint64
+		if errors.Is(err, badger.ErrKeyNotFound) {
+			maxUID++
+			uid = maxUID
+			if err := tx.Set(ctx, revKey, y.U64ToBytes(uid), 0); err != nil {
+				return 0, err
+			}
+		} else {
+			if err := revItem.Value(func(val []byte) error {
+				if len(val) != 8 {
+					return fmt.Errorf("invalid uid value for key %q: %v", string(revKey), val)
+				}
+				uid = y.BytesToU64(val)
+				return nil
+			}); err != nil {
+				return 0, err
+			}
+			if uid > maxUID {
+				maxUID = uid
+			}
+		}
+		uidKey := protodb.UIDKey(uid)
+		uidItem, err := tx.Get(ctx, uidKey)
+		if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
+			return 0, err
+		}
+		if errors.Is(err, badger.ErrKeyNotFound) {
+			if err := tx.Set(ctx, uidKey, dataKey, 0); err != nil {
+				return 0, err
+			}
+			continue
+		}
+		var uidDataKey []byte
+		if err := uidItem.Value(func(val []byte) error {
+			uidDataKey = append(uidDataKey[:0], val...)
+			return nil
+		}); err != nil {
+			return 0, err
+		}
+		if !bytes.Equal(uidDataKey, dataKey) {
+			if err := tx.Set(ctx, uidKey, dataKey, 0); err != nil {
+				return 0, err
+			}
+		}
+	}
+	return maxUID, nil
+}
+
+func (db *db) uidLast(ctx context.Context, tx badgerd.Tx) (uint64, error) {
+	item, err := tx.Get(ctx, protodb.UIDLastKey())
+	if err != nil {
+		if errors.Is(err, badger.ErrKeyNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	var uid uint64
+	if err := item.Value(func(val []byte) error {
+		if len(val) != 8 {
+			return fmt.Errorf("invalid uid last value: %v", val)
+		}
+		uid = y.BytesToU64(val)
+		return nil
+	}); err != nil {
+		return 0, err
+	}
+	return uid, nil
 }
 
 func (db *db) saveDescriptors(ctx context.Context) error {
