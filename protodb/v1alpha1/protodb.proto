@@ -14,14 +14,14 @@
 
 syntax = "proto3";
 
-package linka.cloud.protodb;
+package linka.cloud.protodb.v1alpha1;
 
 option csharp_namespace = "LinkaCloud.ProtoDB";
 option java_package = "cloud.linka.protodb";
 option java_outer_classname = "ProtoDB";
 option java_multiple_files = true;
 option objc_class_prefix = "LKPDB";
-option go_package = "go.linka.cloud/protodb/pb;pb";
+option go_package = "go.linka.cloud/protodb/v1alpha1;v1alpha1";
 option cc_enable_arenas = true;
 
 import "patch/go.proto";

@@ -31,11 +31,11 @@ import (
 
 	"go.linka.cloud/protodb/internal/anypb"
 	"go.linka.cloud/protodb/internal/protodb"
-	"go.linka.cloud/protodb/pb"
+	"go.linka.cloud/protodb/protodb/v1alpha1"
 )
 
 type Server interface {
-	pb.ProtoDBServer
+	v1alpha1.ProtoDBServer
 	RegisterService(r grpc.ServiceRegistrar)
 }
 
@@ -48,10 +48,10 @@ func NewServer(db protodb.DB) (Server, error) {
 
 type server struct {
 	db protodb.DB
-	pb.UnsafeProtoDBServer
+	v1alpha1.UnsafeProtoDBServer
 }
 
-func (s *server) Lock(ss grpc.BidiStreamingServer[pb.LockRequest, pb.LockResponse]) error {
+func (s *server) Lock(ss grpc.BidiStreamingServer[v1alpha1.LockRequest, v1alpha1.LockResponse]) error {
 	p, ok, err := s.maybeProxy(false)
 	if err != nil {
 		return err
@@ -73,7 +73,7 @@ func (s *server) Lock(ss grpc.BidiStreamingServer[pb.LockRequest, pb.LockRespons
 		return gerrs.Internalf("failed to lock key %q: %v", req.Key, err)
 	}
 	defer s.db.Unlock(ss.Context(), req.Key)
-	if err := ss.Send(&pb.LockResponse{}); err != nil {
+	if err := ss.Send(&v1alpha1.LockResponse{}); err != nil {
 		return gerrs.Internalf("failed to send lock response: %v", err)
 	}
 	if _, err := ss.Recv(); err != nil {
@@ -86,10 +86,10 @@ func (s *server) Lock(ss grpc.BidiStreamingServer[pb.LockRequest, pb.LockRespons
 }
 
 func (s *server) RegisterService(r grpc.ServiceRegistrar) {
-	pb.RegisterProtoDBServer(r, s)
+	v1alpha1.RegisterProtoDBServer(r, s)
 }
 
-func (s *server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.RegisterResponse, error) {
+func (s *server) Register(ctx context.Context, req *v1alpha1.RegisterRequest) (*v1alpha1.RegisterResponse, error) {
 	p, ok, err := s.maybeProxy(false)
 	if err != nil {
 		return nil, err
@@ -100,10 +100,10 @@ func (s *server) Register(ctx context.Context, req *pb.RegisterRequest) (*pb.Reg
 	if err := s.db.RegisterProto(ctx, req.File); err != nil {
 		return nil, err
 	}
-	return &pb.RegisterResponse{}, nil
+	return &v1alpha1.RegisterResponse{}, nil
 }
 
-func (s *server) Descriptors(ctx context.Context, req *pb.DescriptorsRequest) (*pb.DescriptorsResponse, error) {
+func (s *server) Descriptors(ctx context.Context, req *v1alpha1.DescriptorsRequest) (*v1alpha1.DescriptorsResponse, error) {
 	p, ok, err := s.maybeProxy(true)
 	if err != nil {
 		return nil, err
@@ -115,10 +115,10 @@ func (s *server) Descriptors(ctx context.Context, req *pb.DescriptorsRequest) (*
 	if err != nil {
 		return nil, err
 	}
-	return &pb.DescriptorsResponse{Results: des}, nil
+	return &v1alpha1.DescriptorsResponse{Results: des}, nil
 }
 
-func (s *server) FileDescriptors(ctx context.Context, req *pb.FileDescriptorsRequest) (*pb.FileDescriptorsResponse, error) {
+func (s *server) FileDescriptors(ctx context.Context, req *v1alpha1.FileDescriptorsRequest) (*v1alpha1.FileDescriptorsResponse, error) {
 	p, ok, err := s.maybeProxy(true)
 	if err != nil {
 		return nil, err
@@ -130,10 +130,10 @@ func (s *server) FileDescriptors(ctx context.Context, req *pb.FileDescriptorsReq
 	if err != nil {
 		return nil, err
 	}
-	return &pb.FileDescriptorsResponse{Results: des}, nil
+	return &v1alpha1.FileDescriptorsResponse{Results: des}, nil
 }
 
-func (s *server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, error) {
+func (s *server) Get(ctx context.Context, req *v1alpha1.GetRequest) (*v1alpha1.GetResponse, error) {
 	p, ok, err := s.maybeProxy(true)
 	if err != nil {
 		return nil, err
@@ -145,10 +145,10 @@ func (s *server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, 
 	if err != nil {
 		return nil, err
 	}
-	return &pb.GetResponse{Results: a, Paging: i}, nil
+	return &v1alpha1.GetResponse{Results: a, Paging: i}, nil
 }
 
-func (s *server) Set(ctx context.Context, req *pb.SetRequest) (*pb.SetResponse, error) {
+func (s *server) Set(ctx context.Context, req *v1alpha1.SetRequest) (*v1alpha1.SetResponse, error) {
 	p, ok, err := s.maybeProxy(false)
 	if err != nil {
 		return nil, err
@@ -160,10 +160,10 @@ func (s *server) Set(ctx context.Context, req *pb.SetRequest) (*pb.SetResponse, 
 	if err != nil {
 		return nil, err
 	}
-	return &pb.SetResponse{Result: a}, nil
+	return &v1alpha1.SetResponse{Result: a}, nil
 }
 
-func (s *server) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteResponse, error) {
+func (s *server) Delete(ctx context.Context, req *v1alpha1.DeleteRequest) (*v1alpha1.DeleteResponse, error) {
 	p, ok, err := s.maybeProxy(false)
 	if err != nil {
 		return nil, err
@@ -174,10 +174,10 @@ func (s *server) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.DeleteR
 	if err := s.delete(ctx, s.db, req); err != nil {
 		return nil, err
 	}
-	return &pb.DeleteResponse{}, nil
+	return &v1alpha1.DeleteResponse{}, nil
 }
 
-func (s *server) NextSeq(ctx context.Context, req *pb.NextSeqRequest) (*pb.NextSeqResponse, error) {
+func (s *server) NextSeq(ctx context.Context, req *v1alpha1.NextSeqRequest) (*v1alpha1.NextSeqResponse, error) {
 	p, ok, err := s.maybeProxy(false)
 	if err != nil {
 		return nil, err
@@ -189,15 +189,15 @@ func (s *server) NextSeq(ctx context.Context, req *pb.NextSeqRequest) (*pb.NextS
 	if err != nil {
 		return nil, err
 	}
-	return &pb.NextSeqResponse{Seq: seq}, nil
+	return &v1alpha1.NextSeqResponse{Seq: seq}, nil
 }
 
-func (s *server) Tx(stream pb.ProtoDB_TxServer) error {
+func (s *server) Tx(stream v1alpha1.ProtoDB_TxServer) error {
 	ctx := stream.Context()
 	readOnly := false
 	var opts []protodb.TxOption
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
-		if readOnly = len(md.Get(pb.ReadOnlyTxKey)) > 0; readOnly {
+		if readOnly = len(md.Get(v1alpha1.ReadOnlyTxKey)) > 0; readOnly {
 			opts = append(opts, protodb.WithReadOnly())
 		}
 	}
@@ -209,7 +209,7 @@ func (s *server) Tx(stream pb.ProtoDB_TxServer) error {
 		return p.Tx(stream)
 	}
 	// send dummy headers for clients that cannot create streams before receiving first from the server
-	if err := grpc.SendHeader(ctx, metadata.Pairs(pb.ReadOnlyTxKey, strconv.FormatBool(readOnly))); err != nil {
+	if err := grpc.SendHeader(ctx, metadata.Pairs(v1alpha1.ReadOnlyTxKey, strconv.FormatBool(readOnly))); err != nil {
 		return gerrs.Internalf("failed to send headers: %v", err)
 	}
 	tx, err := s.db.Tx(stream.Context(), opts...)
@@ -225,41 +225,41 @@ func (s *server) Tx(stream pb.ProtoDB_TxServer) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		var res *pb.TxResponse
+		var res *v1alpha1.TxResponse
 		switch r := req.Request.(type) {
-		case *pb.TxRequest_Get:
+		case *v1alpha1.TxRequest_Get:
 			as, i, err := s.get(ctx, tx, r.Get)
 			if err != nil {
 				return err
 			}
-			res = &pb.TxResponse{Response: &pb.TxResponse_Get{Get: &pb.GetResponse{
+			res = &v1alpha1.TxResponse{Response: &v1alpha1.TxResponse_Get{Get: &v1alpha1.GetResponse{
 				Results: as,
 				Paging:  i,
 			}}}
-		case *pb.TxRequest_Set:
+		case *v1alpha1.TxRequest_Set:
 			a, err := s.set(ctx, tx, r.Set)
 			if err != nil {
 				return err
 			}
-			res = &pb.TxResponse{Response: &pb.TxResponse_Set{Set: &pb.SetResponse{
+			res = &v1alpha1.TxResponse{Response: &v1alpha1.TxResponse_Set{Set: &v1alpha1.SetResponse{
 				Result: a,
 			}}}
-		case *pb.TxRequest_Delete:
+		case *v1alpha1.TxRequest_Delete:
 			if err := s.delete(ctx, tx, r.Delete); err != nil {
 				return err
 			}
-			res = &pb.TxResponse{Response: &pb.TxResponse_Delete{Delete: &pb.DeleteResponse{}}}
-		case *pb.TxRequest_Commit:
+			res = &v1alpha1.TxResponse{Response: &v1alpha1.TxResponse_Delete{Delete: &v1alpha1.DeleteResponse{}}}
+		case *v1alpha1.TxRequest_Commit:
 			if !r.Commit.GetValue() {
 				continue
 			}
 			err := tx.Commit(ctx)
-			cr := &pb.CommitResponse{}
+			cr := &v1alpha1.CommitResponse{}
 			if err != nil {
 				cr.Error = wrapperspb.String(err.Error())
 				return err
 			}
-			res = &pb.TxResponse{Response: &pb.TxResponse_Commit{Commit: cr}}
+			res = &v1alpha1.TxResponse{Response: &v1alpha1.TxResponse_Commit{Commit: cr}}
 		}
 		if err := stream.Send(res); err != nil {
 			return err
@@ -267,7 +267,7 @@ func (s *server) Tx(stream pb.ProtoDB_TxServer) error {
 	}
 }
 
-func (s *server) Watch(req *pb.WatchRequest, stream pb.ProtoDB_WatchServer) error {
+func (s *server) Watch(req *v1alpha1.WatchRequest, stream v1alpha1.ProtoDB_WatchServer) error {
 	p, ok, err := s.maybeProxy(true)
 	if err != nil {
 		return err
@@ -284,14 +284,14 @@ func (s *server) Watch(req *pb.WatchRequest, stream pb.ProtoDB_WatchServer) erro
 		return err
 	}
 	// we send an empty event for clients that cannot create streams before receiving first from the server
-	if err := stream.Send(&pb.WatchEvent{}); err != nil {
+	if err := stream.Send(&v1alpha1.WatchEvent{}); err != nil {
 		return err
 	}
 	for e := range ch {
 		if err := e.Err(); err != nil {
 			return err
 		}
-		we := &pb.WatchEvent{Type: e.Type()}
+		we := &v1alpha1.WatchEvent{Type: e.Type()}
 		if n := e.New(); n != nil {
 			a, err := anypb.New(n)
 			if err != nil {
@@ -313,7 +313,7 @@ func (s *server) Watch(req *pb.WatchRequest, stream pb.ProtoDB_WatchServer) erro
 	return nil
 }
 
-func (s *server) get(ctx context.Context, r protodb.Reader, get *pb.GetRequest) ([]*anypb.Any, *pb.PagingInfo, error) {
+func (s *server) get(ctx context.Context, r protodb.Reader, get *v1alpha1.GetRequest) ([]*anypb.Any, *v1alpha1.PagingInfo, error) {
 	d, err := s.unmarshal(get.Search)
 	if err != nil {
 		return nil, nil, err
@@ -329,7 +329,7 @@ func (s *server) get(ctx context.Context, r protodb.Reader, get *pb.GetRequest) 
 	return as, i, nil
 }
 
-func (s *server) set(ctx context.Context, w protodb.Writer, set *pb.SetRequest) (*anypb.Any, error) {
+func (s *server) set(ctx context.Context, w protodb.Writer, set *v1alpha1.SetRequest) (*anypb.Any, error) {
 	d, err := s.unmarshal(set.Payload)
 	if err != nil {
 		return nil, err
@@ -345,7 +345,7 @@ func (s *server) set(ctx context.Context, w protodb.Writer, set *pb.SetRequest) 
 	return a, nil
 }
 
-func (s *server) delete(ctx context.Context, w protodb.Writer, del *pb.DeleteRequest) error {
+func (s *server) delete(ctx context.Context, w protodb.Writer, del *v1alpha1.DeleteRequest) error {
 	d, err := s.unmarshal(del.Payload)
 	if err != nil {
 		return err
@@ -353,7 +353,7 @@ func (s *server) delete(ctx context.Context, w protodb.Writer, del *pb.DeleteReq
 	return w.Delete(ctx, d)
 }
 
-func (s *server) maybeProxy(read bool) (pb.ProtoDBServer, bool, error) {
+func (s *server) maybeProxy(read bool) (v1alpha1.ProtoDBServer, bool, error) {
 	p, ok := s.db.(protodb.LeaderProxy)
 	if !ok {
 		return nil, false, nil
@@ -365,7 +365,7 @@ func (s *server) maybeProxy(read bool) (pb.ProtoDBServer, bool, error) {
 	if !ok {
 		return nil, false, nil
 	}
-	return pb.NewProtoDBProxy(pb.NewProtoDBClient(c)), true, nil
+	return v1alpha1.NewProtoDBProxy(v1alpha1.NewProtoDBClient(c)), true, nil
 }
 
 func toAnySlice(m ...proto.Message) ([]*anypb.Any, error) {
@@ -399,7 +399,7 @@ func (s *server) unmarshal(a *anypb.Any) (proto.Message, error) {
 	return d, nil
 }
 
-func getOpts(r *pb.GetRequest) (opts []protodb.GetOption) {
+func getOpts(r *v1alpha1.GetRequest) (opts []protodb.GetOption) {
 	if r.One {
 		opts = append(opts, protodb.WithOne())
 	}
@@ -412,10 +412,10 @@ func getOpts(r *pb.GetRequest) (opts []protodb.GetOption) {
 	return append(opts, protodb.WithFilter(r.Filter), protodb.WithPaging(r.Paging), protodb.WithReadFieldMask(r.FieldMask))
 }
 
-func setOpts(r *pb.SetRequest) (opts []protodb.SetOption) {
+func setOpts(r *v1alpha1.SetRequest) (opts []protodb.SetOption) {
 	return append(opts, protodb.WithTTL(r.TTL.AsDuration()), protodb.WithWriteFieldMask(r.FieldMask))
 }
 
-func watchOpts(r *pb.WatchRequest) (opts []protodb.GetOption) {
+func watchOpts(r *v1alpha1.WatchRequest) (opts []protodb.GetOption) {
 	return append(opts, protodb.WithFilter(r.Filter))
 }

@@ -36,7 +36,7 @@ import (
 
 	"go.linka.cloud/protodb/internal/anypb"
 	"go.linka.cloud/protodb/internal/protodb"
-	"go.linka.cloud/protodb/pb"
+	"go.linka.cloud/protodb/protodb/v1alpha1"
 )
 
 type Client interface {
@@ -51,27 +51,27 @@ type Client interface {
 }
 
 func NewClient(cc grpc.ClientConnInterface) (Client, error) {
-	return &client{c: pb.NewProtoDBClient(cc)}, nil
+	return &client{c: v1alpha1.NewProtoDBClient(cc)}, nil
 }
 
 type client struct {
-	c     pb.ProtoDBClient
-	locks map[string]grpc.ServerStreamingClient[pb.LockResponse]
+	c     v1alpha1.ProtoDBClient
+	locks map[string]grpc.ServerStreamingClient[v1alpha1.LockResponse]
 	mu    sync.Mutex
 }
 
 func (c *client) RegisterProto(ctx context.Context, file *descriptorpb.FileDescriptorProto) error {
-	_, err := c.c.Register(ctx, &pb.RegisterRequest{File: file})
+	_, err := c.c.Register(ctx, &v1alpha1.RegisterRequest{File: file})
 	return err
 }
 
 func (c *client) Register(ctx context.Context, file protoreflect.FileDescriptor) error {
-	_, err := c.c.Register(ctx, &pb.RegisterRequest{File: protodesc.ToFileDescriptorProto(file)})
+	_, err := c.c.Register(ctx, &v1alpha1.RegisterRequest{File: protodesc.ToFileDescriptorProto(file)})
 	return err
 }
 
 func (c *client) Descriptors(ctx context.Context) ([]*descriptorpb.DescriptorProto, error) {
-	res, err := c.c.Descriptors(ctx, &pb.DescriptorsRequest{})
+	res, err := c.c.Descriptors(ctx, &v1alpha1.DescriptorsRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func (c *client) Descriptors(ctx context.Context) ([]*descriptorpb.DescriptorPro
 }
 
 func (c *client) FileDescriptors(ctx context.Context) ([]*descriptorpb.FileDescriptorProto, error) {
-	res, err := c.c.FileDescriptors(ctx, &pb.FileDescriptorsRequest{})
+	res, err := c.c.FileDescriptors(ctx, &v1alpha1.FileDescriptorsRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func (c *client) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOp
 	if o.Filter != nil {
 		f = o.Filter.Expr()
 	}
-	res, err := c.c.Get(ctx, &pb.GetRequest{Search: a, Filter: f, Paging: o.Paging, FieldMask: o.FieldMask, Reverse: o.Reverse, One: o.One, OrderBy: o.OrderBy})
+	res, err := c.c.Get(ctx, &v1alpha1.GetRequest{Search: a, Filter: f, Paging: o.Paging, FieldMask: o.FieldMask, Reverse: o.Reverse, One: o.One, OrderBy: o.OrderBy})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -125,7 +125,7 @@ func (c *client) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOp
 	if o.TTL != 0 {
 		ttl = durationpb.New(o.TTL)
 	}
-	res, err := c.c.Set(ctx, &pb.SetRequest{Payload: a, TTL: ttl, FieldMask: o.FieldMask})
+	res, err := c.c.Set(ctx, &v1alpha1.SetRequest{Payload: a, TTL: ttl, FieldMask: o.FieldMask})
 	if err != nil {
 		return nil, err
 	}
@@ -141,12 +141,12 @@ func (c *client) Delete(ctx context.Context, m proto.Message) error {
 	if err != nil {
 		return err
 	}
-	_, err = c.c.Delete(ctx, &pb.DeleteRequest{Payload: a})
+	_, err = c.c.Delete(ctx, &v1alpha1.DeleteRequest{Payload: a})
 	return err
 }
 
 func (c *client) NextSeq(ctx context.Context, name string) (uint64, error) {
-	res, err := c.c.NextSeq(ctx, &pb.NextSeqRequest{Key: name})
+	res, err := c.c.NextSeq(ctx, &v1alpha1.NextSeqRequest{Key: name})
 	if err != nil {
 		return 0, err
 	}
@@ -158,7 +158,7 @@ func (c *client) Lock(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
-	if err := s.Send(&pb.LockRequest{Key: key}); err != nil {
+	if err := s.Send(&v1alpha1.LockRequest{Key: key}); err != nil {
 		return err
 	}
 	if _, err := s.Recv(); err != nil {
@@ -199,7 +199,7 @@ func (c *client) Watch(ctx context.Context, m proto.Message, opts ...protodb.Get
 	if o.Filter != nil {
 		f = o.Filter.Expr()
 	}
-	w, err := c.c.Watch(ctx, &pb.WatchRequest{Search: a, Filter: f})
+	w, err := c.c.Watch(ctx, &v1alpha1.WatchRequest{Search: a, Filter: f})
 	if err != nil {
 		return nil, err
 	}
@@ -238,7 +238,7 @@ func (c *client) newTx(ctx context.Context, opts ...protodb.TxOption) (protodb.T
 		opt(&o)
 	}
 	if o.ReadOnly {
-		ctx = metadata.AppendToOutgoingContext(ctx, pb.ReadOnlyTxKey, "true")
+		ctx = metadata.AppendToOutgoingContext(ctx, v1alpha1.ReadOnlyTxKey, "true")
 	}
 	txn, err := c.c.Tx(ctx)
 	if err != nil {
@@ -249,7 +249,7 @@ func (c *client) newTx(ctx context.Context, opts ...protodb.TxOption) (protodb.T
 
 type txc struct {
 	ctx context.Context
-	txn pb.ProtoDB_TxClient
+	txn v1alpha1.ProtoDB_TxClient
 }
 
 func (t *txc) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOption) ([]proto.Message, *protodb.PagingInfo, error) {
@@ -262,9 +262,9 @@ func (t *txc) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 	if o.Filter != nil {
 		f = o.Filter.Expr()
 	}
-	if err := t.txn.Send(&pb.TxRequest{
-		Request: &pb.TxRequest_Get{
-			Get: &pb.GetRequest{Search: a, Filter: f, Paging: o.Paging, FieldMask: o.FieldMask, Reverse: o.Reverse, One: o.One, OrderBy: o.OrderBy},
+	if err := t.txn.Send(&v1alpha1.TxRequest{
+		Request: &v1alpha1.TxRequest_Get{
+			Get: &v1alpha1.GetRequest{Search: a, Filter: f, Paging: o.Paging, FieldMask: o.FieldMask, Reverse: o.Reverse, One: o.One, OrderBy: o.OrderBy},
 		},
 	}); err != nil {
 		return nil, nil, err
@@ -301,9 +301,9 @@ func (t *txc) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 	if o.TTL != 0 {
 		ttl = durationpb.New(o.TTL)
 	}
-	if err := t.txn.Send(&pb.TxRequest{
-		Request: &pb.TxRequest_Set{
-			Set: &pb.SetRequest{Payload: a, TTL: ttl, FieldMask: o.FieldMask},
+	if err := t.txn.Send(&v1alpha1.TxRequest{
+		Request: &v1alpha1.TxRequest_Set{
+			Set: &v1alpha1.SetRequest{Payload: a, TTL: ttl, FieldMask: o.FieldMask},
 		},
 	}); err != nil {
 		return nil, err
@@ -327,9 +327,9 @@ func (t *txc) Delete(ctx context.Context, m proto.Message) error {
 	if err != nil {
 		return err
 	}
-	if err := t.txn.Send(&pb.TxRequest{
-		Request: &pb.TxRequest_Delete{
-			Delete: &pb.DeleteRequest{Payload: a},
+	if err := t.txn.Send(&v1alpha1.TxRequest{
+		Request: &v1alpha1.TxRequest_Delete{
+			Delete: &v1alpha1.DeleteRequest{Payload: a},
 		},
 	}); err != nil {
 		return err
@@ -345,7 +345,7 @@ func (t *txc) Delete(ctx context.Context, m proto.Message) error {
 }
 
 func (t *txc) Commit(ctx context.Context) error {
-	if err := t.txn.Send(&pb.TxRequest{Request: &pb.TxRequest_Commit{Commit: wrapperspb.Bool(true)}}); err != nil {
+	if err := t.txn.Send(&v1alpha1.TxRequest{Request: &v1alpha1.TxRequest_Commit{Commit: wrapperspb.Bool(true)}}); err != nil {
 		return err
 	}
 	res, err := t.txn.Recv()
@@ -374,7 +374,7 @@ type eventc struct {
 	err error
 }
 
-func newEvent(e *pb.WatchEvent, err error) *eventc {
+func newEvent(e *v1alpha1.WatchEvent, err error) *eventc {
 	ev := &eventc{typ: e.Type, err: err}
 	if e.Old != nil {
 		m, err := anypb.UnmarshalNew(e.Old)

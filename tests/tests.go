@@ -35,7 +35,7 @@ import (
 	"google.golang.org/protobuf/types/dynamicpb"
 
 	"go.linka.cloud/protodb"
-	"go.linka.cloud/protodb/pb"
+	"go.linka.cloud/protodb/protodb/v1alpha1"
 	testpb "go.linka.cloud/protodb/tests/pb"
 )
 
@@ -511,7 +511,7 @@ func TestBatchInsertAndQuery(t *testing.T, db protodb.Client) {
 	regex := `^eth\d*0$`
 	for i := 0; i*batch <= max/10; i++ {
 		start = time.Now()
-		paging := &pb.Paging{Limit: uint64(batch), Offset: uint64(i * batch), Token: tk}
+		paging := &v1alpha1.Paging{Limit: uint64(batch), Offset: uint64(i * batch), Token: tk}
 		ms, pinfo, err := db.Get(ctx, &testpb.Interface{}, protodb.WithPaging(paging), protodb.WithFilter(protodb.Where("name").StringRegex(regex)))
 		require.NoError(err)
 		if i%10 == 0 {

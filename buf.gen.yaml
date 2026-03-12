@@ -1,6 +1,39 @@
 version: v2
 plugins:
-- local: protoc-gen-go
+- local: protoc-gen-go-patch
   out: .
   opt:
+  - plugin=go
   - paths=source_relative
+- local: protoc-gen-go-patch
+  out: .
+  opt:
+  - plugin=go-grpc
+  - paths=source_relative
+- local: protoc-gen-go-patch
+  out: .
+  opt:
+  - plugin=defaults
+  - paths=source_relative
+- local: protoc-gen-go-patch
+  out: .
+  opt:
+  - plugin=go-fields
+  - paths=source_relative
+- local: protoc-gen-go-patch
+  out: .
+  opt:
+  - plugin=proxy
+  - paths=source_relative
+- local: protoc-gen-go-patch
+  out: .
+  opt:
+  - plugin=go-vtproto
+  - paths=source_relative
+  - features=marshal+unmarshal+size+clone+equal
+- local: protoc-gen-go-patch
+  out: .
+  opt:
+  - plugin=validate
+  - paths=source_relative
+  - lang=go

@@ -23,11 +23,11 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"go.linka.cloud/protodb/pb"
+	"go.linka.cloud/protodb/protodb/v1alpha1"
 )
 
-func cmpField(f protoreflect.FieldDescriptor, v1, v2 protoreflect.Value, prefix string, diffs map[string]*pb.FieldDiff) {
-	diff := &pb.FieldDiff{}
+func cmpField(f protoreflect.FieldDescriptor, v1, v2 protoreflect.Value, prefix string, diffs map[string]*v1alpha1.FieldDiff) {
+	diff := &v1alpha1.FieldDiff{}
 	equals := false
 	switch f.Kind() {
 	case protoreflect.BoolKind:
@@ -114,7 +114,7 @@ func cmpField(f protoreflect.FieldDescriptor, v1, v2 protoreflect.Value, prefix 
 		if !f.IsList() {
 			p += string(f.Name())
 		}
-		var mdiff map[string]*pb.FieldDiff
+		var mdiff map[string]*v1alpha1.FieldDiff
 		switch {
 		case v1.IsValid() && v2.IsValid():
 			mdiff = cmp(v1.Message().Interface(), v2.Message().Interface(), p)
@@ -134,11 +134,11 @@ func cmpField(f protoreflect.FieldDescriptor, v1, v2 protoreflect.Value, prefix 
 	}
 }
 
-func cmp(m1, m2 proto.Message, prefix string) map[string]*pb.FieldDiff {
+func cmp(m1, m2 proto.Message, prefix string) map[string]*v1alpha1.FieldDiff {
 	if prefix != "" {
 		prefix += "."
 	}
-	diffs := make(map[string]*pb.FieldDiff)
+	diffs := make(map[string]*v1alpha1.FieldDiff)
 	var m proto.Message
 	switch {
 	case m1 != nil:
@@ -217,12 +217,12 @@ func cmp(m1, m2 proto.Message, prefix string) map[string]*pb.FieldDiff {
 	return diffs
 }
 
-func Cmp(m1, m2 proto.Message) (*pb.MessageDiff, error) {
+func Cmp(m1, m2 proto.Message) (*v1alpha1.MessageDiff, error) {
 	if m1 != nil && m2 != nil {
 		if n1, n2 := m1.ProtoReflect().Descriptor().FullName(), m2.ProtoReflect().Descriptor().FullName(); n1 != n2 {
 			return nil, fmt.Errorf("cannot compare two different types: %s and %s", n1, n2)
 		}
 	}
 	diffs := cmp(m1, m2, "")
-	return &pb.MessageDiff{Fields: diffs}, nil
+	return &v1alpha1.MessageDiff{Fields: diffs}, nil
 }

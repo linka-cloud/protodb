@@ -26,7 +26,7 @@ import (
 	"google.golang.org/protobuf/types/descriptorpb"
 
 	"go.linka.cloud/protodb/internal/badgerd"
-	"go.linka.cloud/protodb/pb"
+	"go.linka.cloud/protodb/protodb/v1alpha1"
 )
 
 var (
@@ -102,13 +102,13 @@ type Locker interface {
 	Unlock(ctx context.Context, key string) error
 }
 
-type EventType = pb.WatchEventType
+type EventType = v1alpha1.WatchEventType
 
 const (
-	EventTypeUnknown = pb.WatchEventUnknown
-	EventTypeEnter   = pb.WatchEventEnter
-	EventTypeLeave   = pb.WatchEventLeave
-	EventTypeUpdate  = pb.WatchEventUpdate
+	EventTypeUnknown = v1alpha1.WatchEventUnknown
+	EventTypeEnter   = v1alpha1.WatchEventEnter
+	EventTypeLeave   = v1alpha1.WatchEventLeave
+	EventTypeUpdate  = v1alpha1.WatchEventUpdate
 )
 
 type Event interface {

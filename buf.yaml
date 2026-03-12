@@ -11,3 +11,8 @@ lint:
 breaking:
   use:
     - FILE
+deps:
+- buf.build/envoyproxy/protoc-gen-validate
+- buf.build/linka-cloud/protopatch
+- buf.build/linka-cloud/protodb
+- buf.build/linka-cloud/protofilters

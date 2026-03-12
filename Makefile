@@ -52,6 +52,7 @@ bin:
 	@go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-openapiv2
 	@go install github.com/alta/protopatch/cmd/protoc-gen-go-patch
 	@go install github.com/planetscale/vtprotobuf/cmd/protoc-gen-go-vtproto
+	@go install github.com/bufbuild/buf/cmd/buf@v1.45.0
 
 clean:
 	@rm -rf .bin
@@ -63,7 +64,8 @@ proto: gen-proto lint
 
 .PHONY: gen-proto
 gen-proto: protoc-gen-protodb
-	@find $(PROTO_BASE_PATH) -name '*.proto' -type f -exec \
+	@buf generate
+	@find $(PROTO_BASE_PATH)/tests -name '*.proto' -type f -exec \
     	protoc $(INCLUDE_PROTO_PATH) \
     		--go-patch_out=plugin=go,$(PROTO_OPTS):. \
     		--go-patch_out=plugin=go-grpc,$(PROTO_OPTS):. \

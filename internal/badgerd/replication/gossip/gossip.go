@@ -37,7 +37,7 @@ import (
 	"go.linka.cloud/protodb/internal/badgerd/dns"
 	"go.linka.cloud/protodb/internal/badgerd/replication"
 	pb2 "go.linka.cloud/protodb/internal/badgerd/replication/gossip/pb"
-	"go.linka.cloud/protodb/pb"
+	"go.linka.cloud/protodb/protodb/v1alpha1"
 )
 
 var (
@@ -54,7 +54,7 @@ var defaultOptions = replication.Options{
 
 type Gossip struct {
 	pb2.UnsafeReplicationServiceServer
-	pb.UnsafeProtoDBServer
+	v1alpha1.UnsafeProtoDBServer
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -73,7 +73,7 @@ type Gossip struct {
 	nodes   Map[*node]
 
 	svc       service.Service
-	h         pb.ProtoDBServer
+	h         v1alpha1.ProtoDBServer
 	events    chan memberlist.NodeEvent
 	once      sync.Once
 	ready     chan struct{}

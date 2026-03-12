@@ -51,7 +51,7 @@ import (
 	"go.linka.cloud/protodb/internal/protodb"
 	"go.linka.cloud/protodb/internal/registry"
 	"go.linka.cloud/protodb/internal/server"
-	"go.linka.cloud/protodb/pb"
+	"go.linka.cloud/protodb/protodb/v1alpha1"
 )
 
 var tracer = otel.Tracer("protodb")
@@ -84,7 +84,7 @@ func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 			return nil, err
 		}
 		o.repl = append(o.repl, replication.WithExtraServices(func(r grpc.ServiceRegistrar) {
-			pb.RegisterProtoDBServer(r, h)
+			v1alpha1.RegisterProtoDBServer(r, h)
 		}))
 	}
 	db.bdb, err = badgerd.Open(
@@ -249,11 +249,11 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...protodb.GetOpt
 				}
 				if o.Filter == nil {
 					if new == nil {
-						typ = pb.WatchEventLeave
+						typ = v1alpha1.WatchEventLeave
 					} else if old != nil {
-						typ = pb.WatchEventUpdate
+						typ = v1alpha1.WatchEventUpdate
 					} else {
-						typ = pb.WatchEventEnter
+						typ = v1alpha1.WatchEventEnter
 					}
 
 					log.Debugf("sending event with key %s and type %v", string(v.Key), typ)
@@ -280,13 +280,13 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...protodb.GetOpt
 				}
 				if was {
 					if !is {
-						typ = pb.WatchEventLeave
+						typ = v1alpha1.WatchEventLeave
 					} else {
-						typ = pb.WatchEventUpdate
+						typ = v1alpha1.WatchEventUpdate
 					}
 				} else {
 					if is {
-						typ = pb.WatchEventEnter
+						typ = v1alpha1.WatchEventEnter
 					} else {
 						log.Debugf("skipping non matching event with key %s", string(v.Key))
 						continue

@@ -32,7 +32,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 
 	pb2 "go.linka.cloud/protodb/internal/badgerd/replication/gossip/pb"
-	"go.linka.cloud/protodb/pb"
+	"go.linka.cloud/protodb/protodb/v1alpha1"
 )
 
 type node struct {
@@ -41,7 +41,7 @@ type node struct {
 	addr  net.IP
 	cc    *grpc.ClientConn
 	repl  pb2.ReplicationServiceClient
-	proxy pb.ProtoDBServer
+	proxy v1alpha1.ProtoDBServer
 	// elect pb2.ReplicationService_ElectionClient
 }
 
@@ -145,7 +145,7 @@ func (r *Gossip) handleEvent(ctx context.Context, e memberlist.NodeEvent) {
 			meta:  m,
 			cc:    c,
 			repl:  cs,
-			proxy: pb.NewProtoDBProxy(pb.NewProtoDBClient(c)),
+			proxy: v1alpha1.NewProtoDBProxy(v1alpha1.NewProtoDBClient(c)),
 		})
 		log.Infof("connected to %s", e.Node.Name)
 		if e.Node.Name == r.leaderName.Load() {

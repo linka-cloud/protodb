@@ -42,8 +42,8 @@ import (
 	idxstore "go.linka.cloud/protodb/internal/index"
 	"go.linka.cloud/protodb/internal/protodb"
 	"go.linka.cloud/protodb/internal/token"
-	"go.linka.cloud/protodb/pb"
 	protopts "go.linka.cloud/protodb/protodb"
+	"go.linka.cloud/protodb/protodb/v1alpha1"
 )
 
 func newTx(ctx context.Context, db *db, opts ...protodb.TxOption) (*tx, error) {
@@ -856,7 +856,7 @@ func stringToBytesNoCopy(s string) []byte {
 type orderField struct {
 	path      []protoreflect.FieldDescriptor
 	fieldPath string
-	direction pb.OrderDirection
+	direction v1alpha1.OrderDirection
 	key       bool
 	seconds   protoreflect.FieldDescriptor
 	nanos     protoreflect.FieldDescriptor
@@ -919,7 +919,7 @@ func (tx *tx) getOrderedIndexed(ctx context.Context, m proto.Message, o protodb.
 		span.SetAttributes(
 			attribute.String("message", string(m.ProtoReflect().Descriptor().FullName())),
 			attribute.String("order_field", plan.fieldPath),
-			attribute.Bool("order_desc", plan.direction == pb.OrderDirectionDesc),
+			attribute.Bool("order_desc", plan.direction == v1alpha1.OrderDirectionDesc),
 			attribute.Bool("filtered", o.Filter != nil),
 			attribute.Bool("continuation", hasContinuationToken),
 		)
@@ -960,7 +960,7 @@ func (tx *tx) getOrderedIndexed(ctx context.Context, m proto.Message, o protodb.
 	selectedKeys := make([][]byte, 0)
 	hasNext := false
 	continuationFound := !hasContinuationToken
-	seq, err := tx.db.idx.OrderedUIDGroupsSeq(ctx, tx, m.ProtoReflect().Descriptor().FullName(), plan.path, plan.direction == pb.OrderDirectionDesc)
+	seq, err := tx.db.idx.OrderedUIDGroupsSeq(ctx, tx, m.ProtoReflect().Descriptor().FullName(), plan.path, plan.direction == v1alpha1.OrderDirectionDesc)
 	if err != nil {
 		return nil, nil, false, err
 	}
@@ -1064,7 +1064,7 @@ func (tx *tx) getOrderedFallbackScanSort(ctx context.Context, m proto.Message, o
 		span.SetAttributes(
 			attribute.String("message", string(m.ProtoReflect().Descriptor().FullName())),
 			attribute.String("order_field", plan.fieldPath),
-			attribute.Bool("order_desc", plan.direction == pb.OrderDirectionDesc),
+			attribute.Bool("order_desc", plan.direction == v1alpha1.OrderDirectionDesc),
 			attribute.Bool("filtered", o.Filter != nil),
 			attribute.Bool("continuation", hasContinuationToken),
 		)
@@ -1096,7 +1096,7 @@ func (tx *tx) getOrderedFallbackScanSort(ctx context.Context, m proto.Message, o
 		if c == 0 {
 			return bytes.Compare(a.key, b.key)
 		}
-		if plan.direction == pb.OrderDirectionDesc {
+		if plan.direction == v1alpha1.OrderDirectionDesc {
 			return -c
 		}
 		return c
@@ -1157,7 +1157,7 @@ func (tx *tx) getOrderedFallbackScanSort(ctx context.Context, m proto.Message, o
 	return out, &protodb.PagingInfo{HasNext: hasNext, Token: tks}, nil
 }
 
-func buildOrderPlan(msg protoreflect.Message, orderBy *pb.OrderBy) (orderField, error) {
+func buildOrderPlan(msg protoreflect.Message, orderBy *v1alpha1.OrderBy) (orderField, error) {
 	if orderBy == nil {
 		return orderField{}, errors.New("order_by cannot be empty")
 	}
@@ -1182,10 +1182,10 @@ func buildOrderPlan(msg protoreflect.Message, orderBy *pb.OrderBy) (orderField, 
 		}
 	}
 	direction := orderBy.GetDirection()
-	if direction == pb.OrderDirectionUnspecified {
-		direction = pb.OrderDirectionAsc
+	if direction == v1alpha1.OrderDirectionUnspecified {
+		direction = v1alpha1.OrderDirectionAsc
 	}
-	if direction != pb.OrderDirectionAsc && direction != pb.OrderDirectionDesc {
+	if direction != v1alpha1.OrderDirectionAsc && direction != v1alpha1.OrderDirectionDesc {
 		return orderField{}, fmt.Errorf("order_by field %q has invalid direction %v", fieldPath, orderBy.GetDirection())
 	}
 	pl := orderField{path: fds, fieldPath: fieldPath, direction: direction, key: isKey}

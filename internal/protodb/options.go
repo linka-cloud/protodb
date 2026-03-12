@@ -21,12 +21,12 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
 	"go.linka.cloud/protodb/internal/badgerd"
-	"go.linka.cloud/protodb/pb"
+	"go.linka.cloud/protodb/protodb/v1alpha1"
 )
 
 type (
-	Paging     = pb.Paging
-	PagingInfo = pb.PagingInfo
+	Paging     = v1alpha1.Paging
+	PagingInfo = v1alpha1.PagingInfo
 	FilterExpr = filters.Expression
 	Filter     = filters.FieldFilterer
 )
@@ -53,18 +53,18 @@ func WithReverse() GetOption {
 	}
 }
 
-func WithOrderBy(field string, direction pb.OrderDirection) GetOption {
+func WithOrderBy(field string, direction v1alpha1.OrderDirection) GetOption {
 	return func(o *GetOpts) {
-		o.OrderBy = &pb.OrderBy{Field: field, Direction: direction}
+		o.OrderBy = &v1alpha1.OrderBy{Field: field, Direction: direction}
 	}
 }
 
 func WithOrderByAsc(field string) GetOption {
-	return WithOrderBy(field, pb.OrderDirectionAsc)
+	return WithOrderBy(field, v1alpha1.OrderDirectionAsc)
 }
 
 func WithOrderByDesc(field string) GetOption {
-	return WithOrderBy(field, pb.OrderDirectionDesc)
+	return WithOrderBy(field, v1alpha1.OrderDirectionDesc)
 }
 
 func WithReadFieldMaskPaths(paths ...string) GetOption {
@@ -103,7 +103,7 @@ type GetOpts struct {
 	FieldMask *fieldmaskpb.FieldMask
 	Reverse   bool
 	One       bool
-	OrderBy   *pb.OrderBy
+	OrderBy   *v1alpha1.OrderBy
 }
 
 type SetOption func(o *SetOpts)

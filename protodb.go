@@ -24,7 +24,7 @@ import (
 	"go.linka.cloud/protodb/internal/db"
 	"go.linka.cloud/protodb/internal/protodb"
 	"go.linka.cloud/protodb/internal/server"
-	"go.linka.cloud/protodb/pb"
+	"go.linka.cloud/protodb/protodb/v1alpha1"
 )
 
 var (
@@ -53,12 +53,12 @@ type Locker = protodb.Locker
 
 type Resolverer = protodb.Resolverer
 
-type EventType = pb.WatchEventType
+type EventType = v1alpha1.WatchEventType
 
 const (
-	EventTypeEnter  = pb.WatchEventEnter
-	EventTypeLeave  = pb.WatchEventLeave
-	EventTypeUpdate = pb.WatchEventUpdate
+	EventTypeEnter  = v1alpha1.WatchEventEnter
+	EventTypeLeave  = v1alpha1.WatchEventLeave
+	EventTypeUpdate = v1alpha1.WatchEventUpdate
 )
 
 type Event = protodb.Event
@@ -137,19 +137,19 @@ var (
 )
 
 type (
-	Paging     = pb.Paging
-	PagingInfo = pb.PagingInfo
+	Paging     = v1alpha1.Paging
+	PagingInfo = v1alpha1.PagingInfo
 	FilterExpr = filters.Expression
 	Filter     = filters.FieldFilterer
-	OrderBy    = pb.OrderBy
+	OrderBy    = v1alpha1.OrderBy
 )
 
-type OrderDirection = pb.OrderDirection
+type OrderDirection = v1alpha1.OrderDirection
 
 const (
-	OrderDirectionUnspecified = pb.OrderDirectionUnspecified
-	OrderDirectionAsc         = pb.OrderDirectionAsc
-	OrderDirectionDesc        = pb.OrderDirectionDesc
+	OrderDirectionUnspecified = v1alpha1.OrderDirectionUnspecified
+	OrderDirectionAsc         = v1alpha1.OrderDirectionAsc
+	OrderDirectionDesc        = v1alpha1.OrderDirectionDesc
 )
 
 type Client = client.Client

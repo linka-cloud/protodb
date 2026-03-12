@@ -15,8 +15,8 @@ import (
 	"google.golang.org/protobuf/types/dynamicpb"
 
 	iprotodb "go.linka.cloud/protodb/internal/protodb"
-	"go.linka.cloud/protodb/pb"
 	protopts "go.linka.cloud/protodb/protodb"
+	"go.linka.cloud/protodb/protodb/v1alpha1"
 )
 
 func BenchmarkTxSet(b *testing.B) {
@@ -93,7 +93,7 @@ func BenchmarkTxGet(b *testing.B) {
 		query := dynamicpb.NewMessage(md)
 		opt := []iprotodb.GetOption{
 			iprotodb.WithFilter(filters.Where("status").StringEquals("up")),
-			iprotodb.WithPaging(&pb.Paging{Limit: 50}),
+			iprotodb.WithPaging(&v1alpha1.Paging{Limit: 50}),
 		}
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -109,7 +109,7 @@ func BenchmarkTxGet(b *testing.B) {
 		query := dynamicpb.NewMessage(md)
 		opts := []iprotodb.GetOption{
 			iprotodb.WithFilter(filters.Where("status").StringEquals("up")),
-			iprotodb.WithPaging(&pb.Paging{Limit: 50}),
+			iprotodb.WithPaging(&v1alpha1.Paging{Limit: 50}),
 		}
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -125,7 +125,7 @@ func BenchmarkTxGet(b *testing.B) {
 		query := dynamicpb.NewMessage(md)
 		opts := []iprotodb.GetOption{
 			iprotodb.WithFilter(filters.Where("payload").StringHasPrefix("seed-payload")),
-			iprotodb.WithPaging(&pb.Paging{Limit: 50}),
+			iprotodb.WithPaging(&v1alpha1.Paging{Limit: 50}),
 		}
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -141,7 +141,7 @@ func BenchmarkTxGet(b *testing.B) {
 		query := dynamicpb.NewMessage(md)
 		opts := []iprotodb.GetOption{
 			iprotodb.WithOrderByAsc("status"),
-			iprotodb.WithPaging(&pb.Paging{Limit: 50}),
+			iprotodb.WithPaging(&v1alpha1.Paging{Limit: 50}),
 		}
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -158,7 +158,7 @@ func BenchmarkTxGet(b *testing.B) {
 		opts := []iprotodb.GetOption{
 			iprotodb.WithFilter(filters.Where("payload").StringHasPrefix("seed-payload")),
 			iprotodb.WithOrderByAsc("status"),
-			iprotodb.WithPaging(&pb.Paging{Limit: 50}),
+			iprotodb.WithPaging(&v1alpha1.Paging{Limit: 50}),
 		}
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
@@ -174,7 +174,7 @@ func BenchmarkTxGet(b *testing.B) {
 		query := dynamicpb.NewMessage(md)
 		opts := []iprotodb.GetOption{
 			iprotodb.WithOrderByDesc("key"),
-			iprotodb.WithPaging(&pb.Paging{Limit: 50}),
+			iprotodb.WithPaging(&v1alpha1.Paging{Limit: 50}),
 		}
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
