@@ -495,6 +495,10 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 	}
 	span := trace.SpanFromContext(ctx)
 	o := makeSetOpts(opts...)
+	expiresAt := uint64(0)
+	if o.TTL != 0 {
+		expiresAt = uint64(time.Now().Add(o.TTL).Unix())
+	}
 	k, field, value, err := protodb.DataPrefix(m)
 	if err != nil {
 		return nil, err
@@ -518,12 +522,12 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 		}
 		uk := protodb.UIDKey(uid)
 		tx.db.opts.logger.Tracef("set key %q", string(uk))
-		if err := tx.txn.Set(ctx, uk, k, 0); err != nil {
+		if err := tx.txn.Set(ctx, uk, k, expiresAt); err != nil {
 			return nil, err
 		}
 		urk := protodb.UIDRevKey(k)
 		tx.db.opts.logger.Tracef("set key %q", string(urk))
-		if err := tx.txn.Set(ctx, urk, y.U64ToBytes(uid), 0); err != nil {
+		if err := tx.txn.Set(ctx, urk, y.U64ToBytes(uid), expiresAt); err != nil {
 			return nil, err
 		}
 	}
@@ -590,12 +594,8 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 		span.SetAttributes(attribute.Int64("size", s))
 	}
 	tx.size += s
-	expiresAt := uint64(0)
-	if o.TTL != 0 {
-		expiresAt = uint64(time.Now().Add(o.TTL).Unix())
-		if span.IsRecording() {
-			span.SetAttributes(attribute.String("ttl", o.TTL.String()))
-		}
+	if o.TTL != 0 && span.IsRecording() {
+		span.SetAttributes(attribute.String("ttl", o.TTL.String()))
 	}
 	if err := ctx.Err(); err != nil {
 		tx.close()

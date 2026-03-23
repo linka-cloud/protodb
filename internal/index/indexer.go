@@ -722,6 +722,7 @@ func (idx *Indexer) addIndexEntries(ctx context.Context, tx Tx, md protoreflect.
 		}
 		item := dataIt.Item()
 		key := item.KeyCopy(nil)
+		expiresAt := item.ExpiresAt()
 		msg := dynamicpb.NewMessage(md)
 		if err := item.Value(func(val []byte) error {
 			return idx.unmarshal(val, msg)
@@ -734,11 +735,11 @@ func (idx *Indexer) addIndexEntries(ctx context.Context, tx Tx, md protoreflect.
 		}
 		if !ok {
 			uk := protodb.UIDKey(uid)
-			if err := tx.Txn().Set(ctx, uk, key, 0); err != nil {
+			if err := tx.Txn().Set(ctx, uk, key, expiresAt); err != nil {
 				return err
 			}
 			urk := protodb.UIDRevKey(key)
-			if err := tx.Txn().Set(ctx, urk, y.U64ToBytes(uid), 0); err != nil {
+			if err := tx.Txn().Set(ctx, urk, y.U64ToBytes(uid), expiresAt); err != nil {
 				return err
 			}
 		}

@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dgraph-io/badger/v3"
 	"github.com/jhump/protoreflect/v2/protobuilder"
@@ -126,6 +127,134 @@ func TestIndexUpdateAndDelete(t *testing.T) {
 	res, _, err = db.Get(ctx, dynamicpb.NewMessage(md), protodb.WithFilter(filter))
 	require.NoError(t, err)
 	require.Len(t, res, 1)
+}
+
+func TestSetWithTTLPropagatesUIDExpiry(t *testing.T) {
+	ctx := context.Background()
+	path := t.TempDir()
+
+	dbif, err := Open(ctx, WithPath(path), WithApplyDefaults(true))
+	require.NoError(t, err)
+	defer dbif.Close()
+
+	db := dbif.(*db)
+	fd := buildIndexedFileDescriptor(t)
+	require.NoError(t, db.RegisterProto(ctx, fd))
+
+	md, err := lookupMessage(db, "tests.index.Indexed")
+	require.NoError(t, err)
+
+	m := newIndexedMessage(md, "k1", "up", []string{"edge"}, "admin", "alpha")
+	_, err = db.Set(ctx, m, protodb.WithTTL(time.Hour))
+	require.NoError(t, err)
+
+	key, _, _, err := protodb.DataPrefix(m)
+	require.NoError(t, err)
+
+	uid, ok, err := uidForKey(ctx, db, key)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	dataExpiry, ok, err := keyExpiresAt(db, key)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NotZero(t, dataExpiry)
+
+	uidExpiry, ok, err := keyExpiresAt(db, protodb.UIDKey(uid))
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, dataExpiry, uidExpiry)
+
+	revExpiry, ok, err := keyExpiresAt(db, protodb.UIDRevKey(key))
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, dataExpiry, revExpiry)
+}
+
+func TestRebuildIndexesRestoresUIDExpiry(t *testing.T) {
+	ctx := context.Background()
+	path := t.TempDir()
+
+	dbif, err := Open(ctx, WithPath(path), WithApplyDefaults(true))
+	require.NoError(t, err)
+	defer dbif.Close()
+
+	db := dbif.(*db)
+	fd := buildIndexedFileDescriptor(t)
+	require.NoError(t, db.RegisterProto(ctx, fd))
+
+	md, err := lookupMessage(db, "tests.index.Indexed")
+	require.NoError(t, err)
+
+	m := newIndexedMessage(md, "k1", "up", []string{"edge"}, "admin", "alpha")
+	_, err = db.Set(ctx, m, protodb.WithTTL(time.Hour))
+	require.NoError(t, err)
+
+	key, _, _, err := protodb.DataPrefix(m)
+	require.NoError(t, err)
+
+	uid, ok, err := uidForKey(ctx, db, key)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	dataExpiry, ok, err := keyExpiresAt(db, key)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NotZero(t, dataExpiry)
+
+	tx, err := db.bdb.NewTransaction(ctx, true)
+	require.NoError(t, err)
+	require.NoError(t, tx.Delete(ctx, protodb.UIDKey(uid)))
+	require.NoError(t, tx.Delete(ctx, protodb.UIDRevKey(key)))
+	require.NoError(t, tx.Commit(ctx))
+	require.NoError(t, tx.Close(ctx))
+	require.NoError(t, deleteIndexPrefix(ctx, db, md))
+
+	require.NoError(t, db.rebuildIndexes(ctx))
+	uid, ok, err = uidForKey(ctx, db, key)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	uidExpiry, ok, err := keyExpiresAt(db, protodb.UIDKey(uid))
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, dataExpiry, uidExpiry)
+
+	revExpiry, ok, err := keyExpiresAt(db, protodb.UIDRevKey(key))
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Equal(t, dataExpiry, revExpiry)
+}
+
+func TestIndexedQueryWithTTL(t *testing.T) {
+	ctx := context.Background()
+	path := t.TempDir()
+
+	dbif, err := Open(ctx, WithPath(path), WithApplyDefaults(true))
+	require.NoError(t, err)
+	defer dbif.Close()
+
+	db := dbif.(*db)
+	fd := buildIndexedFileDescriptor(t)
+	require.NoError(t, db.RegisterProto(ctx, fd))
+
+	md, err := lookupMessage(db, "tests.index.Indexed")
+	require.NoError(t, err)
+
+	m := newIndexedMessage(md, "k1", "up", []string{"edge"}, "admin", "alpha")
+	_, err = db.Set(ctx, m, protodb.WithTTL(time.Second))
+	require.NoError(t, err)
+
+	filter := filters.Where("status").StringEquals("up")
+	res, _, err := db.Get(ctx, dynamicpb.NewMessage(md), protodb.WithFilter(filter))
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+
+	time.Sleep(2 * time.Second)
+
+	res, _, err = db.Get(ctx, dynamicpb.NewMessage(md), protodb.WithFilter(filter))
+	require.NoError(t, err)
+	require.Len(t, res, 0)
 }
 
 func TestIndexableFilterWithInferredIDKey(t *testing.T) {
@@ -872,6 +1001,37 @@ func countIndexFieldKeys(db *db, md protoreflect.MessageDescriptor, fieldPath st
 		}
 	}
 	return count, nil
+}
+
+func uidForKey(ctx context.Context, db *db, key []byte) (uint64, bool, error) {
+	txn, err := db.bdb.NewTransaction(ctx, false)
+	if err != nil {
+		return 0, false, err
+	}
+	defer txn.Close(ctx)
+	return (&tx{db: db, txn: txn}).uid(ctx, key, false)
+}
+
+func keyExpiresAt(db *db, key []byte) (uint64, bool, error) {
+	var exp uint64
+	err := db.bdb.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(key)
+		if err != nil {
+			if err == badger.ErrKeyNotFound {
+				return nil
+			}
+			return err
+		}
+		exp = item.ExpiresAt()
+		return nil
+	})
+	if err != nil {
+		return 0, false, err
+	}
+	if exp == 0 {
+		return 0, false, nil
+	}
+	return exp, true, nil
 }
 
 func countIndexFieldKeysNumber(db *db, name protoreflect.FullName, numberPath string) (int, error) {
