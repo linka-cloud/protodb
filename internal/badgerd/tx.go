@@ -105,6 +105,9 @@ func (tx *tx) Delete(ctx context.Context, key []byte) error {
 	if tx.closed() {
 		return badger.ErrDBClosed
 	}
+	if !tx.update {
+		return badger.ErrReadOnlyTxn
+	}
 	if err := tx.repl.Delete(ctx, key); err != nil {
 		return err
 	}
