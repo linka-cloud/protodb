@@ -34,10 +34,15 @@ func TestMemIteratorPrefixSeekReverseTable(t *testing.T) {
 	})
 
 	t.Run("seek_last_prefix", func(t *testing.T) {
-		it := m.newIterator([]byte("a/"), 0, false)
+		it := m.newIterator([]byte("a/"), 0, true)
 		it.SeekLast()
 		assert.True(t, it.Valid())
+		assert.Equal(t, []byte("a/2"), it.Key())
 		assert.True(t, it.skip())
+		it.Next()
+		assert.True(t, it.Valid())
+		assert.Equal(t, []byte("a/1"), it.Key())
+		assert.False(t, it.skip())
 	})
 }
 

@@ -64,3 +64,47 @@ func TestWritesIteratorWhenWalBackedRespectsDeleteVisibility(t *testing.T) {
 		"k4": "p4",
 	}, got)
 }
+
+func TestWritesIteratorSeekLastReverseWithPrefixWhenWalBacked(t *testing.T) {
+	db, err := badger.Open(badger.DefaultOptions("").WithInMemory(true))
+	require.NoError(t, err)
+	defer db.Close()
+
+	require.NoError(t, db.Update(func(tx *badger.Txn) error {
+		require.NoError(t, tx.Set([]byte("a/1"), []byte("b1")))
+		require.NoError(t, tx.Set([]byte("a/2"), []byte("b2")))
+		require.NoError(t, tx.Set([]byte("a/3"), []byte("b3")))
+		require.NoError(t, tx.Set([]byte("b/1"), []byte("bx")))
+		return nil
+	}))
+
+	tx := db.NewTransaction(false)
+	defer tx.Discard()
+
+	w := newWrites(db.Opts().Dir, tx, 2, 1<<20, int(db.Opts().ValueThreshold))
+	defer w.Close()
+
+	w.Set(&badger.Entry{Key: []byte("a/2"), Value: []byte("p2")})
+	w.Set(&badger.Entry{Key: []byte("a/4"), Value: []byte("p4")})
+	w.Delete([]byte("a/3"))
+
+	require.NotNil(t, w.w)
+
+	it := w.Iterator([]byte("a/"), true)
+	defer it.Close()
+
+	it.SeekLast()
+	require.True(t, it.Valid())
+	assert.Equal(t, []byte("a/4"), it.Key())
+
+	keys := make([]string, 0)
+	for ; it.Valid(); it.Next() {
+		item := it.Item()
+		if item.IsDeletedOrExpired() {
+			continue
+		}
+		keys = append(keys, string(item.Key()))
+	}
+
+	assert.Equal(t, []string{"a/4", "a/2", "a/1"}, keys)
+}
