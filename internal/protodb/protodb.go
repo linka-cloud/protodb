@@ -36,7 +36,7 @@ var (
 
 type DB interface {
 	Registerer
-	Resolverer
+	Resolver
 	Reader
 	Writer
 	Watcher
@@ -93,9 +93,11 @@ type Leader interface {
 	LeaderChanges() <-chan string
 }
 
-type Resolverer interface {
+type Resolver interface {
 	Resolver() protodesc.Resolver
 }
+
+type Resolverer = Resolver
 
 type Locker interface {
 	Lock(ctx context.Context, key string) error

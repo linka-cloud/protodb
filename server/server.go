@@ -15,7 +15,9 @@
 package server
 
 import (
-	"go.linka.cloud/protodb/internal/server"
+	"go.linka.cloud/protodb"
 )
 
-var New = server.NewServer
+type Server = protodb.Server
+
+var New = protodb.NewServer

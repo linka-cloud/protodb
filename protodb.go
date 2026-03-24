@@ -39,7 +39,7 @@ type Reader = protodb.Reader
 
 type Watcher = protodb.Watcher
 
-type Writer protodb.Writer
+type Writer = protodb.Writer
 
 type TxProvider = protodb.TxProvider
 
@@ -51,6 +51,9 @@ type Leader = protodb.Leader
 
 type Locker = protodb.Locker
 
+type Resolver = protodb.Resolver
+
+// Deprecated: use Resolver.
 type Resolverer = protodb.Resolverer
 
 type EventType = v1alpha1.WatchEventType
