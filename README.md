@@ -27,23 +27,20 @@ A single interface that allows to switch with very little work between the diffe
 
 ### Features
 
-- changes notifications
-
+- Change notifications (watch API)
 - Transactions
-
 - Ephemeral storage (TTL)
-
-- Filtering (based on [protofilters](https://github.com/linka-cloud/protofilters)) and token based paging.
-
+- Filtering (based on [protofilters](https://github.com/linka-cloud/protofilters)) and token-based paging
+- Ordering (`order_by`)
 - Experimental indexes support (API, behavior, and storage format may change)
-
 - Defaulting (using [protoc-gen-defaults](https://github.com/linka-cloud/protoc-gen-defaults) annotations)
-
 - Validation (using [protoc-gen-validate](https://github.com/buf/protoc-gen-validate))
+- Distributed lock API
+- Sequence generation (`NextSeq`)
+- Runtime schema registration and descriptors introspection
 
-Planned:
+Roadmap:
 
-- Leases
 - [Reflection based CEL validation](https://github.com/bufbuild/protovalidate)
 - [CEL based filtering](https://github.com/google/cel-spec)
 - *Pointers support ?*
