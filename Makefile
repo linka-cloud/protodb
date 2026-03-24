@@ -17,6 +17,9 @@ MODULE = go.linka.cloud/protodb
 COVERAGE_FLOOR ?= 60
 CRITICAL_PACKAGES = ./internal/db ./internal/index
 CRITICAL_COVERPKG = ./internal/db,./internal/index
+BADGERD_COVERAGE_FLOOR ?= 35
+BADGERD_PACKAGES = $(shell go list ./internal/badgerd/... | grep -v '/pb$$')
+BADGERD_COVERPKG = $(shell go list ./internal/badgerd/... | grep -v '/pb$$' | paste -sd, -)
 
 
 PROTO_BASE_PATH = $(PWD)
@@ -95,15 +98,32 @@ ci-test-unit:
 	@go list ./... | grep -v tests | xargs -n 1 go test -v -count 1 -shuffle=on -p 1
 
 .PHONY: ci-test-race
-ci-test-race:
+ci-test-race: ci-test-race-critical ci-test-race-badgerd
+
+.PHONY: ci-test-race-critical
+ci-test-race-critical:
 	@go test -v -count 1 -shuffle=on -race $(CRITICAL_PACKAGES)
 
+.PHONY: ci-test-race-badgerd
+ci-test-race-badgerd:
+	@go test -v -count 1 -shuffle=on -race $(BADGERD_PACKAGES)
+
 .PHONY: ci-test-coverage
-ci-test-coverage:
+ci-test-coverage: ci-test-coverage-critical ci-test-coverage-badgerd
+
+.PHONY: ci-test-coverage-critical
+ci-test-coverage-critical:
 	@go test -v -count 1 -covermode=atomic -coverpkg=$(CRITICAL_COVERPKG) -coverprofile=coverage-db-index.out $(CRITICAL_PACKAGES)
 
+.PHONY: ci-test-coverage-badgerd
+ci-test-coverage-badgerd:
+	@go test -v -count 1 -covermode=atomic -coverpkg=$(BADGERD_COVERPKG) -coverprofile=coverage-badgerd.out $(BADGERD_PACKAGES)
+
 .PHONY: ci-test-coverage-check
-ci-test-coverage-check: ci-test-coverage
+ci-test-coverage-check: ci-test-coverage-critical-check ci-test-coverage-badgerd-check
+
+.PHONY: ci-test-coverage-critical-check
+ci-test-coverage-critical-check: ci-test-coverage-critical
 	@pct=$$(go tool cover -func=coverage-db-index.out | awk '/^total:/ {gsub("%", "", $$3); print $$3}'); \
 	if [ -z "$$pct" ]; then pct=0; fi; \
 	echo "critical coverage: $$pct%"; \
@@ -115,8 +135,34 @@ ci-test-coverage-check: ci-test-coverage
 		printf("coverage floor satisfied: %.2f%% >= %.2f%%\n", pct+0, floor+0); \
 	}'
 
+.PHONY: ci-test-coverage-badgerd-check
+ci-test-coverage-badgerd-check: ci-test-coverage-badgerd
+	@pct=$$(go tool cover -func=coverage-badgerd.out | awk '/^total:/ {gsub("%", "", $$3); print $$3}'); \
+	if [ -z "$$pct" ]; then pct=0; fi; \
+	echo "badgerd coverage: $$pct%"; \
+	awk -v pct="$$pct" -v floor="$(BADGERD_COVERAGE_FLOOR)" 'BEGIN { \
+		if (pct+0 < floor+0) { \
+			printf("badgerd coverage floor not met: %.2f%% < %.2f%%\n", pct+0, floor+0); \
+			exit 1; \
+		} \
+		printf("badgerd coverage floor satisfied: %.2f%% >= %.2f%%\n", pct+0, floor+0); \
+	}'
+
 .PHONY: ci-test
 ci-test: ci-test-unit ci-test-race ci-test-coverage-check
+
+.PHONY: ci-integration
+ci-integration:
+	@set -eu; \
+	if [ -z "$(TEST)" ]; then \
+		echo "TEST is required, e.g. make ci-integration TEST=TestEmbed"; \
+		exit 1; \
+	fi; \
+	name=""; \
+	for p in $$(printf '%s' "$(TEST)" | tr '/' '\n'); do \
+		name="$$name^\\Q$$p\\E$$/"; \
+	done; \
+	go test -v -count 1 -p 1 -timeout 1h -run "$$name" ./tests
 
 check-fmt:
 	@[ "$(gofmt -l $(find . -name '*.go') 2>&1)" = "" ]

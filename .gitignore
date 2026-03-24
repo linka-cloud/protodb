@@ -16,3 +16,4 @@ prom.yml
 /pdb*
 /tests/testdata
 coverage-db-index.out
+coverage-badgerd.out
