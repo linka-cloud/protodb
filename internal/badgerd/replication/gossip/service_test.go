@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -69,6 +70,33 @@ func TestReplicatePreconditions(t *testing.T) {
 	r = &Gossip{leading: NewAtomic(false), name: "self", db: &fakeDB{path: t.TempDir(), maxBatchCount: 10, maxBatchSize: 1 << 20, valueThr: 1024}}
 	err = r.Replicate(&fakeReplicateSrv{ctx: peerCtx("127.0.0.1", 7000), recvErr: errors.New("recv")})
 	require.EqualError(t, err, "recv")
+
+	r = &Gossip{leading: NewAtomic(false), name: "self", db: &fakeDB{path: t.TempDir(), maxBatchCount: 10, maxBatchSize: 1 << 20, valueThr: 1024}}
+	err = r.Replicate(&fakeReplicateSrv{ctx: peerCtx("127.0.0.1", 7000), msgs: []*pb.ReplicateRequest{{Ops: []*pb.Op{{ID: 2, Action: &pb.Op_Commit{Commit: &pb.Commit{At: 7}}}}}}})
+	require.Equal(t, io.EOF, err)
+}
+
+func TestInitWaitsForNodeToAppear(t *testing.T) {
+	called := false
+	r := &Gossip{
+		leading: NewAtomic(true),
+		db: &fakeDB{maxVersion: 5, streamFn: func(_ context.Context, at, since uint64, _ io.Writer) error {
+			called = true
+			assert.EqualValues(t, 5, at)
+			assert.EqualValues(t, 1, since)
+			return nil
+		}},
+		nodes: Map[*node]{},
+	}
+
+	go func() {
+		time.Sleep(15 * time.Millisecond)
+		r.nodes.Store("late", &node{name: "late", addr: net.ParseIP("127.0.0.1")})
+	}()
+
+	err := r.Init(&pb.InitRequest{Since: 1}, &fakeInitSrv{ctx: peerCtx("127.0.0.1", 7000)})
+	require.NoError(t, err)
+	assert.True(t, called)
 }
 
 func TestAliveTable(t *testing.T) {

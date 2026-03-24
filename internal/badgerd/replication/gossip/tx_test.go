@@ -113,3 +113,24 @@ func TestTxCommitReplaySetDeleteAndFlush(t *testing.T) {
 	assert.Equal(t, []byte("k2"), batch.dels[0].key)
 	assert.EqualValues(t, 42, batch.dels[0].ts)
 }
+
+func TestTxSendSyncRemovesFailingPeerAndKeepsHealthy(t *testing.T) {
+	bad := &stream{n: "bad", s: &fakeReplicateStream{sendErr: errors.New("send")}}
+	good := &stream{n: "good", s: &fakeReplicateStream{acks: []*pb.Ack{{}}}}
+	r := &tx{mode: replication.ModeSync, cs: []*stream{bad, good}}
+
+	err := r.send(context.Background(), &pb.ReplicateRequest{Ops: []*pb.Op{{Action: &pb.Op_New{New: &pb.New{At: 1}}}}})
+	require.ErrorContains(t, err, "bad: send")
+	assert.False(t, r.hasStreams(bad))
+	assert.True(t, r.hasStreams(good))
+}
+
+func TestTxSendAsyncRemovesPeerOnSendFailure(t *testing.T) {
+	badStream := &fakeReplicateStream{sendErr: errors.New("send")}
+	bad := &stream{n: "bad", q: async.NewQueue[*pb.ReplicateRequest, *pb.Ack](badStream)}
+	r := &tx{mode: replication.ModeAsync, cs: []*stream{bad}}
+
+	require.NoError(t, r.send(context.Background(), &pb.ReplicateRequest{Ops: []*pb.Op{{Action: &pb.Op_New{New: &pb.New{At: 1}}}}}))
+	r.swg.Wait()
+	assert.False(t, r.hasStreams(bad))
+}
