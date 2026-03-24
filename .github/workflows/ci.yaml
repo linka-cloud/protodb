@@ -97,8 +97,8 @@ jobs:
         - "TestEmbed"
         - "TestServer"
         - "TestServerReplicated/sync"
-        - "TestReplicationModes/sync"
         - "TestServerReplicated/async"
+        - "TestReplicationModes/sync"
         - "TestReplicationModes/async"
 
     steps:

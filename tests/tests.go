@@ -792,12 +792,13 @@ func TestReplication(t *testing.T, data string, mode protodb.ReplicationMode) {
 	}
 	logger.C(ctx).Info("db are in sync")
 	logger.C(ctx).Info("stopping db-0")
+	db0 := c.Get(0)
 	if err := c.Stop(0); err != nil {
 		t.Fatal(err)
 	}
 	logger.C(ctx).Info("closed db-0")
 	logger.C(ctx).Infof("getting from db-0")
-	if _, _, err := c.Get(0).Get(ctx, &testpb.Interface{}, protodb.WithPaging(&protodb.Paging{Limit: 1})); err == nil {
+	if _, _, err := db0.Get(ctx, &testpb.Interface{}, protodb.WithPaging(&protodb.Paging{Limit: 1})); err == nil {
 		t.Fatal("expected error")
 	}
 	logger.C(ctx).Infof("getting from db-1")

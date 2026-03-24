@@ -130,9 +130,16 @@ func (c *Cluster) Stop(i int) error {
 	if i < 0 || i >= len(c.dbs) {
 		return nil
 	}
-	if err := c.dbs[i].Close(); err != nil && !errors.Is(err, context.Canceled) {
+	db := c.Get(i)
+	if db == nil {
+		return nil
+	}
+	if err := db.Close(); err != nil && !errors.Is(err, context.Canceled) {
 		return err
 	}
+	c.mu.Lock()
+	c.dbs[i] = nil
+	c.mu.Unlock()
 	return nil
 }
 
