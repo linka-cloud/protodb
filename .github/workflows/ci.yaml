@@ -84,6 +84,7 @@ jobs:
     - name: Run tests and reliability checks
       env:
         COVERAGE_FLOOR: "60"
+        BADGERD_COVERAGE_FLOOR: "35"
       run: make ci-test
 
   integration-tests:
@@ -128,10 +129,4 @@ jobs:
           ${{ runner.os }}-go-
 
     - name: Run integration tests
-      run: |
-        set -x
-        name=""
-        for p in $(echo "${{ matrix.test }}" | tr '/' '\n'); do
-          name+="^\Q${p}\E$/"
-        done
-        go test -v -count 1 -p 1 -timeout 1h -run $name ./tests
+      run: make ci-integration TEST="${{ matrix.test }}"
