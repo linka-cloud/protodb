@@ -16,7 +16,6 @@ package pending
 
 import (
 	"bytes"
-	"crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"os"
@@ -33,8 +32,8 @@ func newEntry(i int, size int64) *badger.Entry {
 	k := make([]byte, 8)
 	binary.BigEndian.PutUint64(k, uint64(i+1))
 	b := make([]byte, size)
-	if _, err := rand.Read(b); err != nil {
-		panic(err)
+	for j := range b {
+		b[j] = byte((j + i + len(k)) % 251)
 	}
 	return &badger.Entry{
 		Key:   k,
@@ -51,7 +50,7 @@ func genEntries(count int, size int64) []*badger.Entry {
 }
 
 func TestWal(t *testing.T) {
-	w := newWal(os.TempDir(), nil, nil, 0)
+	w := newWal(t.TempDir(), nil, nil, 0)
 	defer w.Close()
 
 	const count = 1_000
