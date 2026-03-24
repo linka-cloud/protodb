@@ -151,6 +151,11 @@ ci-test-coverage-badgerd-check: ci-test-coverage-badgerd
 .PHONY: ci-test
 ci-test: ci-test-unit ci-test-race ci-test-coverage-check
 
+.PHONY: ci-fuzz-smoke
+ci-fuzz-smoke:
+	@go test -fuzz=FuzzTokenDecodeNoPanic -fuzztime=5s ./internal/token
+	@go test -fuzz=FuzzTokenRoundTrip -fuzztime=5s ./internal/token
+
 .PHONY: ci-integration
 ci-integration:
 	@set -eu; \
