@@ -1,11 +1,14 @@
 name: Tests and Build
 
 on:
+  workflow_dispatch:
   push:
     branches: [ "*" ]
     tags: [ "v*" ]
   pull_request:
     branches: [ main ]
+  schedule:
+    - cron: "0 3 * * *"
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -89,6 +92,7 @@ jobs:
 
   integration-tests:
     name: Integration tests
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
 
     strategy:
@@ -98,8 +102,6 @@ jobs:
         - "TestServer"
         - "TestServerReplicated/sync"
         - "TestServerReplicated/async"
-        - "TestReplicationModes/sync"
-        - "TestReplicationModes/async"
 
     steps:
     - name: Checkout
@@ -130,3 +132,71 @@ jobs:
 
     - name: Run integration tests
       run: make ci-integration TEST="${{ matrix.test }}"
+
+  replication-smoke:
+    name: Replication smoke
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: "1.24"
+
+    - name: Configure git for private modules
+      env:
+        TOKEN: ${{ secrets.REPOSITORIES_ACCESS_TOKEN }}
+        USER: ${{ secrets.REPOSITORIES_ACCESS_USER }}
+      run: git config --global url."https://${USER}:${TOKEN}@github.com".insteadOf "https://github.com"
+
+    - name: Share cache with other actions
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Run replication smoke tests
+      run: make ci-replication-smoke
+
+  replication-stress-nightly:
+    name: Replication stress nightly
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v2
+      with:
+        go-version: "1.24"
+
+    - name: Configure git for private modules
+      env:
+        TOKEN: ${{ secrets.REPOSITORIES_ACCESS_TOKEN }}
+        USER: ${{ secrets.REPOSITORIES_ACCESS_USER }}
+      run: git config --global url."https://${USER}:${TOKEN}@github.com".insteadOf "https://github.com"
+
+    - name: Share cache with other actions
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Run replication stress tests
+      run: make ci-replication-stress

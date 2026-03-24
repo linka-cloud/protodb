@@ -55,3 +55,26 @@ func TestOnNewLeaderFollowerPath(t *testing.T) {
 		t.Fatal("expected ready channel to be closed")
 	}
 }
+
+func TestOnNewLeaderEmptyIdentityIgnored(t *testing.T) {
+	r := &Gossip{
+		ctx:        context.Background(),
+		name:       "self",
+		leading:    NewAtomic(false),
+		leaderName: NewAtomic("peer"),
+		ready:      make(chan struct{}),
+		pub:        pubsub.NewPublisher[string](time.Second, 2),
+	}
+	r.meta.Store(&pb.Meta{LocalVersion: 3})
+
+	r.onNewLeader(context.Background(), "")
+
+	assert.Equal(t, "peer", r.CurrentLeader())
+	assert.False(t, r.IsLeader())
+	assert.True(t, r.HasLeader())
+	select {
+	case <-r.ready:
+		t.Fatal("ready must not close on empty leader")
+	default:
+	}
+}

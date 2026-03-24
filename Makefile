@@ -156,6 +156,17 @@ ci-fuzz-smoke:
 	@go test -fuzz=FuzzTokenDecodeNoPanic -fuzztime=5s ./internal/token
 	@go test -fuzz=FuzzTokenRoundTrip -fuzztime=5s ./internal/token
 
+.PHONY: ci-replication-smoke
+ci-replication-smoke:
+	@go test -v -count 1 -shuffle=on -p 1 -timeout 20m -run '^TestReplicationModes/(async|sync)/(leader_churn_under_writes|follower_offline_catchup_under_load)$$' ./tests
+
+.PHONY: ci-replication-stress
+ci-replication-stress:
+	@go test -v -count 2 -shuffle=on -p 1 -timeout 20m -run '^TestReplicationModes/(async|sync)/leader_churn_under_writes$$' ./tests
+	@go test -v -count 2 -shuffle=on -p 1 -timeout 20m -run '^TestReplicationModes/(async|sync)/follower_offline_catchup_under_load$$' ./tests
+	@go test -v -count 1 -shuffle=on -p 1 -timeout 20m -run '^TestReplicationModes/(async|sync)/rolling_restart_no_data_loss$$' ./tests
+	@go test -v -count 1 -shuffle=on -p 1 -timeout 20m -run '^TestReplicationModes/(async|sync)/delete_propagation_no_resurrection$$' ./tests
+
 .PHONY: ci-integration
 ci-integration:
 	@set -eu; \
