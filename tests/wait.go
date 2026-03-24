@@ -4,14 +4,13 @@ import (
 	"testing"
 	"time"
 
+	assert2 "github.com/stretchr/testify/assert"
 	require2 "github.com/stretchr/testify/require"
 )
 
 func waitNoError(t *testing.T, timeout time.Duration, fn func() error) {
 	t.Helper()
-	var err error
-	require2.Eventuallyf(t, func() bool {
-		err = fn()
-		return err == nil
-	}, timeout, 20*time.Millisecond, "condition not met: %v", err)
+	require2.EventuallyWithT(t, func(c *assert2.CollectT) {
+		assert2.NoError(c, fn())
+	}, timeout, 20*time.Millisecond)
 }
