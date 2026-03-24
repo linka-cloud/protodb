@@ -316,7 +316,7 @@ func (i *walIterator) Next() {
 }
 
 func (i *walIterator) skip() bool {
-	return !i.items[i.nextIdx].p.deleted || !bytes.HasPrefix(i.items[i.nextIdx].key, i.prefix)
+	return i.items[i.nextIdx].p.deleted || !bytes.HasPrefix(i.items[i.nextIdx].key, i.prefix)
 }
 
 func (i *walIterator) Rewind() {
