@@ -23,17 +23,39 @@ import (
 	pb2 "go.linka.cloud/protodb/internal/badgerd/replication/gossip/pb"
 )
 
+type electionClient interface {
+	Election(ctx context.Context, in *pb2.Message, opts ...any) (*pb2.Message, error)
+}
+
+type electionPeer struct {
+	name string
+	meta *pb2.Meta
+	repl electionClient
+}
+
 func (r *Gossip) Elect(ctx context.Context) {
 	meta := r.meta.Load().CloneVT()
+	r.elect(ctx, r.electionPeers(), meta)
+}
+
+func (r *Gossip) electionPeers() []electionPeer {
+	peers := make([]electionPeer, 0)
+	for _, v := range r.clients() {
+		peers = append(peers, electionPeer{name: v.name, meta: v.meta, repl: &electionClientAdapter{c: v.repl}})
+	}
+	return peers
+}
+
+func (r *Gossip) elect(ctx context.Context, peers []electionPeer, meta *pb2.Meta) {
 	log := logger.C(ctx)
-	nodes := r.clients()
-	log.Debugf("replication clients: %d", len(nodes))
+	log.Debugf("replication clients: %d", len(peers))
 	log.Info("starting election")
 	count := 0
-	var n *node
-	for _, v := range nodes {
+	var n *electionPeer
+	for _, v := range peers {
 		if v.meta.IsLeader {
-			n = v
+			v := v
+			n = &v
 		}
 	}
 	if n != nil {
@@ -41,7 +63,7 @@ func (r *Gossip) Elect(ctx context.Context) {
 		r.onNewLeader(ctx, n.name)
 		return
 	}
-	for _, v := range nodes {
+	for _, v := range peers {
 		if v.meta.LocalVersion < meta.LocalVersion || strings.Compare(v.name, r.name) > 0 {
 			continue
 		}
@@ -78,12 +100,20 @@ func (r *Gossip) Elect(ctx context.Context) {
 	// we are the leader
 	log.Infof("we are the leader")
 	r.onNewLeader(ctx, r.name)
-	for _, v := range nodes {
+	for _, v := range peers {
 		log.Infof("sending leader message to %s", v.name)
 		if _, err := v.repl.Election(ctx, &pb2.Message{Type: pb2.ElectionTypeLeader, Name: r.name, Meta: meta.CloneVT()}); err != nil {
 			log.WithError(err).Errorf("failed to send leader message to %s", v.name)
 		}
 	}
+}
+
+type electionClientAdapter struct {
+	c pb2.ReplicationServiceClient
+}
+
+func (a *electionClientAdapter) Election(ctx context.Context, in *pb2.Message, _ ...any) (*pb2.Message, error) {
+	return a.c.Election(ctx, in)
 }
 
 func (r *Gossip) Election(_ context.Context, req *pb2.Message) (*pb2.Message, error) {
