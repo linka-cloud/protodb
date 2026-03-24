@@ -16,7 +16,6 @@ package client
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"sync"
@@ -36,6 +35,7 @@ import (
 
 	"go.linka.cloud/protodb/internal/anypb"
 	"go.linka.cloud/protodb/internal/protodb"
+	"go.linka.cloud/protodb/internal/rpcerrs"
 	"go.linka.cloud/protodb/protodb/v1alpha1"
 )
 
@@ -62,18 +62,18 @@ type client struct {
 
 func (c *client) RegisterProto(ctx context.Context, file *descriptorpb.FileDescriptorProto) error {
 	_, err := c.c.Register(ctx, &v1alpha1.RegisterRequest{File: file})
-	return err
+	return rpcerrs.FromStatus(err)
 }
 
 func (c *client) Register(ctx context.Context, file protoreflect.FileDescriptor) error {
 	_, err := c.c.Register(ctx, &v1alpha1.RegisterRequest{File: protodesc.ToFileDescriptorProto(file)})
-	return err
+	return rpcerrs.FromStatus(err)
 }
 
 func (c *client) Descriptors(ctx context.Context) ([]*descriptorpb.DescriptorProto, error) {
 	res, err := c.c.Descriptors(ctx, &v1alpha1.DescriptorsRequest{})
 	if err != nil {
-		return nil, err
+		return nil, rpcerrs.FromStatus(err)
 	}
 	return res.Results, nil
 }
@@ -81,7 +81,7 @@ func (c *client) Descriptors(ctx context.Context) ([]*descriptorpb.DescriptorPro
 func (c *client) FileDescriptors(ctx context.Context) ([]*descriptorpb.FileDescriptorProto, error) {
 	res, err := c.c.FileDescriptors(ctx, &v1alpha1.FileDescriptorsRequest{})
 	if err != nil {
-		return nil, err
+		return nil, rpcerrs.FromStatus(err)
 	}
 	return res.Results, nil
 }
@@ -98,7 +98,7 @@ func (c *client) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOp
 	}
 	res, err := c.c.Get(ctx, &v1alpha1.GetRequest{Search: a, Filter: f, Paging: o.Paging, FieldMask: o.FieldMask, Reverse: o.Reverse, One: o.One, OrderBy: o.OrderBy})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, rpcerrs.FromStatus(err)
 	}
 	msgs := make([]proto.Message, 0, len(res.Results))
 	for _, v := range res.Results {
@@ -127,7 +127,7 @@ func (c *client) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOp
 	}
 	res, err := c.c.Set(ctx, &v1alpha1.SetRequest{Payload: a, TTL: ttl, FieldMask: o.FieldMask})
 	if err != nil {
-		return nil, err
+		return nil, rpcerrs.FromStatus(err)
 	}
 	msg := m.ProtoReflect().New().Interface()
 	if err := anypb.UnmarshalTo(res.Result, msg); err != nil {
@@ -142,13 +142,13 @@ func (c *client) Delete(ctx context.Context, m proto.Message) error {
 		return err
 	}
 	_, err = c.c.Delete(ctx, &v1alpha1.DeleteRequest{Payload: a})
-	return err
+	return rpcerrs.FromStatus(err)
 }
 
 func (c *client) NextSeq(ctx context.Context, name string) (uint64, error) {
 	res, err := c.c.NextSeq(ctx, &v1alpha1.NextSeqRequest{Key: name})
 	if err != nil {
-		return 0, err
+		return 0, rpcerrs.FromStatus(err)
 	}
 	return res.Seq, nil
 }
@@ -156,16 +156,16 @@ func (c *client) NextSeq(ctx context.Context, name string) (uint64, error) {
 func (c *client) Lock(ctx context.Context, key string) error {
 	s, err := c.c.Lock(ctx)
 	if err != nil {
-		return err
+		return rpcerrs.FromStatus(err)
 	}
 	if err := s.Send(&v1alpha1.LockRequest{Key: key}); err != nil {
-		return err
+		return rpcerrs.FromStatus(err)
 	}
 	if _, err := s.Recv(); err != nil {
 		if gerrs.IsContextCanceled(err) {
 			return context.Canceled
 		}
-		return err
+		return rpcerrs.FromStatus(err)
 	}
 	c.mu.Lock()
 	c.locks[key] = s
@@ -184,7 +184,7 @@ func (c *client) Unlock(_ context.Context, key string) error {
 		return fmt.Errorf("unlock %s: not locked", key)
 	}
 	if err := s.CloseSend(); err != nil {
-		return fmt.Errorf("unlock %s: %w", key, err)
+		return fmt.Errorf("unlock %s: %w", key, rpcerrs.FromStatus(err))
 	}
 	return nil
 }
@@ -201,7 +201,7 @@ func (c *client) Watch(ctx context.Context, m proto.Message, opts ...protodb.Get
 	}
 	w, err := c.c.Watch(ctx, &v1alpha1.WatchRequest{Search: a, Filter: f})
 	if err != nil {
-		return nil, err
+		return nil, rpcerrs.FromStatus(err)
 	}
 	ch := make(chan protodb.Event)
 	go func() {
@@ -210,6 +210,7 @@ func (c *client) Watch(ctx context.Context, m proto.Message, opts ...protodb.Get
 		for {
 			e, err := w.Recv()
 			if err != nil {
+				err = rpcerrs.FromStatus(err)
 				logger.C(ctx).Errorf("watch %s: %v", m.ProtoReflect().Descriptor().FullName(), err)
 				return
 			}
@@ -242,7 +243,7 @@ func (c *client) newTx(ctx context.Context, opts ...protodb.TxOption) (protodb.T
 	}
 	txn, err := c.c.Tx(ctx)
 	if err != nil {
-		return nil, err
+		return nil, rpcerrs.FromStatus(err)
 	}
 	return &txc{ctx: ctx, txn: txn}, nil
 }
@@ -267,11 +268,11 @@ func (t *txc) Get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 			Get: &v1alpha1.GetRequest{Search: a, Filter: f, Paging: o.Paging, FieldMask: o.FieldMask, Reverse: o.Reverse, One: o.One, OrderBy: o.OrderBy},
 		},
 	}); err != nil {
-		return nil, nil, err
+		return nil, nil, rpcerrs.FromStatus(err)
 	}
 	res, err := t.txn.Recv()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, rpcerrs.FromStatus(err)
 	}
 	if res.GetGet() == nil {
 		return nil, nil, fmt.Errorf("no response")
@@ -306,11 +307,11 @@ func (t *txc) Set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 			Set: &v1alpha1.SetRequest{Payload: a, TTL: ttl, FieldMask: o.FieldMask},
 		},
 	}); err != nil {
-		return nil, err
+		return nil, rpcerrs.FromStatus(err)
 	}
 	res, err := t.txn.Recv()
 	if err != nil {
-		return nil, err
+		return nil, rpcerrs.FromStatus(err)
 	}
 	if res.GetSet() == nil || res.GetSet().GetResult() == nil {
 		return nil, fmt.Errorf("no response")
@@ -332,11 +333,11 @@ func (t *txc) Delete(ctx context.Context, m proto.Message) error {
 			Delete: &v1alpha1.DeleteRequest{Payload: a},
 		},
 	}); err != nil {
-		return err
+		return rpcerrs.FromStatus(err)
 	}
 	res, err := t.txn.Recv()
 	if err != nil {
-		return err
+		return rpcerrs.FromStatus(err)
 	}
 	if res.GetDelete() == nil {
 		return fmt.Errorf("no response")
@@ -346,17 +347,17 @@ func (t *txc) Delete(ctx context.Context, m proto.Message) error {
 
 func (t *txc) Commit(ctx context.Context) error {
 	if err := t.txn.Send(&v1alpha1.TxRequest{Request: &v1alpha1.TxRequest_Commit{Commit: wrapperspb.Bool(true)}}); err != nil {
-		return err
+		return rpcerrs.FromStatus(err)
 	}
 	res, err := t.txn.Recv()
 	if err != nil {
-		return err
+		return rpcerrs.FromStatus(err)
 	}
 	if res.GetCommit() == nil {
 		return fmt.Errorf("no response")
 	}
 	if res.GetCommit().GetError() != nil {
-		return errors.New(res.GetCommit().GetError().GetValue())
+		return rpcerrs.FromMessage(res.GetCommit().GetError().GetValue())
 	}
 	return nil
 }

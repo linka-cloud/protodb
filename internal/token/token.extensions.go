@@ -39,9 +39,12 @@ func (x *Token) Decode(s string) error {
 	}
 	b, err := base64.StdEncoding.DecodeString(s)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %v", ErrInvalid, err)
 	}
-	return x.UnmarshalVT(b)
+	if err := x.UnmarshalVT(b); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalid, err)
+	}
+	return nil
 }
 
 func (x *Token) ValidateFor(prev *Token) error {

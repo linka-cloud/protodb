@@ -78,6 +78,7 @@ var Tests = []Case{
 	{Name: "TestBatchInsertAndQuery", Run: TestBatchInsertAndQuery},
 	{Name: "TestOversizeBatchInsert", Run: TestOversizeBatchInsert},
 	{Name: "TestSeq", Run: TestSeq},
+	{Name: "TestPredefinedErrors", Run: TestPredefinedErrors},
 	{Name: "TestFieldMask", Run: TestFieldMask},
 	{Name: "TestMessageWithKeyOption", Run: TestMessageWithKeyOption},
 	{Name: "TestStaticKey", Run: TestStaticKey},
@@ -566,6 +567,29 @@ func TestSeq(t *testing.T, db protodb.Client) {
 		require.NoError(err)
 		assert.Equal(uint64(i+1), seq)
 	}
+}
+
+func TestPredefinedErrors(t *testing.T, db protodb.Client) {
+	require := require2.New(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
+	tx, err := db.Tx(ctx, protodb.WithReadOnly())
+	require.NoError(err)
+	defer tx.Close()
+
+	_, err = tx.Set(ctx, &testpb.Interface{Name: "ro"})
+	require.Error(err)
+	require.ErrorIs(err, protodb.ErrReadOnlyTxn)
+
+	_, err = db.NextSeq(ctx, "")
+	require.Error(err)
+	require.ErrorIs(err, protodb.ErrEmptyKey)
+
+	_, _, err = db.Get(ctx, &testpb.Interface{}, protodb.WithPaging(&protodb.Paging{Limit: 1, Token: "invalid"}))
+	require.Error(err)
+	require.ErrorIs(err, protodb.ErrInvalidContinuationToken)
 }
 
 func TestFieldMask(t *testing.T, db protodb.Client) {

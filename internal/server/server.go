@@ -31,6 +31,7 @@ import (
 
 	"go.linka.cloud/protodb/internal/anypb"
 	"go.linka.cloud/protodb/internal/protodb"
+	"go.linka.cloud/protodb/internal/rpcerrs"
 	"go.linka.cloud/protodb/protodb/v1alpha1"
 )
 
@@ -70,7 +71,7 @@ func (s *server) Lock(ss grpc.BidiStreamingServer[v1alpha1.LockRequest, v1alpha1
 		if errors.Is(err, context.Canceled) {
 			return gerrs.Canceled(err)
 		}
-		return gerrs.Internalf("failed to lock key %q: %v", req.Key, err)
+		return rpcerrs.ToStatus(err)
 	}
 	defer s.db.Unlock(ss.Context(), req.Key)
 	if err := ss.Send(&v1alpha1.LockResponse{}); err != nil {
@@ -98,7 +99,7 @@ func (s *server) Register(ctx context.Context, req *v1alpha1.RegisterRequest) (*
 		return p.Register(ctx, req)
 	}
 	if err := s.db.RegisterProto(ctx, req.File); err != nil {
-		return nil, err
+		return nil, rpcerrs.ToStatus(err)
 	}
 	return &v1alpha1.RegisterResponse{}, nil
 }
@@ -113,7 +114,7 @@ func (s *server) Descriptors(ctx context.Context, req *v1alpha1.DescriptorsReque
 	}
 	des, err := s.db.Descriptors(ctx)
 	if err != nil {
-		return nil, err
+		return nil, rpcerrs.ToStatus(err)
 	}
 	return &v1alpha1.DescriptorsResponse{Results: des}, nil
 }
@@ -128,7 +129,7 @@ func (s *server) FileDescriptors(ctx context.Context, req *v1alpha1.FileDescript
 	}
 	des, err := s.db.FileDescriptors(ctx)
 	if err != nil {
-		return nil, err
+		return nil, rpcerrs.ToStatus(err)
 	}
 	return &v1alpha1.FileDescriptorsResponse{Results: des}, nil
 }
@@ -143,7 +144,7 @@ func (s *server) Get(ctx context.Context, req *v1alpha1.GetRequest) (*v1alpha1.G
 	}
 	a, i, err := s.get(ctx, s.db, req)
 	if err != nil {
-		return nil, err
+		return nil, rpcerrs.ToStatus(err)
 	}
 	return &v1alpha1.GetResponse{Results: a, Paging: i}, nil
 }
@@ -158,7 +159,7 @@ func (s *server) Set(ctx context.Context, req *v1alpha1.SetRequest) (*v1alpha1.S
 	}
 	a, err := s.set(ctx, s.db, req)
 	if err != nil {
-		return nil, err
+		return nil, rpcerrs.ToStatus(err)
 	}
 	return &v1alpha1.SetResponse{Result: a}, nil
 }
@@ -172,7 +173,7 @@ func (s *server) Delete(ctx context.Context, req *v1alpha1.DeleteRequest) (*v1al
 		return p.Delete(ctx, req)
 	}
 	if err := s.delete(ctx, s.db, req); err != nil {
-		return nil, err
+		return nil, rpcerrs.ToStatus(err)
 	}
 	return &v1alpha1.DeleteResponse{}, nil
 }
@@ -187,7 +188,7 @@ func (s *server) NextSeq(ctx context.Context, req *v1alpha1.NextSeqRequest) (*v1
 	}
 	seq, err := s.db.NextSeq(ctx, req.Key)
 	if err != nil {
-		return nil, err
+		return nil, rpcerrs.ToStatus(err)
 	}
 	return &v1alpha1.NextSeqResponse{Seq: seq}, nil
 }
@@ -214,23 +215,23 @@ func (s *server) Tx(stream v1alpha1.ProtoDB_TxServer) error {
 	}
 	tx, err := s.db.Tx(stream.Context(), opts...)
 	if err != nil {
-		return err
+		return rpcerrs.ToStatus(err)
 	}
 	defer tx.Close()
 	for {
 		req, err := stream.Recv()
 		if err != nil && ctx.Err() == nil {
-			return err
+			return rpcerrs.ToStatus(err)
 		}
 		if err := ctx.Err(); err != nil {
-			return err
+			return rpcerrs.ToStatus(err)
 		}
 		var res *v1alpha1.TxResponse
 		switch r := req.Request.(type) {
 		case *v1alpha1.TxRequest_Get:
 			as, i, err := s.get(ctx, tx, r.Get)
 			if err != nil {
-				return err
+				return rpcerrs.ToStatus(err)
 			}
 			res = &v1alpha1.TxResponse{Response: &v1alpha1.TxResponse_Get{Get: &v1alpha1.GetResponse{
 				Results: as,
@@ -239,14 +240,14 @@ func (s *server) Tx(stream v1alpha1.ProtoDB_TxServer) error {
 		case *v1alpha1.TxRequest_Set:
 			a, err := s.set(ctx, tx, r.Set)
 			if err != nil {
-				return err
+				return rpcerrs.ToStatus(err)
 			}
 			res = &v1alpha1.TxResponse{Response: &v1alpha1.TxResponse_Set{Set: &v1alpha1.SetResponse{
 				Result: a,
 			}}}
 		case *v1alpha1.TxRequest_Delete:
 			if err := s.delete(ctx, tx, r.Delete); err != nil {
-				return err
+				return rpcerrs.ToStatus(err)
 			}
 			res = &v1alpha1.TxResponse{Response: &v1alpha1.TxResponse_Delete{Delete: &v1alpha1.DeleteResponse{}}}
 		case *v1alpha1.TxRequest_Commit:
@@ -257,12 +258,12 @@ func (s *server) Tx(stream v1alpha1.ProtoDB_TxServer) error {
 			cr := &v1alpha1.CommitResponse{}
 			if err != nil {
 				cr.Error = wrapperspb.String(err.Error())
-				return err
+				return rpcerrs.ToStatus(err)
 			}
 			res = &v1alpha1.TxResponse{Response: &v1alpha1.TxResponse_Commit{Commit: cr}}
 		}
 		if err := stream.Send(res); err != nil {
-			return err
+			return rpcerrs.ToStatus(err)
 		}
 	}
 }
@@ -281,7 +282,7 @@ func (s *server) Watch(req *v1alpha1.WatchRequest, stream v1alpha1.ProtoDB_Watch
 	}
 	ch, err := s.db.Watch(stream.Context(), d, watchOpts(req)...)
 	if err != nil {
-		return err
+		return rpcerrs.ToStatus(err)
 	}
 	// we send an empty event for clients that cannot create streams before receiving first from the server
 	if err := stream.Send(&v1alpha1.WatchEvent{}); err != nil {
@@ -289,7 +290,7 @@ func (s *server) Watch(req *v1alpha1.WatchRequest, stream v1alpha1.ProtoDB_Watch
 	}
 	for e := range ch {
 		if err := e.Err(); err != nil {
-			return err
+			return rpcerrs.ToStatus(err)
 		}
 		we := &v1alpha1.WatchEvent{Type: e.Type()}
 		if n := e.New(); n != nil {
@@ -360,7 +361,7 @@ func (s *server) maybeProxy(read bool) (v1alpha1.ProtoDBServer, bool, error) {
 	}
 	c, ok, err := p.MaybeProxy(read)
 	if err != nil {
-		return nil, false, gerrs.Internal(err)
+		return nil, false, rpcerrs.ToStatus(err)
 	}
 	if !ok {
 		return nil, false, nil

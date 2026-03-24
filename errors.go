@@ -16,8 +16,10 @@ package protodb
 
 import (
 	"github.com/dgraph-io/badger/v3"
+	"google.golang.org/protobuf/reflect/protoregistry"
 
 	"go.linka.cloud/protodb/internal/protodb"
+	"go.linka.cloud/protodb/internal/token"
 )
 
 var (
@@ -80,4 +82,10 @@ var (
 	ErrNotLeader = protodb.ErrNotLeader
 
 	ErrNoLeaderConn = protodb.ErrNoLeaderConn
+
+	// ErrInvalidContinuationToken is returned when a paging continuation token is invalid.
+	ErrInvalidContinuationToken = token.ErrInvalid
+
+	// ErrTypeNotFound is returned when a protobuf type cannot be resolved from registries.
+	ErrTypeNotFound = protoregistry.NotFound
 )
