@@ -51,7 +51,7 @@ type Client interface {
 }
 
 func NewClient(cc grpc.ClientConnInterface) (Client, error) {
-	return &client{c: v1alpha1.NewProtoDBClient(cc)}, nil
+	return &client{c: v1alpha1.NewProtoDBClient(cc), locks: make(map[string]grpc.ServerStreamingClient[v1alpha1.LockResponse])}, nil
 }
 
 type client struct {
