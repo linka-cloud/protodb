@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"testing"
@@ -103,7 +102,6 @@ func Test(t *testing.T, db protodb.Client) {
 	go func() {
 		ch, err := db.Watch(ctx, &testpb.Interface{})
 		require.NoError(err)
-		time.Sleep(10 * time.Millisecond)
 		close(winit)
 		for e := range ch {
 			watches <- e
@@ -173,9 +171,12 @@ func Test(t *testing.T, db protodb.Client) {
 	equal(i0, e.Old())
 	assert.Nil(e.New())
 
-	time.Sleep(time.Second)
 	cancel()
-	<-watches
+	select {
+	case <-watches:
+	case <-time.After(time.Second):
+		t.Fatal("watch did not close")
+	}
 }
 
 func TestBatchWatch(t *testing.T, db protodb.Client) {
@@ -189,7 +190,6 @@ func TestBatchWatch(t *testing.T, db protodb.Client) {
 	go func() {
 		ch, err := db.Watch(ctx, &testpb.KV{})
 		require.NoError(err)
-		time.Sleep(10 * time.Millisecond)
 		close(winit)
 		for e := range ch {
 			watches <- e
@@ -294,7 +294,6 @@ func TestWatchWithFilter(t *testing.T, db protodb.Client) {
 			),
 		)
 		require.NoError(err)
-		time.Sleep(10 * time.Millisecond)
 		close(winit)
 		for e := range ch {
 			watches <- e
@@ -348,9 +347,12 @@ func TestWatchWithFilter(t *testing.T, db protodb.Client) {
 	equal(i0, e.Old())
 	assert.Nil(e.New())
 
-	time.Sleep(time.Second)
 	cancel()
-	<-watches
+	select {
+	case <-watches:
+	case <-time.After(time.Second):
+		t.Fatal("watch did not close")
+	}
 }
 
 func TestRegister(t *testing.T, db protodb.Client) {
@@ -363,13 +365,15 @@ func TestRegister(t *testing.T, db protodb.Client) {
 
 	baseFile := buildDynamicFile(t, false)
 	require.NoError(db.Register(ctx, baseFile))
-	// when we run with async replication, the registration may not be immediately propagated to all nodes, so we wait a bit
-	time.Sleep(100 * time.Millisecond)
 
 	baseMsg := baseFile.Messages().ByName("Dyn")
 	if baseMsg == nil {
 		t.Fatalf("dynamic message Dyn not found")
 	}
+	waitNoError(t, time.Second, func() error {
+		_, _, err := db.Get(ctx, dynamicpb.NewMessage(baseMsg))
+		return err
+	})
 	dyn := dynamicpb.NewMessage(baseMsg)
 	setFieldValue(t, dyn, "name", protoreflect.ValueOfString("dyn0"))
 	setFieldValue(t, dyn, "value", protoreflect.ValueOfUint32(1200))
@@ -385,13 +389,15 @@ func TestRegister(t *testing.T, db protodb.Client) {
 
 	updatedFile := buildDynamicFile(t, true)
 	require.NoError(db.Register(ctx, updatedFile))
-	// same as before, we wait a bit for the schema to propagate
-	time.Sleep(100 * time.Millisecond)
 
 	updatedMsg := updatedFile.Messages().ByName("Dyn")
 	if updatedMsg == nil {
 		t.Fatalf("dynamic message Dyn not found after update")
 	}
+	waitNoError(t, time.Second, func() error {
+		_, _, err := db.Get(ctx, dynamicpb.NewMessage(updatedMsg))
+		return err
+	})
 	updatedQuery := dynamicpb.NewMessage(updatedMsg)
 	setFieldValue(t, updatedQuery, "name", protoreflect.ValueOfString("dyn0"))
 	updatedGot, ok, err := db.GetOne(ctx, updatedQuery)
@@ -404,7 +410,14 @@ func TestRegister(t *testing.T, db protodb.Client) {
 
 	prevFile := buildBreakingFile(t, false)
 	require.NoError(db.Register(ctx, prevFile))
-	time.Sleep(100 * time.Millisecond)
+	prevMsg := prevFile.Messages().ByName("Break")
+	if prevMsg == nil {
+		t.Fatalf("dynamic message Break not found")
+	}
+	waitNoError(t, time.Second, func() error {
+		_, _, err := db.Get(ctx, dynamicpb.NewMessage(prevMsg))
+		return err
+	})
 
 	updatedFile = buildBreakingFile(t, true)
 	err = db.Register(ctx, updatedFile)
@@ -721,7 +734,7 @@ func TestReplication(t *testing.T, data string, mode protodb.ReplicationMode) {
 	insert := 25_000
 	logrus.Infof("inserting %d records", insert)
 	for i := range insert {
-		name := randString(10)
+		name := fmt.Sprintf("iface-%06d", i)
 		if i%(insert/100) == 0 {
 			logrus.Infof("inserted: %d/%d", i, insert)
 		}
@@ -763,15 +776,13 @@ func TestReplication(t *testing.T, data string, mode protodb.ReplicationMode) {
 		t.Fatal("expected error")
 	}
 	logger.C(ctx).Infof("getting from db-1")
-	for {
-		if _, _, err := c.Get(1).Get(ctx, &testpb.Interface{}, protodb.WithPaging(&protodb.Paging{Limit: 1})); err != nil {
-			if !errors.Is(err, protodb.ErrNoLeaderConn) {
-				t.Fatal(err)
-			}
-			time.Sleep(100 * time.Millisecond)
+	waitNoError(t, 30*time.Second, func() error {
+		_, _, err := c.Get(1).Get(ctx, &testpb.Interface{}, protodb.WithPaging(&protodb.Paging{Limit: 1}))
+		if errors.Is(err, protodb.ErrNoLeaderConn) {
+			return err
 		}
-		break
-	}
+		return nil
+	})
 	logger.C(ctx).Infof("setting in db-1")
 	if _, err := c.Get(1).Set(ctx, &testpb.Interface{Name: "test"}); err != nil {
 		t.Fatal(err)
@@ -788,13 +799,4 @@ func TestReplication(t *testing.T, data string, mode protodb.ReplicationMode) {
 	if len(got) != 1 {
 		t.Fatalf("got: %v, want: 1", len(got))
 	}
-}
-
-func randString(len int) string {
-	l := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890")
-	b := make([]byte, len)
-	for i := range b {
-		b[i] = byte(l[rand.Intn(len)])
-	}
-	return string(b)
 }

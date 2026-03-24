@@ -39,10 +39,13 @@ func TestIndexCRUD(t *testing.T, db protodb.Client) {
 
 	fd := buildIndexCRUDFile(t)
 	require.NoError(db.Register(ctx, fd))
-	time.Sleep(100 * time.Millisecond)
 
 	md := fd.Messages().ByName("Indexed")
 	require.NotNil(md)
+	waitNoError(t, time.Second, func() error {
+		_, _, err := db.Get(ctx, dynamicpb.NewMessage(md))
+		return err
+	})
 
 	t.Run("simple", func(t *testing.T) {
 		fUp := filters.Where("status").StringEquals("up")
@@ -155,9 +158,12 @@ func TestIndexCRUD(t *testing.T, db protodb.Client) {
 	t.Run("unique", func(t *testing.T) {
 		ufd := buildIndexCRUDUniqueFile(t)
 		require.NoError(db.Register(ctx, ufd))
-		time.Sleep(100 * time.Millisecond)
 		umd := ufd.Messages().ByName("User")
 		require.NotNil(umd)
+		waitNoError(t, time.Second, func() error {
+			_, _, err := db.Get(ctx, dynamicpb.NewMessage(umd))
+			return err
+		})
 		fA := filters.Where("email").StringEquals("a@example.com")
 		fB := filters.Where("email").StringEquals("b@example.com")
 		u := newUniqueCRUDUser(umd, "u1", "a@example.com")
@@ -312,10 +318,13 @@ func TestIndexCreation(t *testing.T, db protodb.Client) {
 
 	fdV1 := buildIndexCreationFile(t, false)
 	require.NoError(db.Register(ctx, fdV1))
-	time.Sleep(100 * time.Millisecond)
 
 	mdV1 := fdV1.Messages().ByName("IndexCreate")
 	require.NotNil(mdV1)
+	waitNoError(t, time.Second, func() error {
+		_, _, err := db.Get(ctx, dynamicpb.NewMessage(mdV1))
+		return err
+	})
 
 	const (
 		count = 100_000
@@ -358,7 +367,12 @@ func TestIndexCreation(t *testing.T, db protodb.Client) {
 		start := time.Now()
 		require.NoError(db.Register(ctx, fdV2))
 		t.Logf("register with index took %v", time.Since(start))
-		time.Sleep(100 * time.Millisecond)
+		mdV2 := fdV2.Messages().ByName("IndexCreate")
+		require.NotNil(mdV2)
+		waitNoError(t, time.Second, func() error {
+			_, _, err := db.Get(ctx, dynamicpb.NewMessage(mdV2), protodb.WithFilter(f))
+			return err
+		})
 	})
 
 	t.Run("query after index", func(t *testing.T) {

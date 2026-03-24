@@ -15,3 +15,4 @@ prom.yml
 /tests/server/*.yaml
 /pdb*
 /tests/testdata
+coverage-db-index.out
