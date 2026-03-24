@@ -81,8 +81,10 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-
 
-    - name: Run tests
-      run: go list ./... |grep -v tests|xargs -n 1 go test -v -count 1 -p 1
+    - name: Run tests and reliability checks
+      env:
+        COVERAGE_FLOOR: "60"
+      run: make ci-test
 
   integration-tests:
     name: Integration tests
