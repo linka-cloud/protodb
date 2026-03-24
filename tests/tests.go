@@ -98,10 +98,16 @@ func Test(t *testing.T, db protodb.Client) {
 	defer cancel()
 
 	watches := make(chan protodb.Event)
+	watchErr := make(chan error, 1)
 	winit := make(chan struct{})
 	go func() {
 		ch, err := db.Watch(ctx, &testpb.Interface{})
-		require.NoError(err)
+		if err != nil {
+			watchErr <- fmt.Errorf("watch interface: %w", err)
+			close(winit)
+			close(watches)
+			return
+		}
 		close(winit)
 		for e := range ch {
 			watches <- e
@@ -113,7 +119,7 @@ func Test(t *testing.T, db protodb.Client) {
 	require.NoError(err)
 	require.NotNil(r)
 	equal(i0, r)
-	e := <-watches
+	e := recvEvent(t, ctx, watches, watchErr)
 	assert.Equal(protodb.EventTypeEnter, e.Type())
 	assert.Nil(e.Old())
 	equal(i0, e.New())
@@ -128,7 +134,7 @@ func Test(t *testing.T, db protodb.Client) {
 	require.NoError(err)
 	require.NotNil(r)
 	equal(i1, r)
-	e = <-watches
+	e = recvEvent(t, ctx, watches, watchErr)
 	assert.Equal(protodb.EventTypeEnter, e.Type())
 	assert.Nil(e.Old())
 	equal(i1, e.New())
@@ -146,7 +152,7 @@ func Test(t *testing.T, db protodb.Client) {
 	require.NoError(err)
 	require.NotNil(r)
 	equal(i0, r)
-	e = <-watches
+	e = recvEvent(t, ctx, watches, watchErr)
 	assert.Equal(protodb.EventTypeUpdate, e.Type())
 	equal(i0Old, e.Old())
 	equal(i0, e.New())
@@ -157,7 +163,7 @@ func Test(t *testing.T, db protodb.Client) {
 	require.NoError(err)
 	require.NotNil(r)
 	equal(i0, r)
-	e = <-watches
+	e = recvEvent(t, ctx, watches, watchErr)
 	assert.Equal(protodb.EventTypeUpdate, e.Type())
 	equal(i0Old, e.Old())
 	equal(i0, e.New())
@@ -166,7 +172,7 @@ func Test(t *testing.T, db protodb.Client) {
 	err = db.Delete(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
-	e = <-watches
+	e = recvEvent(t, ctx, watches, watchErr)
 	assert.Equal(protodb.EventTypeLeave, e.Type())
 	equal(i0, e.Old())
 	assert.Nil(e.New())
@@ -186,10 +192,16 @@ func TestBatchWatch(t *testing.T, db protodb.Client) {
 	defer cancel()
 
 	watches := make(chan protodb.Event)
+	watchErr := make(chan error, 1)
 	winit := make(chan struct{})
 	go func() {
 		ch, err := db.Watch(ctx, &testpb.KV{})
-		require.NoError(err)
+		if err != nil {
+			watchErr <- fmt.Errorf("watch kv: %w", err)
+			close(winit)
+			close(watches)
+			return
+		}
 		close(winit)
 		for e := range ch {
 			watches <- e
@@ -216,14 +228,10 @@ func TestBatchWatch(t *testing.T, db protodb.Client) {
 		if i%logCount == 0 {
 			t.Logf("retrieve create events: %d/%d", i, count)
 		}
-		select {
-		case e := <-watches:
-			assert.Equal(protodb.EventTypeEnter, e.Type())
-			assert.Nil(e.Old())
-			require.NotNil(e.New())
-		case <-ctx.Done():
-			t.Fatal("timeout")
-		}
+		e := recvEvent(t, ctx, watches, watchErr)
+		assert.Equal(protodb.EventTypeEnter, e.Type())
+		assert.Nil(e.Old())
+		require.NotNil(e.New())
 	}
 	t.Logf("updating %d records", count)
 	tx, err = db.Tx(ctx)
@@ -240,14 +248,10 @@ func TestBatchWatch(t *testing.T, db protodb.Client) {
 		if i%logCount == 0 {
 			t.Logf("retrieve update events: %d/%d", i, count)
 		}
-		select {
-		case e := <-watches:
-			assert.Equal(protodb.EventTypeUpdate, e.Type())
-			assert.NotNil(e.Old())
-			require.NotNil(e.New())
-		case <-ctx.Done():
-			t.Fatal("timeout")
-		}
+		e := recvEvent(t, ctx, watches, watchErr)
+		assert.Equal(protodb.EventTypeUpdate, e.Type())
+		assert.NotNil(e.Old())
+		require.NotNil(e.New())
 	}
 	t.Logf("deleting %d records", count)
 	tx, err = db.Tx(ctx)
@@ -263,14 +267,10 @@ func TestBatchWatch(t *testing.T, db protodb.Client) {
 		if i%logCount == 0 {
 			t.Logf("retrieve delete events: %d/%d", i, count)
 		}
-		select {
-		case e := <-watches:
-			assert.Equal(protodb.EventTypeLeave, e.Type())
-			require.NotNil(e.Old())
-			assert.Nil(e.New())
-		case <-ctx.Done():
-			t.Fatal("timeout")
-		}
+		e := recvEvent(t, ctx, watches, watchErr)
+		assert.Equal(protodb.EventTypeLeave, e.Type())
+		require.NotNil(e.Old())
+		assert.Nil(e.New())
 	}
 }
 
@@ -286,6 +286,7 @@ func TestWatchWithFilter(t *testing.T, db protodb.Client) {
 	defer cancel()
 
 	watches := make(chan protodb.Event)
+	watchErr := make(chan error, 1)
 	winit := make(chan struct{})
 	go func() {
 		ch, err := db.Watch(ctx, &testpb.Interface{},
@@ -293,7 +294,12 @@ func TestWatchWithFilter(t *testing.T, db protodb.Client) {
 				filters.Where(testpb.InterfaceFields.Status).NumberEquals(float64(testpb.StatusUp)),
 			),
 		)
-		require.NoError(err)
+		if err != nil {
+			watchErr <- fmt.Errorf("watch interface with filter: %w", err)
+			close(winit)
+			close(watches)
+			return
+		}
 		close(winit)
 		for e := range ch {
 			watches <- e
@@ -305,7 +311,7 @@ func TestWatchWithFilter(t *testing.T, db protodb.Client) {
 	require.NoError(err)
 	require.NotNil(r)
 	equal(i0, r)
-	e := <-watches
+	e := recvEvent(t, ctx, watches, watchErr)
 	assert.Equal(protodb.EventTypeEnter, e.Type())
 	assert.Nil(e.Old())
 	equal(i0, e.New())
@@ -322,7 +328,7 @@ func TestWatchWithFilter(t *testing.T, db protodb.Client) {
 	require.NoError(err)
 	require.NotNil(r)
 	equal(i0, r)
-	e = <-watches
+	e = recvEvent(t, ctx, watches, watchErr)
 	assert.Equal(protodb.EventTypeLeave, e.Type())
 	equal(i0Old, e.Old())
 	equal(i0, e.New())
@@ -333,7 +339,7 @@ func TestWatchWithFilter(t *testing.T, db protodb.Client) {
 	require.NoError(err)
 	require.NotNil(r)
 	equal(i0, r)
-	e = <-watches
+	e = recvEvent(t, ctx, watches, watchErr)
 	assert.Equal(protodb.EventTypeEnter, e.Type())
 	equal(i0Old, e.Old())
 	equal(i0, e.New())
@@ -342,7 +348,7 @@ func TestWatchWithFilter(t *testing.T, db protodb.Client) {
 	err = db.Delete(ctx, i0)
 	require.NoError(err)
 	require.NotNil(r)
-	e = <-watches
+	e = recvEvent(t, ctx, watches, watchErr)
 	assert.Equal(protodb.EventTypeLeave, e.Type())
 	equal(i0, e.Old())
 	assert.Nil(e.New())
@@ -353,6 +359,25 @@ func TestWatchWithFilter(t *testing.T, db protodb.Client) {
 	case <-time.After(time.Second):
 		t.Fatal("watch did not close")
 	}
+}
+
+func recvEvent(t *testing.T, ctx context.Context, watches <-chan protodb.Event, watchErr <-chan error) protodb.Event {
+	t.Helper()
+	select {
+	case err := <-watchErr:
+		t.Fatalf("watch failed: %v", err)
+	case e, ok := <-watches:
+		if !ok {
+			t.Fatal("watch closed before expected event")
+		}
+		if e == nil {
+			t.Fatal("watch returned nil event")
+		}
+		return e
+	case <-ctx.Done():
+		t.Fatalf("timeout waiting watch event: %v", ctx.Err())
+	}
+	return nil
 }
 
 func TestRegister(t *testing.T, db protodb.Client) {
