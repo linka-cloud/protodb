@@ -121,6 +121,9 @@ func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
+					if db.bdb.Replicated() && !db.bdb.IsLeader() {
+						continue
+					}
 					_, err := idxstore.CompactDeltas(ctx, db.bdb, o.indexCompactionBatch)
 					if err != nil && !errors.Is(err, context.Canceled) {
 						logger.C(ctx).WithError(err).Errorf("index delta compaction failed")
