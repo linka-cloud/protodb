@@ -121,13 +121,7 @@ func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
-					if db.bdb.Replicated() && !db.bdb.IsLeader() {
-						continue
-					}
-					_, err := idxstore.CompactDeltas(ctx, db.bdb, o.indexCompactionBatch)
-					if err != nil && !errors.Is(err, context.Canceled) {
-						logger.C(ctx).WithError(err).Errorf("index delta compaction failed")
-					}
+					db.runIndexMaintenance(ctx, o.indexCompactionBatch)
 				}
 			}
 		}()
@@ -149,6 +143,18 @@ func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 		return nil, multierr.Combine(err, db.bdb.Close())
 	}
 	return db, nil
+}
+
+func (db *db) runIndexMaintenance(ctx context.Context, batch int) {
+	if db.bdb.Replicated() && !db.bdb.IsLeader() {
+		return
+	}
+	if _, err := idxstore.CompactDeltas(ctx, db.bdb, batch); err != nil && !errors.Is(err, context.Canceled) {
+		logger.C(ctx).WithError(err).Errorf("index delta compaction failed")
+	}
+	if _, err := idxstore.CleanupOrphanUIDs(ctx, db.bdb, batch); err != nil && !errors.Is(err, context.Canceled) {
+		logger.C(ctx).WithError(err).Errorf("index orphan cleanup failed")
+	}
 }
 
 type db struct {

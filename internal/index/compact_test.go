@@ -59,9 +59,9 @@ func TestCompactDeltasAppliesAndRemoves(t *testing.T) {
 	defer view.Close(ctx)
 	bm2, err := readBitmapTx(view, baseKey)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []uint64{2, 3}, bitmapValues(bm2))
-	require.False(t, keyExists(t, ctx, view, addKey))
-	require.False(t, keyExists(t, ctx, view, removeKey))
+	require.ElementsMatch(t, []uint64{2, 3}, uids(bm2))
+	require.False(t, hasKey(t, ctx, view, addKey))
+	require.False(t, hasKey(t, ctx, view, removeKey))
 }
 
 func TestCompactDeltasRespectsLimit(t *testing.T) {
@@ -94,8 +94,8 @@ func TestCompactDeltasRespectsLimit(t *testing.T) {
 	require.NoError(t, err)
 	bm, err := readBitmapTx(view, baseKey)
 	require.NoError(t, err)
-	require.Equal(t, []uint64{1}, bitmapValues(bm))
-	require.Equal(t, 2, countPrefix(ctx, t, view, []byte("_index_delta/")))
+	require.Equal(t, []uint64{1}, uids(bm))
+	require.Equal(t, 2, countKeys(ctx, t, view, []byte("_index_delta/")))
 	require.NoError(t, view.Close(ctx))
 
 	processed, err = CompactDeltas(ctx, db, 0)
@@ -107,8 +107,8 @@ func TestCompactDeltasRespectsLimit(t *testing.T) {
 	defer view.Close(ctx)
 	bm, err = readBitmapTx(view, baseKey)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []uint64{1, 2, 3}, bitmapValues(bm))
-	require.Equal(t, 0, countPrefix(ctx, t, view, []byte("_index_delta/")))
+	require.ElementsMatch(t, []uint64{1, 2, 3}, uids(bm))
+	require.Equal(t, 0, countKeys(ctx, t, view, []byte("_index_delta/")))
 }
 
 func TestCompactDeltasDeletesEmptyBase(t *testing.T) {
@@ -139,11 +139,11 @@ func TestCompactDeltasDeletesEmptyBase(t *testing.T) {
 	view, err := db.NewTransaction(ctx, false)
 	require.NoError(t, err)
 	defer view.Close(ctx)
-	require.False(t, keyExists(t, ctx, view, baseKey))
-	require.False(t, keyExists(t, ctx, view, removeKey))
+	require.False(t, hasKey(t, ctx, view, baseKey))
+	require.False(t, hasKey(t, ctx, view, removeKey))
 }
 
-func bitmapValues(bm bitmap.Bitmap) []uint64 {
+func uids(bm bitmap.Bitmap) []uint64 {
 	if bm == nil {
 		return nil
 	}
@@ -154,7 +154,7 @@ func bitmapValues(bm bitmap.Bitmap) []uint64 {
 	return values
 }
 
-func keyExists(t *testing.T, ctx context.Context, tx badgerd.Tx, key []byte) bool {
+func hasKey(t *testing.T, ctx context.Context, tx badgerd.Tx, key []byte) bool {
 	t.Helper()
 	_, err := tx.Get(ctx, key)
 	if err == nil {
@@ -164,7 +164,7 @@ func keyExists(t *testing.T, ctx context.Context, tx badgerd.Tx, key []byte) boo
 	return false
 }
 
-func countPrefix(ctx context.Context, t *testing.T, tx badgerd.Tx, prefix []byte) int {
+func countKeys(ctx context.Context, t *testing.T, tx badgerd.Tx, prefix []byte) int {
 	t.Helper()
 	it := tx.Iterator(badger.IteratorOptions{Prefix: prefix, PrefetchValues: false})
 	defer it.Close()
