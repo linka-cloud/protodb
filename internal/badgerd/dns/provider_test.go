@@ -5,6 +5,7 @@ package dns
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"testing"
 
@@ -72,6 +73,40 @@ func TestProvider(t *testing.T) {
 	sort.Strings(result)
 	testutil.Equals(t, ips[2:], result)
 
+}
+
+func TestProviderResolveUsesCachedValuesOnLookupError(t *testing.T) {
+	ctx := context.Background()
+	prv := NewProvider(ctx, "")
+	r := &mockResolver{
+		res: map[string][]string{
+			"svc.local:19091": {"10.0.0.1:19091", "10.0.0.2:19091"},
+		},
+	}
+	prv.resolver = r
+
+	requireResolveOk(t, prv, ctx, []string{"dns+svc.local:19091", "example.com:90"})
+	addrs := prv.Addresses()
+	sort.Strings(addrs)
+	testutil.Equals(t, []string{"10.0.0.1:19091", "10.0.0.2:19091", "example.com:90"}, addrs)
+
+	r.err = errors.New("lookup failed")
+	err := prv.Resolve(ctx, []string{"dns+svc.local:19091", "example.com:90"})
+	testutil.NotOk(t, err)
+
+	addrs = prv.Addresses()
+	sort.Strings(addrs)
+	testutil.Equals(t, []string{"10.0.0.1:19091", "10.0.0.2:19091", "example.com:90"}, addrs)
+
+	err = prv.Resolve(ctx, []string{"dns+other.local:19091"})
+	testutil.NotOk(t, err)
+	addrs = prv.Addresses()
+	testutil.Equals(t, []string(nil), addrs)
+}
+
+func requireResolveOk(t *testing.T, p *Provider, ctx context.Context, addrs []string) {
+	t.Helper()
+	testutil.Ok(t, p.Resolve(ctx, addrs))
 }
 
 type mockResolver struct {
