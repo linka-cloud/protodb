@@ -34,6 +34,9 @@ type electionPeer struct {
 }
 
 func (r *Gossip) Elect(ctx context.Context) {
+	if r.isShuttingDown() || ctx.Err() != nil {
+		return
+	}
 	meta := r.meta.Load().CloneVT()
 	r.elect(ctx, r.electionPeers(), meta)
 }
@@ -47,6 +50,9 @@ func (r *Gossip) electionPeers() []electionPeer {
 }
 
 func (r *Gossip) elect(ctx context.Context, peers []electionPeer, meta *pb2.Meta) {
+	if r.isShuttingDown() || ctx.Err() != nil {
+		return
+	}
 	log := logger.C(ctx)
 	log.Debugf("replication clients: %d", len(peers))
 	log.Info("starting election")
@@ -120,6 +126,9 @@ func (r *Gossip) Election(_ context.Context, req *pb2.Message) (*pb2.Message, er
 	meta := r.meta.Load().CloneVT()
 	log := logger.C(r.ctx)
 	var t pb2.ElectionType
+	if r.isShuttingDown() || r.ctx.Err() != nil {
+		return &pb2.Message{Type: pb2.ElectionTypeSkip, Name: r.name, Meta: meta.CloneVT()}, nil
+	}
 	select {
 	case <-r.ready:
 		switch req.Type {
@@ -135,8 +144,11 @@ func (r *Gossip) Election(_ context.Context, req *pb2.Message) (*pb2.Message, er
 			go r.Elect(context.Background())
 		case pb2.ElectionTypeLeader:
 			if r.IsLeader() && req.Name != r.name {
-				go r.onStoppedLeading(r.ctx)
-				return &pb2.Message{Name: r.name, Meta: meta.CloneVT()}, nil
+				remoteWins := req.Meta.GetLocalVersion() > meta.LocalVersion || (req.Meta.GetLocalVersion() == meta.LocalVersion && strings.Compare(req.Name, r.name) < 0)
+				if !remoteWins {
+					return &pb2.Message{Type: pb2.ElectionTypeLeader, Name: r.name, Meta: meta.CloneVT()}, nil
+				}
+				r.onStoppedLeading(r.ctx)
 			}
 			r.onNewLeader(r.ctx, req.Name)
 			return &pb2.Message{Name: r.name, Meta: meta.CloneVT()}, nil

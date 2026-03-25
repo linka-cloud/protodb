@@ -115,12 +115,11 @@ func (r *Gossip) Replicate(ss pb2.ReplicationService_ReplicateServer) error {
 		}))
 		y.Check(batch.Flush())
 		r.db.SetVersion(cmsg.Commit.At)
+		r.setLocalVersion(cmsg.Commit.At)
 		if err := ss.Send(&pb2.Ack{}); err != nil {
 			return gerrs.Internalf("failed to send response: %v", err)
 		}
 		m := r.meta.Load().CloneVT()
-		m.LocalVersion = cmsg.Commit.At
-		r.meta.Store(m)
 		go func() {
 			b, err := m.CloneVT().MarshalVT()
 			if err != nil {

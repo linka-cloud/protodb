@@ -73,9 +73,24 @@ func TestElectionWhenNotReadyReturnsSkip(t *testing.T) {
 	assert.Equal(t, "self", res.Name)
 }
 
+func TestElectionWhileShuttingDownReturnsSkip(t *testing.T) {
+	r := newElectionTestGossip("self", 3)
+	r.setReady()
+	r.leading.Store(true)
+	r.leaderName.Store("self")
+	r.shuttingDown.Store(true)
+
+	res, err := r.Election(context.Background(), &pb2.Message{Type: pb2.ElectionTypeElection, Name: "peer", Meta: &pb2.Meta{LocalVersion: 3}})
+	require.NoError(t, err)
+	assert.Equal(t, pb2.ElectionTypeSkip, res.Type)
+	assert.Equal(t, "self", res.Name)
+	assert.Equal(t, "self", r.CurrentLeader())
+	assert.True(t, r.IsLeader())
+}
+
 func TestElectionWhenLeaderReturnsLeaderMessage(t *testing.T) {
 	r := newElectionTestGossip("self", 7)
-	close(r.ready)
+	r.setReady()
 	r.leading.Store(true)
 	r.leaderName.Store("self")
 
@@ -87,6 +102,33 @@ func TestElectionWhenLeaderReturnsLeaderMessage(t *testing.T) {
 	assert.EqualValues(t, 7, res.Meta.LocalVersion)
 }
 
+func TestElectionLeaderMessageKeepsPreferredLeader(t *testing.T) {
+	r := newElectionTestGossip("self", 7)
+	r.setReady()
+	r.leading.Store(true)
+	r.leaderName.Store("self")
+
+	res, err := r.Election(context.Background(), &pb2.Message{Type: pb2.ElectionTypeLeader, Name: "z-peer", Meta: &pb2.Meta{LocalVersion: 7}})
+	require.NoError(t, err)
+	assert.Equal(t, pb2.ElectionTypeLeader, res.Type)
+	assert.Equal(t, "self", res.Name)
+	assert.Equal(t, "self", r.CurrentLeader())
+	assert.True(t, r.IsLeader())
+}
+
+func TestElectionLeaderMessageDemotesExistingLeader(t *testing.T) {
+	r := newElectionTestGossip("self", 7)
+	r.setReady()
+	r.leading.Store(true)
+	r.leaderName.Store("self")
+
+	res, err := r.Election(context.Background(), &pb2.Message{Type: pb2.ElectionTypeLeader, Name: "peer", Meta: &pb2.Meta{LocalVersion: 7}})
+	require.NoError(t, err)
+	assert.Equal(t, "self", res.Name)
+	assert.Equal(t, "peer", r.CurrentLeader())
+	assert.False(t, r.IsLeader())
+}
+
 func TestElectionLeaderMessageSetsLeaderWhenNotReady(t *testing.T) {
 	r := newElectionTestGossip("self", 1)
 
@@ -96,6 +138,21 @@ func TestElectionLeaderMessageSetsLeaderWhenNotReady(t *testing.T) {
 	assert.Equal(t, "peer", r.CurrentLeader())
 	assert.False(t, r.IsLeader())
 	requireReady(t, r.ready)
+}
+
+func TestElectWhileShuttingDownDoesNothing(t *testing.T) {
+	r := newElectionTestGossip("self", 3)
+	r.shuttingDown.Store(true)
+	client := &fakeElectionClient{res: &pb2.Message{Name: "peer", Type: pb2.ElectionTypeLeader}}
+
+	r.elect(context.Background(), []electionPeer{
+		{name: "peer", meta: &pb2.Meta{LocalVersion: 3}, repl: client},
+	}, &pb2.Meta{LocalVersion: 3})
+
+	assert.Equal(t, 0, client.calls)
+	assert.Equal(t, "", r.CurrentLeader())
+	assert.False(t, r.IsLeader())
+	notReady(t, r.ready)
 }
 
 type fakeElectionClient struct {
@@ -117,12 +174,13 @@ func (f *fakeElectionClient) Election(_ context.Context, _ *pb2.Message, _ ...an
 
 func newElectionTestGossip(name string, version uint64) *Gossip {
 	r := &Gossip{
-		ctx:        context.Background(),
-		name:       name,
-		leading:    NewAtomic(false),
-		leaderName: NewAtomic(""),
-		ready:      make(chan struct{}),
-		pub:        pubsub.NewPublisher[string](time.Second, 2),
+		ctx:          context.Background(),
+		name:         name,
+		shuttingDown: NewAtomic(false),
+		leading:      NewAtomic(false),
+		leaderName:   NewAtomic(""),
+		ready:        make(chan struct{}),
+		pub:          pubsub.NewPublisher[string](time.Second, 2),
 	}
 	r.meta.Store(&pb2.Meta{LocalVersion: version})
 	return r

@@ -45,6 +45,24 @@ type node struct {
 	// elect pb2.ReplicationService_ElectionClient
 }
 
+func (r *Gossip) disconnectNode(ctx context.Context, name string, current *node) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if current != nil {
+		v, ok := r.nodes.Load(name)
+		if !ok || v != current {
+			return
+		}
+	}
+
+	r.nodes.Delete(name)
+	logger.C(ctx).WithField("component", "replication").Infof("disconnected from %s", name)
+	if name == r.leaderName.Load() && !r.isShuttingDown() && ctx.Err() == nil {
+		go r.Elect(ctx)
+	}
+}
+
 func (r *Gossip) handleEvents(ctx context.Context) {
 	for e := range r.events {
 		if ctx.Err() != nil {
@@ -90,7 +108,7 @@ func (r *Gossip) handleEvent(ctx context.Context, e memberlist.NodeEvent) {
 				continue
 			}
 			r.bootNodes = append(r.bootNodes[:i], r.bootNodes[i+1:]...)
-			log.Infof("known node %s is now online (version: %d) (lower: %v) (leader: %v)", e.Node.Name, m.LocalVersion, m.LocalVersion <= r.version, m.IsLeader)
+			log.Infof("known node %s is now online (version: %d) (lower: %v) (leader: %v)", e.Node.Name, m.LocalVersion, m.LocalVersion <= r.localVersion(), m.IsLeader)
 			if len(r.bootNodes) == 0 {
 				log.Infof("all known nodes are online")
 			} else {
@@ -100,10 +118,10 @@ func (r *Gossip) handleEvent(ctx context.Context, e memberlist.NodeEvent) {
 		if m.LocalVersion >= r.maxVersion {
 			r.maxVersion = m.LocalVersion
 		}
-		if r.maxVersion > r.version && len(r.bootNodes) == 0 && !r.HasLeader() {
-			log.Infof("local version %d is behind max version %d: waiting for leader", r.version, r.maxVersion)
+		if r.maxVersion > r.localVersion() && len(r.bootNodes) == 0 && !r.HasLeader() {
+			log.Infof("local version %d is behind max version %d: waiting for leader", r.localVersion(), r.maxVersion)
 		}
-		if (r.maxVersion <= r.version && len(r.bootNodes) == 0) || m.IsLeader {
+		if (r.maxVersion <= r.localVersion() && len(r.bootNodes) == 0) || m.IsLeader {
 			select {
 			case <-r.converged:
 			default:
@@ -139,28 +157,21 @@ func (r *Gossip) handleEvent(ctx context.Context, e memberlist.NodeEvent) {
 			log.Warnf("connection to %s is not ready", e.Node.Name)
 		}
 		cs := pb2.NewReplicationServiceClient(c)
-		r.nodes.Store(e.Node.Name, &node{
+		current := &node{
 			name:  e.Node.Name,
 			addr:  e.Node.Addr,
 			meta:  m,
 			cc:    c,
 			repl:  cs,
 			proxy: v1alpha1.NewProtoDBProxy(v1alpha1.NewProtoDBClient(c)),
-		})
+		}
+		r.nodes.Store(e.Node.Name, current)
 		log.Infof("connected to %s", e.Node.Name)
 		if e.Node.Name == r.leaderName.Load() {
 			r.setReady()
 		}
 		go func() {
-			defer func() {
-				r.mu.Lock()
-				defer r.mu.Unlock()
-				r.nodes.Delete(e.Node.Name)
-				log.Infof("disconnected from %s", e.Node.Name)
-				if e.Node.Name == r.leaderName.Load() {
-					go r.Elect(ctx)
-				}
-			}()
+			defer r.disconnectNode(ctx, e.Node.Name, current)
 			ss, err := cs.Alive(ctx)
 			if err != nil {
 				log.Errorf("failed to get alive stream: %v", err)
@@ -204,26 +215,26 @@ func (r *Gossip) handleEvent(ctx context.Context, e memberlist.NodeEvent) {
 
 func (r *Gossip) onStoppedLeading(ctx context.Context) {
 	logger.C(ctx).Info("stopped leading")
+	r.leading.Store(false)
+	r.leaderName.Store("")
 	meta := r.meta.Load().CloneVT()
 	meta.IsLeader = false
 	r.meta.Store(meta)
 	b, err := meta.MarshalVT()
 	if err != nil {
 		logger.C(ctx).Errorf("failed to marshal meta: %w", err)
+		return
 	}
 	if err := r.updateMeta(ctx, b); err != nil {
 		logger.C(ctx).Errorf("failed to update meta: %v", err)
-	}
-	if err := r.list.Leave(time.Second); err != nil {
-		logger.C(ctx).Errorf("failed to leave: %v", err)
-	}
-	if err := r.db.Close(); err != nil {
-		logger.C(ctx).Errorf("failed to close db: %v", err)
 	}
 }
 
 func (r *Gossip) onNewLeader(ctx context.Context, identity string) {
 	log := logger.C(ctx)
+	if r.isShuttingDown() || r.ctx.Err() != nil {
+		return
+	}
 	if identity == "" {
 		log.Warnf("empty leader")
 		return

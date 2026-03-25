@@ -8,6 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"go.linka.cloud/protodb/internal/badgerd/replication"
 	"go.linka.cloud/protodb/internal/badgerd/replication/async"
@@ -112,6 +114,17 @@ func TestTxCommitReplaySetDeleteAndFlush(t *testing.T) {
 	require.Len(t, batch.dels, 1)
 	assert.Equal(t, []byte("k2"), batch.dels[0].key)
 	assert.EqualValues(t, 42, batch.dels[0].ts)
+}
+
+func TestTxSendSyncDropsStaleLeaderPeer(t *testing.T) {
+	bad := &stream{n: "bad", s: &fakeReplicateStream{sendErr: status.Error(codes.FailedPrecondition, "cannot replicate to leader")}}
+	good := &stream{n: "good", s: &fakeReplicateStream{acks: []*pb.Ack{{}}}}
+	r := &tx{mode: replication.ModeSync, cs: []*stream{bad, good}}
+
+	err := r.send(context.Background(), &pb.ReplicateRequest{Ops: []*pb.Op{{Action: &pb.Op_New{New: &pb.New{At: 1}}}}})
+	require.NoError(t, err)
+	assert.False(t, r.hasStreams(bad))
+	assert.True(t, r.hasStreams(good))
 }
 
 func TestTxSendSyncRemovesFailingPeerAndKeepsHealthy(t *testing.T) {

@@ -2,6 +2,7 @@ package gossip
 
 import (
 	"context"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -77,4 +78,23 @@ func TestOnNewLeaderEmptyIdentityIgnored(t *testing.T) {
 		t.Fatal("ready must not close on empty leader")
 	default:
 	}
+}
+
+func TestDisconnectNodeIgnoresStaleWatcher(t *testing.T) {
+	r := &Gossip{
+		ctx:        context.Background(),
+		leading:    NewAtomic(false),
+		leaderName: NewAtomic("peer"),
+		pub:        pubsub.NewPublisher[string](time.Second, 2),
+	}
+
+	oldNode := &node{name: "peer", addr: net.ParseIP("127.0.0.1")}
+	newNode := &node{name: "peer", addr: net.ParseIP("127.0.0.2")}
+	r.nodes.Store("peer", newNode)
+
+	r.disconnectNode(context.Background(), "peer", oldNode)
+
+	got, ok := r.nodes.Load("peer")
+	require.True(t, ok)
+	assert.Same(t, newNode, got)
 }

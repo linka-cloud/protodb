@@ -144,28 +144,34 @@ func withRealReplicationCluster(t *testing.T, mode protodb.ReplicationMode, fn f
 }
 
 func leaderClient(ctx context.Context, c *Cluster) (protodb.Client, int, error) {
+	leaders := make([]int, 0, len(c.dbs))
 	for i := range c.dbs {
 		db := c.Get(i)
 		if db == nil || !db.IsLeader() {
 			continue
 		}
-		srv, err := protodb.NewServer(db)
-		if err != nil {
-			return nil, -1, err
-		}
-		tr := &inprocgrpc.Channel{}
-		srv.RegisterService(tr)
-		cli, err := protodb.NewClient(tr)
-		if err != nil {
-			return nil, -1, err
-		}
-		_, _, err = cli.Get(ctx, &testpb.Interface{}, protodb.WithPaging(&protodb.Paging{Limit: 1}))
-		if err != nil {
-			continue
-		}
-		return cli, i, nil
+		leaders = append(leaders, i)
 	}
-	return nil, -1, fmt.Errorf("leader not found")
+	if len(leaders) != 1 {
+		return nil, -1, fmt.Errorf("expected exactly one leader, got %v", leaders)
+	}
+	i := leaders[0]
+	db := c.Get(i)
+	srv, err := protodb.NewServer(db)
+	if err != nil {
+		return nil, -1, err
+	}
+	tr := &inprocgrpc.Channel{}
+	srv.RegisterService(tr)
+	cli, err := protodb.NewClient(tr)
+	if err != nil {
+		return nil, -1, err
+	}
+	_, _, err = cli.Get(ctx, &testpb.Interface{}, protodb.WithPaging(&protodb.Paging{Limit: 1}))
+	if err != nil {
+		return nil, -1, err
+	}
+	return cli, i, nil
 }
 
 func insertRange(ctx context.Context, cli protodb.Client, prefix string, start, end int) error {

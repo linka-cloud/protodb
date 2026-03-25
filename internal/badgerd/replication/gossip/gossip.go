@@ -64,9 +64,10 @@ type Gossip struct {
 	mode replication.Mode
 
 	// we use atomic to avoid locking as these values are read very often
-	leading    *Atomic[bool]
-	leaderName *Atomic[string]
-	meta       Atomic[*pb2.Meta]
+	shuttingDown *Atomic[bool]
+	leading      *Atomic[bool]
+	leaderName   *Atomic[string]
+	meta         Atomic[*pb2.Meta]
 
 	version uint64
 	db      replication.DB
@@ -105,18 +106,19 @@ func New(ctx context.Context, db replication.DB, opts ...replication.Option) (re
 	}
 
 	r := &Gossip{
-		mode:       o.Mode,
-		leading:    NewAtomic(false),
-		leaderName: NewAtomic(""),
-		db:         db,
-		name:       o.Name,
-		ready:      make(chan struct{}),
-		events:     make(chan memberlist.NodeEvent, 10),
-		converged:  make(chan struct{}),
-		version:    db.MaxVersion(),
-		pub:        pubsub.NewPublisher[string](time.Second, 2),
-		txnMark:    &y.WaterMark{Name: "gossip.TxnReplicationTimestamp"},
-		txnCloser:  z.NewCloser(1),
+		mode:         o.Mode,
+		shuttingDown: NewAtomic(false),
+		leading:      NewAtomic(false),
+		leaderName:   NewAtomic(""),
+		db:           db,
+		name:         o.Name,
+		ready:        make(chan struct{}),
+		events:       make(chan memberlist.NodeEvent, 10),
+		converged:    make(chan struct{}),
+		version:      db.MaxVersion(),
+		pub:          pubsub.NewPublisher[string](time.Second, 2),
+		txnMark:      &y.WaterMark{Name: "gossip.TxnReplicationTimestamp"},
+		txnCloser:    z.NewCloser(1),
 	}
 	r.txnMark.Init(r.txnCloser)
 	r.meta.Store(&pb2.Meta{GRPCPort: uint32(o.GRPCPort), LocalVersion: r.version})
@@ -255,8 +257,9 @@ func (r *Gossip) init(ctx context.Context) error {
 		}
 		time.Sleep(1 * time.Second)
 	}
-	log.Infof("initializing replication from leader since %d", r.version)
-	ss, err := c.Init(ctx, &pb2.InitRequest{Since: r.version})
+	since := r.localVersion()
+	log.Infof("initializing replication from leader since %d", since)
+	ss, err := c.Init(ctx, &pb2.InitRequest{Since: since})
 	if err != nil {
 		return err
 	}
@@ -264,6 +267,7 @@ func (r *Gossip) init(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	r.setLocalVersion(v)
 	r.txnMark.Done(v)
 	logger.C(ctx).Infof("initial replication from leader to %d done", v)
 	return nil
@@ -305,6 +309,21 @@ func (r *Gossip) clients() []*node {
 	return nodes
 }
 
+func (r *Gossip) localVersion() uint64 {
+	return r.meta.Load().LocalVersion
+}
+
+func (r *Gossip) isShuttingDown() bool {
+	return r.shuttingDown != nil && r.shuttingDown.Load()
+}
+
+func (r *Gossip) setLocalVersion(v uint64) {
+	r.version = v
+	m := r.meta.Load().CloneVT()
+	m.LocalVersion = v
+	r.meta.Store(m)
+}
+
 func (r *Gossip) leaderClient() (pb2.ReplicationServiceClient, bool) {
 	if r.leading.Load() {
 		return nil, false
@@ -317,6 +336,9 @@ func (r *Gossip) leaderClient() (pb2.ReplicationServiceClient, bool) {
 }
 
 func (r *Gossip) updateMeta(_ context.Context, b []byte) error {
+	if r.d == nil || r.list == nil {
+		return nil
+	}
 	r.d.SetMeta(b)
 	return r.list.UpdateNode(time.Second)
 }
@@ -354,6 +376,8 @@ func (r *Gossip) LinearizableReads() bool {
 
 func (r *Gossip) Close() (err error) {
 	r.co.Do(func() {
+		r.shuttingDown.Store(true)
+		r.onStoppedLeading(r.ctx)
 		r.cancel()
 		r.txnCloser.Done()
 		err = r.svc.Stop()

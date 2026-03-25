@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -27,6 +28,8 @@ import (
 	"github.com/dgraph-io/badger/v3/y"
 	"go.linka.cloud/grpc-toolkit/logger"
 	"go.uber.org/multierr"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protowire"
 
 	"go.linka.cloud/protodb/internal/badgerd/pending"
@@ -316,10 +319,24 @@ func (r *tx) send(ctx context.Context, req *pb.ReplicateRequest) error {
 	return nil
 }
 
+func isStaleLeaderErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	st, ok := status.FromError(err)
+	if !ok || st.Code() != codes.FailedPrecondition {
+		return false
+	}
+	return strings.Contains(st.Message(), "cannot replicate to leader")
+}
+
 func (r *tx) handleErr(ctx context.Context, res *async.Result[*stream]) error {
 	if res.Err() != nil && r.hasStreams(res.Value()) && !errors.Is(res.Err(), io.EOF) {
 		logger.C(ctx).WithField("peer", res.Value().n).WithError(res.Err()).Error("failed to send replication message: removing peer")
 		r.removeSteam(res.Value())
+		if isStaleLeaderErr(res.Err()) {
+			return nil
+		}
 		return fmt.Errorf("%s: %w", res.Value().n, res.Err())
 	}
 	return nil
