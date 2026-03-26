@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"sync"
 
 	"github.com/dgraph-io/badger/v3"
 	"google.golang.org/grpc"
@@ -16,6 +17,7 @@ import (
 )
 
 type fakeDB struct {
+	mu            sync.RWMutex
 	path          string
 	inMemory      bool
 	maxVersion    uint64
@@ -27,10 +29,23 @@ type fakeDB struct {
 	batch         *fakeWriteBatch
 }
 
-func (f *fakeDB) Path() string                                    { return f.path }
-func (f *fakeDB) InMemory() bool                                  { return f.inMemory }
-func (f *fakeDB) MaxVersion() uint64                              { return f.maxVersion }
-func (f *fakeDB) SetVersion(v uint64)                             { f.version = v }
+func (f *fakeDB) Path() string   { return f.path }
+func (f *fakeDB) InMemory() bool { return f.inMemory }
+func (f *fakeDB) MaxVersion() uint64 {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return f.maxVersion
+}
+func (f *fakeDB) SetVersion(v uint64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.version = v
+}
+func (f *fakeDB) SetMaxVersion(v uint64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.maxVersion = v
+}
 func (f *fakeDB) Drop() error                                     { return nil }
 func (f *fakeDB) Load(context.Context, io.Reader) (uint64, error) { return 0, nil }
 func (f *fakeDB) Stream(ctx context.Context, at, since uint64, w io.Writer) error {

@@ -62,6 +62,20 @@ func (r *Gossip) Init(req *pb2.InitRequest, ss pb2.ReplicationService_InitServer
 	}
 	m := r.db.MaxVersion()
 	if req.Since > m {
+		// In sync mode a follower can observe an incoming replicated commit just before
+		// the leader's local MaxVersion advances. Give the leader a short window to catch up
+		// before treating the follower as genuinely ahead.
+		deadline := time.Now().Add(250 * time.Millisecond)
+		for req.Since > m && time.Now().Before(deadline) {
+			select {
+			case <-ss.Context().Done():
+				return ss.Context().Err()
+			case <-time.After(10 * time.Millisecond):
+			}
+			m = r.db.MaxVersion()
+		}
+	}
+	if req.Since > m {
 		return gerrs.FailedPreconditionf("invalid replication version %d, max is %d", req.Since, m)
 	}
 	if req.Since == m {

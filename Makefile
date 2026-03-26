@@ -162,10 +162,10 @@ ci-replication-smoke:
 
 .PHONY: ci-replication-stress
 ci-replication-stress:
-	@go test -v -count 2 -shuffle=on -p 1 -timeout 20m -run '^TestReplicationModes/(async|sync)/leader_churn_under_writes$$' ./tests
-	@go test -v -count 2 -shuffle=on -p 1 -timeout 20m -run '^TestReplicationModes/(async|sync)/follower_offline_catchup_under_load$$' ./tests
-	@go test -v -count 1 -shuffle=on -p 1 -timeout 20m -run '^TestReplicationModes/(async|sync)/rolling_restart_no_data_loss$$' ./tests
-	@go test -v -count 1 -shuffle=on -p 1 -timeout 20m -run '^TestReplicationModes/(async|sync)/delete_propagation_no_resurrection$$' ./tests
+	@go test -v -count 10 -shuffle=on -p 1 -timeout 20m -run '^TestReplicationModes/(async|sync)/leader_churn_under_writes$$' ./tests
+	@go test -v -count 10 -shuffle=on -p 1 -timeout 20m -run '^TestReplicationModes/(async|sync)/follower_offline_catchup_under_load$$' ./tests
+	@go test -v -count 5 -shuffle=on -p 1 -timeout 20m -run '^TestReplicationModes/(async|sync)/rolling_restart_no_data_loss$$' ./tests
+	@go test -v -count 5 -shuffle=on -p 1 -timeout 20m -run '^TestReplicationModes/(async|sync)/delete_propagation_no_resurrection$$' ./tests
 
 .PHONY: ci-integration
 ci-integration:

@@ -99,6 +99,27 @@ func TestInitWaitsForNodeToAppear(t *testing.T) {
 	assert.True(t, called)
 }
 
+func TestInitWaitsForLeaderVersionToCatchUp(t *testing.T) {
+	called := false
+	db := &fakeDB{maxVersion: 0, streamFn: func(_ context.Context, at, since uint64, _ io.Writer) error {
+		called = true
+		assert.EqualValues(t, 2, at)
+		assert.EqualValues(t, 1, since)
+		return nil
+	}}
+	r := &Gossip{leading: NewAtomic(true), db: db, nodes: Map[*node]{}}
+	r.nodes.Store("n1", &node{name: "n1", addr: net.ParseIP("127.0.0.1")})
+
+	go func() {
+		time.Sleep(15 * time.Millisecond)
+		db.SetMaxVersion(2)
+	}()
+
+	err := r.Init(&pb.InitRequest{Since: 1}, &fakeInitSrv{ctx: peerCtx("127.0.0.1", 7000)})
+	require.NoError(t, err)
+	assert.True(t, called)
+}
+
 func TestAliveTable(t *testing.T) {
 	r := &Gossip{}
 	err := r.Alive(&fakeAliveSrv{ctx: context.Background(), recvErrs: []error{io.EOF}})
