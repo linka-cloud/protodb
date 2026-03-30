@@ -295,6 +295,9 @@ func (r *Gossip) run(ctx context.Context) {
 		if ctx.Err() != nil {
 			return
 		}
+		if r.HasLeader() {
+			return
+		}
 		r.Elect(ctx)
 	}()
 }
