@@ -52,6 +52,12 @@ func TestIndexableFilter(t *testing.T) {
 
 	_, err = idx.IndexableFilter(m, filters.Where("meta.nope").StringEquals("x"))
 	require.Error(t, err)
+
+	nestedKey := buildIndexerNestedKeyDescriptor(t)
+	nestedMsg := dynamicpb.NewMessage(nestedKey)
+	ok, err = idx.IndexableFilter(nestedMsg, filters.Where("metadata.id").StringEquals("x"))
+	require.NoError(t, err)
+	require.True(t, ok)
 }
 
 func TestEnforceUnique(t *testing.T) {
@@ -345,6 +351,32 @@ func buildUniqueDocDescriptor(t *testing.T) protoreflect.MessageDescriptor {
 	fd, err := file.Build()
 	require.NoError(t, err)
 	md := fd.Messages().ByName("User")
+	require.NotNil(t, md)
+	return md
+}
+
+func buildIndexerNestedKeyDescriptor(t *testing.T) protoreflect.MessageDescriptor {
+	t.Helper()
+	keyOpts := &descriptorpb.FieldOptions{}
+	proto.SetExtension(keyOpts, protopts.E_Key, true)
+
+	meta := protobuilder.NewMessage("Metadata").
+		AddField(protobuilder.NewField("id", protobuilder.FieldTypeString()).SetNumber(1).SetOptions(keyOpts))
+
+	msg := protobuilder.NewMessage("NestedKeyDoc").
+		AddField(protobuilder.NewField("metadata", protobuilder.FieldTypeMessage(meta)).SetNumber(1)).
+		AddField(protobuilder.NewField("status", protobuilder.FieldTypeString()).SetNumber(2).SetOptions(&descriptorpb.FieldOptions{})).
+		AddNestedMessage(meta)
+
+	file := protobuilder.NewFile("tests/indexer_nested_key.proto").
+		SetPackageName(protoreflect.FullName("tests.index")).
+		SetSyntax(protoreflect.Proto3).
+		AddMessage(msg).
+		AddImportedDependency(protopts.File_protodb_protodb_proto)
+
+	fd, err := file.Build()
+	require.NoError(t, err)
+	md := fd.Messages().ByName("NestedKeyDoc")
 	require.NotNil(t, md)
 	return md
 }

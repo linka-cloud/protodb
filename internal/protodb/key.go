@@ -37,30 +37,16 @@ func KeyFromOpts(m proto.Message) (key string, field string, ok bool) {
 	if sk != nil && sk.(string) != "" {
 		return sk.(string), "", true
 	}
-	var kf protoreflect.FieldDescriptor
-	fields := m.ProtoReflect().Type().Descriptor().Fields()
-	for i := 0; i < fields.Len(); i++ {
-		f := fields.Get(i)
-		o, ok := f.Options().(*descriptorpb.FieldOptions)
-		if !ok {
-			continue
-		}
-		v := proto.GetExtension(o, protodb.E_Key)
-		if v == nil {
-			continue
-		}
-		b := v.(bool)
-		if b {
-			kf = f
-			break
-		}
-	}
-	if kf == nil {
+	path, ok := keyFieldPathFromOpts(m.ProtoReflect().Type().Descriptor())
+	if !ok {
 		return "", "", false
 	}
-	field = string(kf.Name())
-	v := m.ProtoReflect().Get(kf)
-	if !v.IsValid() {
+	field = keyPathFromNames(path)
+	if !isKeyLeaf(path[len(path)-1]) {
+		return "", field, true
+	}
+	v, ok := keyPathValue(m.ProtoReflect(), path)
+	if !ok || !v.IsValid() {
 		return "", field, true
 	}
 	if k := v.String(); k != "" && k != "0" {
@@ -280,6 +266,9 @@ func KeyFieldName(md protoreflect.MessageDescriptor) (string, bool) {
 	if md == nil {
 		return "", false
 	}
+	if path, ok := keyFieldPathFromOpts(md); ok {
+		return keyPathFromNames(path), true
+	}
 	m := dynamicpb.NewMessage(md)
 	_, field, _ := KeyFor(m)
 	if field != "" {
@@ -304,6 +293,105 @@ func KeyFieldName(md protoreflect.MessageDescriptor) (string, bool) {
 		return field, true
 	}
 	return "", false
+}
+
+func keyFieldPathFromOpts(md protoreflect.MessageDescriptor) ([]protoreflect.FieldDescriptor, bool) {
+	if md == nil {
+		return nil, false
+	}
+	stack := map[protoreflect.FullName]bool{md.FullName(): true}
+	return keyFieldPathFromOptsIn(md, nil, stack)
+}
+
+func keyFieldPathFromOptsIn(md protoreflect.MessageDescriptor, path []protoreflect.FieldDescriptor, stack map[protoreflect.FullName]bool) ([]protoreflect.FieldDescriptor, bool) {
+	fields := md.Fields()
+	for i := 0; i < fields.Len(); i++ {
+		fd := fields.Get(i)
+		next := appendFieldPath(path, fd)
+		if isExplicitKey(fd) {
+			return next, true
+		}
+		if fd.Kind() != protoreflect.MessageKind || fd.IsList() || fd.IsMap() {
+			continue
+		}
+		child := fd.Message()
+		if child == nil || stack[child.FullName()] {
+			continue
+		}
+		stack[child.FullName()] = true
+		if nested, ok := keyFieldPathFromOptsIn(child, next, stack); ok {
+			return nested, true
+		}
+		delete(stack, child.FullName())
+	}
+	return nil, false
+}
+
+func appendFieldPath(path []protoreflect.FieldDescriptor, fd protoreflect.FieldDescriptor) []protoreflect.FieldDescriptor {
+	next := make([]protoreflect.FieldDescriptor, 0, len(path)+1)
+	next = append(next, path...)
+	return append(next, fd)
+}
+
+func isExplicitKey(fd protoreflect.FieldDescriptor) bool {
+	if fd == nil {
+		return false
+	}
+	o, ok := fd.Options().(*descriptorpb.FieldOptions)
+	if !ok {
+		return false
+	}
+	v := proto.GetExtension(o, protodb.E_Key)
+	if v == nil {
+		return false
+	}
+	b, ok := v.(bool)
+	if !ok {
+		return false
+	}
+	return b
+}
+
+func keyPathFromNames(path []protoreflect.FieldDescriptor) string {
+	parts := make([]string, 0, len(path))
+	for _, fd := range path {
+		parts = append(parts, string(fd.Name()))
+	}
+	return strings.Join(parts, ".")
+}
+
+func keyPathValue(m protoreflect.Message, path []protoreflect.FieldDescriptor) (protoreflect.Value, bool) {
+	cur := m
+	for i, fd := range path {
+		v := cur.Get(fd)
+		if i == len(path)-1 {
+			return v, true
+		}
+		if fd.Kind() != protoreflect.MessageKind {
+			return protoreflect.Value{}, false
+		}
+		next := v.Message()
+		if !next.IsValid() {
+			return protoreflect.Value{}, false
+		}
+		cur = next
+	}
+	return protoreflect.Value{}, false
+}
+
+func isKeyLeaf(fd protoreflect.FieldDescriptor) bool {
+	if fd == nil {
+		return false
+	}
+	if fd.IsMap() || fd.IsList() {
+		return false
+	}
+	switch fd.Kind() {
+	case protoreflect.MessageKind, protoreflect.GroupKind:
+		return false
+	default:
+		return true
+	}
 }
 
 func keyProbeValue(fd protoreflect.FieldDescriptor) (protoreflect.Value, bool) {

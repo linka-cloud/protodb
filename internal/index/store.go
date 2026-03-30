@@ -321,7 +321,7 @@ func (f *fieldReader) Get(_ context.Context, n protoreflect.Name) iter.Seq2[pfin
 
 type keyField struct {
 	name       protoreflect.Name
-	fd         protoreflect.FieldDescriptor
+	fds        []protoreflect.FieldDescriptor
 	dataPrefix []byte
 	txn        badgerd.Tx
 	entries    []keyEntry
@@ -371,7 +371,7 @@ func (k *keyField) iterate(yield func(pfindex.Field, error) bool) {
 	}
 	for _, e := range k.entries {
 		entry := &field{
-			descriptors: []protoreflect.FieldDescriptor{k.fd},
+			descriptors: k.fds,
 			value:       protoreflect.ValueOfString(e.value),
 			bitmap:      e.bitmap,
 		}
@@ -558,13 +558,7 @@ func fieldPathFromNames(fds []protoreflect.FieldDescriptor) string {
 }
 
 func lookupByNumberPath(md protoreflect.MessageDescriptor, fieldPath string) ([]protoreflect.FieldDescriptor, error) {
-	parts := strings.Split(fieldPath, ".")
-	if len(parts) == 0 {
-		return nil, fmt.Errorf("empty field path")
-	}
-	var fds []protoreflect.FieldDescriptor
-	cur := md
-	for _, part := range parts {
+	return lookupByPath(md, fieldPath, func(cur protoreflect.MessageDescriptor, part string) (protoreflect.FieldDescriptor, error) {
 		num, err := strconv.Atoi(part)
 		if err != nil {
 			return nil, fmt.Errorf("invalid field number %q", part)
@@ -573,15 +567,40 @@ func lookupByNumberPath(md protoreflect.MessageDescriptor, fieldPath string) ([]
 		if fd == nil {
 			return nil, fmt.Errorf("%s does not contain field number %d", cur.FullName(), num)
 		}
-		fds = append(fds, fd)
-		if fd.Kind() == protoreflect.MessageKind {
-			cur = fd.Message()
-		} else {
-			cur = nil
+		return fd, nil
+	})
+}
+
+func lookupByNamePath(md protoreflect.MessageDescriptor, fieldPath string) ([]protoreflect.FieldDescriptor, error) {
+	return lookupByPath(md, fieldPath, func(cur protoreflect.MessageDescriptor, part string) (protoreflect.FieldDescriptor, error) {
+		fd := cur.Fields().ByName(protoreflect.Name(part))
+		if fd == nil {
+			return nil, fmt.Errorf("%s does not contain field '%s'", cur.FullName(), part)
 		}
-		if cur == nil && part != parts[len(parts)-1] {
+		return fd, nil
+	})
+}
+
+func lookupByPath(md protoreflect.MessageDescriptor, fieldPath string, lookup func(protoreflect.MessageDescriptor, string) (protoreflect.FieldDescriptor, error)) ([]protoreflect.FieldDescriptor, error) {
+	if fieldPath == "" {
+		return nil, fmt.Errorf("empty field path")
+	}
+	parts := strings.Split(fieldPath, ".")
+	var fds []protoreflect.FieldDescriptor
+	cur := md
+	for i, part := range parts {
+		fd, err := lookup(cur, part)
+		if err != nil {
+			return nil, err
+		}
+		fds = append(fds, fd)
+		if i == len(parts)-1 {
+			continue
+		}
+		if fd.Kind() != protoreflect.MessageKind {
 			return nil, fmt.Errorf("%s does not contain '%s'", md.FullName(), fieldPath)
 		}
+		cur = fd.Message()
 	}
 	return fds, nil
 }
@@ -598,11 +617,11 @@ func buildFieldReader(txn badgerd.Tx, resolver protodesc.Resolver, name protoref
 	var key *keyField
 	keyName, ok := protodb.KeyFieldName(md)
 	if ok {
-		fd := md.Fields().ByName(protoreflect.Name(keyName))
-		if fd != nil {
+		fds, err := lookupByNamePath(md, keyName)
+		if err == nil {
 			key = &keyField{
-				name:       fd.Name(),
-				fd:         fd,
+				name:       protoreflect.Name(fieldPathFromNames(fds)),
+				fds:        fds,
 				dataPrefix: []byte(protodb.Data + "/" + string(name) + "/"),
 				txn:        txn,
 			}

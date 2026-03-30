@@ -984,14 +984,14 @@ func isKeyField(md protoreflect.MessageDescriptor, fds []protoreflect.FieldDescr
 	if md == nil {
 		return false
 	}
-	if len(fds) != 1 {
+	if len(fds) == 0 {
 		return false
 	}
 	field, ok := protodb.KeyFieldName(md)
 	if !ok {
 		return false
 	}
-	return field == string(fds[0].Name())
+	return field == fieldPathFromNames(fds)
 }
 
 func isIndexableFieldPathDescriptors(fds []protoreflect.FieldDescriptor) bool {

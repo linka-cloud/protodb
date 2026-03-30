@@ -6,13 +6,18 @@ import (
 	"testing"
 
 	"github.com/dgraph-io/badger/v3"
+	"github.com/jhump/protoreflect/v2/protobuilder"
 	"github.com/stretchr/testify/require"
 	"go.linka.cloud/protofilters/filters"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/dynamicpb"
 
 	"go.linka.cloud/protodb/internal/protodb"
 	"go.linka.cloud/protodb/internal/token"
+	protopts "go.linka.cloud/protodb/protodb"
 	v1alpha1 "go.linka.cloud/protodb/protodb/v1alpha1"
 )
 
@@ -54,6 +59,18 @@ func TestBuildOrderPlan(t *testing.T) {
 	t.Run("invalid direction", func(t *testing.T) {
 		_, err := buildOrderPlan(m.ProtoReflect(), &v1alpha1.OrderBy{Field: "status", Direction: v1alpha1.OrderDirection(99)})
 		require.ErrorContains(t, err, "invalid direction")
+	})
+
+	require.NoError(t, d.RegisterProto(ctx, buildNestedKeyOrderFileDescriptor(t)))
+	nmd, err := lookupMessage(d, "tests.order.OrderDoc")
+	require.NoError(t, err)
+	nm := dynamicpb.NewMessage(nmd)
+
+	t.Run("nested key field", func(t *testing.T) {
+		pl, err := buildOrderPlan(nm.ProtoReflect(), &v1alpha1.OrderBy{Field: "metadata.id"})
+		require.NoError(t, err)
+		require.Equal(t, "metadata.id", pl.fieldPath)
+		require.Equal(t, v1alpha1.OrderDirectionAsc, pl.direction)
 	})
 }
 
@@ -295,6 +312,30 @@ func lookupNumberField(md protoreflect.MessageDescriptor, n string) (protoreflec
 		}
 	}
 	return nil, fmt.Errorf("field number %s not found", n)
+}
+
+func buildNestedKeyOrderFileDescriptor(t *testing.T) *descriptorpb.FileDescriptorProto {
+	t.Helper()
+	keyOpts := &descriptorpb.FieldOptions{}
+	proto.SetExtension(keyOpts, protopts.E_Key, true)
+
+	meta := protobuilder.NewMessage("Metadata").
+		AddField(protobuilder.NewField("id", protobuilder.FieldTypeString()).SetNumber(1).SetOptions(keyOpts))
+
+	msg := protobuilder.NewMessage("OrderDoc").
+		AddField(protobuilder.NewField("metadata", protobuilder.FieldTypeMessage(meta)).SetNumber(1)).
+		AddField(protobuilder.NewField("status", protobuilder.FieldTypeString()).SetNumber(2)).
+		AddNestedMessage(meta)
+
+	file := protobuilder.NewFile("tests/order_nested_key.proto").
+		SetPackageName(protoreflect.FullName("tests.order")).
+		SetSyntax(protoreflect.Proto3).
+		AddMessage(msg).
+		AddImportedDependency(protopts.File_protodb_protodb_proto)
+
+	fd, err := file.Build()
+	require.NoError(t, err)
+	return protodesc.ToFileDescriptorProto(fd)
 }
 
 func TestGetWithMalformedTokenReturnsInvalid(t *testing.T) {

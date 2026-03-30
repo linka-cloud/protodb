@@ -1174,7 +1174,7 @@ func buildOrderPlan(msg protoreflect.Message, orderBy *v1alpha1.OrderBy) (orderF
 	if !isOrderableFieldPath(fds) {
 		return orderField{}, fmt.Errorf("order_by field %q is not sortable", fieldPath)
 	}
-	isKey := hasKey && len(fds) == 1 && string(fds[0].Name()) == keyField
+	isKey := hasKey && nameFieldPath(fds) == keyField
 	if !isKey {
 		fd := fds[len(fds)-1]
 		if !proto.HasExtension(fd.Options(), protopts.E_Index) {
@@ -1318,4 +1318,12 @@ func hash(f protodb.Filter) (hash string, err error) {
 	}
 	h := sha512.Sum512(b)
 	return base64.StdEncoding.EncodeToString(h[:]), nil
+}
+
+func nameFieldPath(fds []protoreflect.FieldDescriptor) string {
+	parts := make([]string, 0, len(fds))
+	for _, fd := range fds {
+		parts = append(parts, string(fd.Name()))
+	}
+	return strings.Join(parts, ".")
 }

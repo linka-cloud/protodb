@@ -27,10 +27,12 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
+	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"go.linka.cloud/protodb/internal/badgerd"
+	protopts "go.linka.cloud/protodb/protodb"
 )
 
 func TestValuePrefixRoundTrip(t *testing.T) {
@@ -196,6 +198,29 @@ func TestBuildFieldReaderUsesInferredKeyField(t *testing.T) {
 	require.NoError(t, rt.Close(ctx))
 }
 
+func TestBuildFieldReaderUsesNestedKeyField(t *testing.T) {
+	ctx := context.Background()
+	md := buildNestedKeyDescriptor(t)
+
+	reg := &protoregistry.Files{}
+	require.NoError(t, reg.RegisterFile(md.ParentFile()))
+
+	db, err := badgerd.Open(ctx, badgerd.WithInMemory(true))
+	require.NoError(t, err)
+	defer db.Close()
+
+	rt, err := db.NewTransaction(ctx, false)
+	require.NoError(t, err)
+	reader, err := buildFieldReader(rt, reg, md.FullName(), true, nil)
+	require.NoError(t, err)
+	require.NotNil(t, reader.key)
+	require.Equal(t, protoreflect.Name("metadata.id"), reader.key.name)
+	require.Len(t, reader.key.fds, 2)
+	require.Equal(t, protoreflect.Name("metadata"), reader.key.fds[0].Name())
+	require.Equal(t, protoreflect.Name("id"), reader.key.fds[1].Name())
+	require.NoError(t, rt.Close(ctx))
+}
+
 func buildTypesDescriptor(t *testing.T) protoreflect.MessageDescriptor {
 	keyEnum := protobuilder.NewEnum("Status").
 		AddValue(protobuilder.NewEnumValue("UNKNOWN").SetNumber(0)).
@@ -257,6 +282,31 @@ func buildIDDescriptor(t *testing.T) protoreflect.MessageDescriptor {
 	fd, err := file.Build()
 	require.NoError(t, err)
 	md := fd.Messages().ByName("WithID")
+	require.NotNil(t, md)
+	return md
+}
+
+func buildNestedKeyDescriptor(t *testing.T) protoreflect.MessageDescriptor {
+	keyOpts := &descriptorpb.FieldOptions{}
+	proto.SetExtension(keyOpts, protopts.E_Key, true)
+
+	meta := protobuilder.NewMessage("Metadata").
+		AddField(protobuilder.NewField("id", protobuilder.FieldTypeString()).SetNumber(1).SetOptions(keyOpts))
+
+	msg := protobuilder.NewMessage("WithNestedKey").
+		AddField(protobuilder.NewField("metadata", protobuilder.FieldTypeMessage(meta)).SetNumber(1)).
+		AddField(protobuilder.NewField("status", protobuilder.FieldTypeString()).SetNumber(2)).
+		AddNestedMessage(meta)
+
+	file := protobuilder.NewFile("tests/with_nested_key.proto").
+		SetPackageName(protoreflect.FullName("tests.index")).
+		SetSyntax(protoreflect.Proto3).
+		AddMessage(msg).
+		AddImportedDependency(protopts.File_protodb_protodb_proto)
+
+	fd, err := file.Build()
+	require.NoError(t, err)
+	md := fd.Messages().ByName("WithNestedKey")
 	require.NotNil(t, md)
 	return md
 }

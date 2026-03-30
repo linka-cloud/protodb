@@ -42,6 +42,8 @@ type mod struct {
 	oneOfs  map[string]struct{}
 }
 
+type keyPath []pgs.Field
+
 func (p *mod) Name() string {
 	return "protodb"
 }
@@ -85,26 +87,85 @@ func (p *mod) Execute(targets map[string]pgs.File, _ map[string]pgs.Package) []p
 			if !ok || !enabled {
 				continue
 			}
-			var keyField string
-			for _, f := range m.Fields() {
-				var k bool
-				f.Extension(protodb.E_Key, &k)
-				if !k {
-					continue
-				}
-				if keyField != "" {
-					p.Failf("%s: %s: key already defined for message: %s", m.Name(), f.Name(), keyField)
-				}
-				keyField = f.Name().String()
-				if f.Type().IsMap() || f.Type().IsRepeated() || f.InOneOf() || f.Descriptor().GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
-					p.Failf("%s: %s: only non repeated and not oneof scalar types are supported as key, got %T", m.Name(), f.Name(), f.Type())
-				}
-			}
+			p.validateMessageKey(m)
 			msgs = append(msgs, m)
 		}
 		p.generate(f, msgs)
 	}
 	return p.Artifacts()
+}
+
+func (p *mod) validateMessageKey(m pgs.Message) {
+	keys := p.collectMessageKeys(m)
+	if len(keys) == 0 {
+		return
+	}
+	for _, path := range keys {
+		leaf := path.leaf()
+		if leaf.Type().IsMap() || leaf.Type().IsRepeated() || leaf.InOneOf() || leaf.Descriptor().GetType() == descriptorpb.FieldDescriptorProto_TYPE_MESSAGE {
+			p.Failf("%s: %s: only non repeated and not oneof scalar types are supported as key, got %T", m.Name(), path.String(), leaf.Type())
+		}
+		for i := 0; i < len(path)-1; i++ {
+			f := path[i]
+			if !f.Type().IsEmbed() || f.Type().IsMap() || f.Type().IsRepeated() || f.InOneOf() {
+				p.Failf("%s: %s: nested key path must traverse singular message fields", m.Name(), path.String())
+			}
+		}
+	}
+	if len(keys) == 1 {
+		return
+	}
+	paths := make([]string, 0, len(keys))
+	for _, path := range keys {
+		paths = append(paths, path.String())
+	}
+	p.Failf("%s: multiple keys found for message: %s", m.Name(), strings.Join(paths, ", "))
+}
+
+func (p *mod) collectMessageKeys(m pgs.Message) []keyPath {
+	stack := map[string]bool{m.FullyQualifiedName(): true}
+	return p.collectMessageKeysIn(m, nil, stack)
+}
+
+func (p *mod) collectMessageKeysIn(m pgs.Message, path keyPath, stack map[string]bool) []keyPath {
+	var out []keyPath
+	for _, f := range m.Fields() {
+		next := make(keyPath, 0, len(path)+1)
+		next = append(next, path...)
+		next = append(next, f)
+		var key bool
+		f.Extension(protodb.E_Key, &key)
+		if key {
+			out = append(out, next)
+		}
+		if !f.Type().IsEmbed() || f.Type().IsMap() || f.Type().IsRepeated() || f.InOneOf() {
+			continue
+		}
+		embed := f.Type().Embed()
+		if embed == nil {
+			continue
+		}
+		name := embed.FullyQualifiedName()
+		if stack[name] {
+			continue
+		}
+		stack[name] = true
+		out = append(out, p.collectMessageKeysIn(embed, next, stack)...)
+		delete(stack, name)
+	}
+	return out
+}
+
+func (p keyPath) leaf() pgs.Field {
+	return p[len(p)-1]
+}
+
+func (p keyPath) String() string {
+	parts := make([]string, 0, len(p))
+	for _, f := range p {
+		parts = append(parts, f.Name().String())
+	}
+	return strings.Join(parts, ".")
 }
 
 func (p *mod) generate(f pgs.File, msgs []pgs.Message) {
