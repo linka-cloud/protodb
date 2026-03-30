@@ -34,20 +34,16 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/protobuf/proto"
-	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/dynamicpb"
 
 	"go.linka.cloud/protodb/internal/badgerd"
 	"go.linka.cloud/protodb/internal/protodb"
+	"go.linka.cloud/protodb/internal/registry"
 	protopts "go.linka.cloud/protodb/protodb"
 )
 
 var idxTracer = otel.Tracer("protodb.indexer")
-
-type FileRegistry interface {
-	RangeFiles(func(protoreflect.FileDescriptor) bool)
-}
 
 type Tx interface {
 	Txn() badgerd.Tx
@@ -55,8 +51,7 @@ type Tx interface {
 }
 
 type Indexer struct {
-	reg       protodesc.Resolver
-	freg      FileRegistry
+	reg       *registry.Registry
 	unmarshal func([]byte, proto.Message) error
 	mu        sync.RWMutex
 	entries   map[protoreflect.FullName]entryCache
@@ -73,8 +68,8 @@ type entryCache struct {
 	entries []string
 }
 
-func NewIndexer(reg protodesc.Resolver, freg FileRegistry, unmarshal func([]byte, proto.Message) error) *Indexer {
-	return &Indexer{reg: reg, freg: freg, unmarshal: unmarshal}
+func NewIndexer(reg *registry.Registry, unmarshal func([]byte, proto.Message) error) *Indexer {
+	return &Indexer{reg: reg, unmarshal: unmarshal}
 }
 
 func (idx *Indexer) RebuildIfNeeded(ctx context.Context, tx Tx, files ...protoreflect.FileDescriptor) error {
@@ -88,7 +83,7 @@ func (idx *Indexer) Rebuild(ctx context.Context, tx Tx, files ...protoreflect.Fi
 	defer span.End()
 	msgs := collectMessagesFromFiles(files)
 	if len(files) == 0 {
-		msgs = collectMessageDescriptors(idx.freg)
+		msgs = collectMessageDescriptors(idx.reg)
 	}
 	span.SetAttributes(
 		attribute.Int("index.messages", len(msgs)),
@@ -175,7 +170,7 @@ func (idx *Indexer) IndexableFilter(m proto.Message, f protodb.Filter) (bool, er
 	if f == nil || f.Expr() == nil {
 		return false, nil
 	}
-	return isIndexableExpr(m.ProtoReflect().New(), f.Expr())
+	return idx.isIndexableExpr(m.ProtoReflect().New(), f.Expr())
 }
 
 func (idx *Indexer) EnforceUnique(ctx context.Context, tx Tx, m proto.Message, uid uint64) error {
@@ -820,7 +815,7 @@ func collectIndexEntries(md protoreflect.MessageDescriptor) []string {
 				walk(fd.Message(), prefix+fmt.Sprintf("%d", fd.Number())+".")
 				continue
 			}
-			if !proto.HasExtension(fd.Options(), protopts.E_Index) || !isIndexableField(fd) {
+			if !proto.HasExtension(fd.Options(), protopts.E_Index) || !IsIndexableLeaf(fd) {
 				continue
 			}
 			entries = append(entries, fmt.Sprintf("%s%d|%s|%d", prefix, fd.Number(), fd.Kind(), fd.Cardinality()))
@@ -831,12 +826,12 @@ func collectIndexEntries(md protoreflect.MessageDescriptor) []string {
 	return entries
 }
 
-func collectMessageDescriptors(freg FileRegistry) []protoreflect.MessageDescriptor {
-	if freg == nil {
+func collectMessageDescriptors(reg *registry.Registry) []protoreflect.MessageDescriptor {
+	if reg == nil {
 		return nil
 	}
 	var out []protoreflect.MessageDescriptor
-	freg.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
+	reg.RangeFiles(func(fd protoreflect.FileDescriptor) bool {
 		out = append(out, collectMessages(fd.Messages())...)
 		return true
 	})
@@ -937,24 +932,24 @@ func collectUniqueFromMsgList(val protoreflect.Value, fds ...protoreflect.FieldD
 	return out, nil
 }
 
-func isIndexableExpr(msg protoreflect.Message, expr *filters.Expression) (bool, error) {
+func (idx *Indexer) isIndexableExpr(msg protoreflect.Message, expr *filters.Expression) (bool, error) {
 	if expr == nil {
 		return true, nil
 	}
 	if expr.Condition != nil {
-		ok, err := isIndexableFieldPath(msg, expr.Condition.GetField())
+		ok, err := idx.isIndexableFieldPath(msg, expr.Condition.GetField())
 		if err != nil || !ok {
 			return ok, err
 		}
 	}
 	for _, v := range expr.AndExprs {
-		ok, err := isIndexableExpr(msg, v)
+		ok, err := idx.isIndexableExpr(msg, v)
 		if err != nil || !ok {
 			return ok, err
 		}
 	}
 	for _, v := range expr.OrExprs {
-		ok, err := isIndexableExpr(msg, v)
+		ok, err := idx.isIndexableExpr(msg, v)
 		if err != nil || !ok {
 			return ok, err
 		}
@@ -962,7 +957,7 @@ func isIndexableExpr(msg protoreflect.Message, expr *filters.Expression) (bool, 
 	return true, nil
 }
 
-func isIndexableFieldPath(msg protoreflect.Message, fieldPath string) (bool, error) {
+func (idx *Indexer) isIndexableFieldPath(msg protoreflect.Message, fieldPath string) (bool, error) {
 	if fieldPath == "" {
 		return false, nil
 	}
@@ -974,24 +969,31 @@ func isIndexableFieldPath(msg protoreflect.Message, fieldPath string) (bool, err
 	if proto.HasExtension(fd.Options(), protopts.E_Index) {
 		return isIndexableFieldPathDescriptors(fds), nil
 	}
-	if !isKeyField(msg.Descriptor(), fds) {
+	if !idx.isKeyField(msg.Descriptor(), fds) {
 		return false, nil
 	}
 	return isIndexableFieldPathDescriptors(fds), nil
 }
 
-func isKeyField(md protoreflect.MessageDescriptor, fds []protoreflect.FieldDescriptor) bool {
+func (idx *Indexer) isKeyField(md protoreflect.MessageDescriptor, fds []protoreflect.FieldDescriptor) bool {
 	if md == nil {
 		return false
 	}
 	if len(fds) == 0 {
 		return false
 	}
-	field, ok := protodb.KeyFieldName(md)
+	field, ok := keyName(md, idx.reg)
 	if !ok {
 		return false
 	}
 	return field == fieldPathFromNames(fds)
+}
+
+func keyName(md protoreflect.MessageDescriptor, reg *registry.Registry) (string, bool) {
+	if reg == nil {
+		return protodb.KeyFieldName(md)
+	}
+	return reg.KeyFieldName(md)
 }
 
 func isIndexableFieldPathDescriptors(fds []protoreflect.FieldDescriptor) bool {
@@ -1014,10 +1016,6 @@ func isIndexableFieldPathDescriptors(fds []protoreflect.FieldDescriptor) bool {
 		}
 	}
 	return IsIndexableLeaf(last)
-}
-
-func isIndexableField(fd protoreflect.FieldDescriptor) bool {
-	return IsIndexableLeaf(fd)
 }
 
 // IsIndexableLeaf reports whether a field descriptor supports index ordering/lookup.

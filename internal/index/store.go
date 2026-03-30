@@ -605,6 +605,18 @@ func lookupByPath(md protoreflect.MessageDescriptor, fieldPath string, lookup fu
 	return fds, nil
 }
 
+type keyFieldNamer interface {
+	KeyFieldName(protoreflect.MessageDescriptor) (string, bool)
+}
+
+func keyFieldName(resolver protodesc.Resolver, md protoreflect.MessageDescriptor) (string, bool) {
+	r, ok := resolver.(keyFieldNamer)
+	if ok {
+		return r.KeyFieldName(md)
+	}
+	return protodb.KeyFieldName(md)
+}
+
 func buildFieldReader(txn badgerd.Tx, resolver protodesc.Resolver, name protoreflect.FullName, precompute bool, owner *tx) (*fieldReader, error) {
 	d, err := resolver.FindDescriptorByName(name)
 	if err != nil {
@@ -615,7 +627,7 @@ func buildFieldReader(txn badgerd.Tx, resolver protodesc.Resolver, name protoref
 		return nil, fmt.Errorf("descriptor %s is not a message", name)
 	}
 	var key *keyField
-	keyName, ok := protodb.KeyFieldName(md)
+	keyName, ok := keyFieldName(resolver, md)
 	if ok {
 		fds, err := lookupByNamePath(md, keyName)
 		if err == nil {

@@ -77,7 +77,7 @@ func Open(ctx context.Context, opts ...Option) (protodb.DB, error) {
 	}
 	db := &db{opts: o, reg: reg, smu: mutex.NewKV(), ctxmu: mutex.NewContextKV()}
 	db.matcher = pf.NewMatcher()
-	db.idx = idxstore.NewIndexer(db.reg, db.reg.Files, db.unmarshal)
+	db.idx = idxstore.NewIndexer(db.reg, db.unmarshal)
 	if o.repl != nil {
 		h, err := server.NewServer(db)
 		if err != nil {
@@ -206,7 +206,7 @@ func (db *db) Watch(ctx context.Context, m proto.Message, opts ...protodb.GetOpt
 	o := makeGetOpts(opts...)
 	matcher := db.matcher
 
-	k, _, _, _ := protodb.DataPrefix(m)
+	k, _, _, _ := db.reg.DataPrefix(m)
 	log := logger.C(ctx).WithFields("service", "protodb", "action", "watch", "key", string(k))
 	log.Debugf("start watching for key %s", string(k))
 	ch := make(chan protodb.Event, 1)

@@ -15,6 +15,8 @@
 package registry
 
 import (
+	"sync"
+
 	"google.golang.org/protobuf/reflect/protoreflect"
 	preg "google.golang.org/protobuf/reflect/protoregistry"
 )
@@ -22,6 +24,9 @@ import (
 type Registry struct {
 	*Files
 	*Types
+
+	mu   sync.RWMutex
+	keys map[protoreflect.FullName]key
 }
 
 func New() (*Registry, error) {

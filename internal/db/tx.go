@@ -144,7 +144,7 @@ func (tx *tx) get(ctx context.Context, m proto.Message, opts ...protodb.GetOptio
 	} else if lim := o.Paging.GetLimit(); lim > 0 {
 		out = make([]proto.Message, 0, lim)
 	}
-	prefix, field, value, _ := protodb.DataPrefix(m)
+	prefix, field, value, _ := tx.db.reg.DataPrefix(m)
 	span.SetAttributes(
 		attribute.String("prefix", string(prefix)),
 		attribute.String("key_field", field),
@@ -499,7 +499,7 @@ func (tx *tx) set(ctx context.Context, m proto.Message, opts ...protodb.SetOptio
 	if o.TTL != 0 {
 		expiresAt = uint64(time.Now().Add(o.TTL).Unix())
 	}
-	k, field, value, err := protodb.DataPrefix(m)
+	k, field, value, err := tx.db.reg.DataPrefix(m)
 	if err != nil {
 		return nil, err
 	}
@@ -645,7 +645,7 @@ func (tx *tx) delete(ctx context.Context, m proto.Message) error {
 		return badger.ErrReadOnlyTxn
 	}
 	// TODO(adphi): should we check / read for key first ?
-	k, field, value, err := protodb.DataPrefix(m)
+	k, field, value, err := tx.db.reg.DataPrefix(m)
 	if err != nil {
 		return err
 	}
@@ -878,7 +878,7 @@ func (tx *tx) getOrdered(ctx context.Context, m proto.Message, o protodb.GetOpts
 		)
 		defer span.End()
 	}
-	plan, err := buildOrderPlan(m.ProtoReflect().New(), o.OrderBy)
+	plan, err := buildOrderPlanWithKeyField(m.ProtoReflect().New(), o.OrderBy, tx.db.reg.KeyFieldName)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -929,7 +929,7 @@ func (tx *tx) getOrderedIndexed(ctx context.Context, m proto.Message, o protodb.
 		span.SetAttributes(attribute.Bool("fallback", true), attribute.String("fallback_reason", "key_order"))
 		return nil, nil, false, nil
 	}
-	prefix, _, _, _ := protodb.DataPrefix(m)
+	prefix, _, _, _ := tx.db.reg.DataPrefix(m)
 	if o.Filter != nil {
 		ok, err := tx.db.idx.IndexableFilter(m, o.Filter)
 		if err != nil {
@@ -1082,7 +1082,7 @@ func (tx *tx) getOrderedFallbackScanSort(ctx context.Context, m proto.Message, o
 
 	ordered := make([]orderedResult, 0, len(all))
 	for _, item := range all {
-		key, _, _, err := protodb.DataPrefix(item)
+		key, _, _, err := tx.db.reg.DataPrefix(item)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -1158,11 +1158,15 @@ func (tx *tx) getOrderedFallbackScanSort(ctx context.Context, m proto.Message, o
 }
 
 func buildOrderPlan(msg protoreflect.Message, orderBy *v1alpha1.OrderBy) (orderField, error) {
+	return buildOrderPlanWithKeyField(msg, orderBy, protodb.KeyFieldName)
+}
+
+func buildOrderPlanWithKeyField(msg protoreflect.Message, orderBy *v1alpha1.OrderBy, keyFieldName func(protoreflect.MessageDescriptor) (string, bool)) (orderField, error) {
 	if orderBy == nil {
 		return orderField{}, errors.New("order_by cannot be empty")
 	}
 	md := msg.Descriptor()
-	keyField, hasKey := protodb.KeyFieldName(md)
+	keyField, hasKey := keyFieldName(md)
 	fieldPath := strings.TrimSpace(orderBy.GetField())
 	if fieldPath == "" {
 		return orderField{}, errors.New("order_by field cannot be empty")

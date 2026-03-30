@@ -12,17 +12,17 @@ import (
 	"go.linka.cloud/protofilters/index/bitmap"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
-	"google.golang.org/protobuf/reflect/protoregistry"
 	"google.golang.org/protobuf/types/descriptorpb"
 	"google.golang.org/protobuf/types/dynamicpb"
 
 	"go.linka.cloud/protodb/internal/badgerd"
 	"go.linka.cloud/protodb/internal/protodb"
+	regpkg "go.linka.cloud/protodb/internal/registry"
 	protopts "go.linka.cloud/protodb/protodb"
 )
 
 func TestCollectEntriesCacheAndRefresh(t *testing.T) {
-	idx := NewIndexer(nil, nil, nil)
+	idx := NewIndexer(nil, nil)
 	md1 := buildIndexerDocDescriptorV1(t)
 	md2 := buildIndexerDocDescriptorV2(t)
 
@@ -38,7 +38,7 @@ func TestCollectEntriesCacheAndRefresh(t *testing.T) {
 }
 
 func TestIndexableFilter(t *testing.T) {
-	idx := NewIndexer(nil, nil, nil)
+	idx := NewIndexer(nil, nil)
 	md := buildIndexerDocDescriptorV1(t)
 	m := dynamicpb.NewMessage(md)
 
@@ -66,7 +66,7 @@ func TestEnforceUnique(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	idx := NewIndexer(nil, nil, nil)
+	idx := NewIndexer(nil, nil)
 	md := buildUniqueDocDescriptor(t)
 	emailFD := md.Fields().ByName("email")
 	require.NotNil(t, emailFD)
@@ -105,7 +105,7 @@ func TestEnforceUniqueDeduplicatesCollectedValues(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
-	idx := NewIndexer(nil, nil, nil)
+	idx := NewIndexer(nil, nil)
 	md := buildUniqueTagsDescriptor(t)
 	tagsFD := md.Fields().ByName("tags")
 	require.NotNil(t, tagsFD)
@@ -169,7 +169,7 @@ func TestOrderedUIDGroupsSeq(t *testing.T) {
 	require.NoError(t, err)
 	defer rtx.Close(ctx)
 
-	idx := NewIndexer(nil, nil, nil)
+	idx := NewIndexer(nil, nil)
 	fds := []protoreflect.FieldDescriptor{statusFD}
 
 	ascSeq, err := idx.OrderedUIDGroupsSeq(ctx, indexTx{tx: rtx}, md.FullName(), fds, false)
@@ -218,7 +218,7 @@ func TestOrderedUIDGroupsSeqContextCanceled(t *testing.T) {
 	cctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	idx := NewIndexer(nil, nil, nil)
+	idx := NewIndexer(nil, nil)
 	seq, err := idx.OrderedUIDGroupsSeq(cctx, indexTx{tx: rtx}, md.FullName(), []protoreflect.FieldDescriptor{statusFD}, false)
 	require.NoError(t, err)
 	for _, err := range seq {
@@ -405,7 +405,9 @@ func buildUniqueTagsDescriptor(t *testing.T) protoreflect.MessageDescriptor {
 }
 
 func TestCollectEntriesDeterministic(t *testing.T) {
-	idx := NewIndexer(&protoregistry.Files{}, nil, nil)
+	reg, err := regpkg.New()
+	require.NoError(t, err)
+	idx := NewIndexer(reg, nil)
 	md := buildIndexerDocDescriptorV1(t)
 	first := idx.CollectEntries(md)
 	second := idx.CollectEntries(md)

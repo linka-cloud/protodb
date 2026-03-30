@@ -49,7 +49,7 @@ func KeyFromOpts(m proto.Message) (key string, field string, ok bool) {
 	if !ok || !v.IsValid() {
 		return "", field, true
 	}
-	if k := v.String(); k != "" && k != "0" {
+	if k, ok := keyString(v, path[len(path)-1]); ok {
 		return k, field, true
 	}
 	return "", field, true
@@ -303,6 +303,10 @@ func keyFieldPathFromOpts(md protoreflect.MessageDescriptor) ([]protoreflect.Fie
 	return keyFieldPathFromOptsIn(md, nil, stack)
 }
 
+func KeyFieldPathFromOpts(md protoreflect.MessageDescriptor) ([]protoreflect.FieldDescriptor, bool) {
+	return keyFieldPathFromOpts(md)
+}
+
 func keyFieldPathFromOptsIn(md protoreflect.MessageDescriptor, path []protoreflect.FieldDescriptor, stack map[protoreflect.FullName]bool) ([]protoreflect.FieldDescriptor, bool) {
 	fields := md.Fields()
 	for i := 0; i < fields.Len(); i++ {
@@ -360,6 +364,10 @@ func keyPathFromNames(path []protoreflect.FieldDescriptor) string {
 	return strings.Join(parts, ".")
 }
 
+func KeyPathFromNames(path []protoreflect.FieldDescriptor) string {
+	return keyPathFromNames(path)
+}
+
 func keyPathValue(m protoreflect.Message, path []protoreflect.FieldDescriptor) (protoreflect.Value, bool) {
 	cur := m
 	for i, fd := range path {
@@ -379,6 +387,43 @@ func keyPathValue(m protoreflect.Message, path []protoreflect.FieldDescriptor) (
 	return protoreflect.Value{}, false
 }
 
+func keyString(v protoreflect.Value, fd protoreflect.FieldDescriptor) (string, bool) {
+	if !v.IsValid() || fd == nil {
+		return "", false
+	}
+	if !hasKeyValue(v, fd) {
+		return "", false
+	}
+	return v.String(), true
+}
+
+func KeyString(v protoreflect.Value, fd protoreflect.FieldDescriptor) (string, bool) {
+	return keyString(v, fd)
+}
+
+func hasKeyValue(v protoreflect.Value, fd protoreflect.FieldDescriptor) bool {
+	switch fd.Kind() {
+	case protoreflect.BoolKind:
+		return v.Bool()
+	case protoreflect.EnumKind:
+		return v.Enum() != 0
+	case protoreflect.Int32Kind, protoreflect.Sint32Kind, protoreflect.Sfixed32Kind,
+		protoreflect.Int64Kind, protoreflect.Sint64Kind, protoreflect.Sfixed64Kind:
+		return v.Int() != 0
+	case protoreflect.Uint32Kind, protoreflect.Fixed32Kind,
+		protoreflect.Uint64Kind, protoreflect.Fixed64Kind:
+		return v.Uint() != 0
+	case protoreflect.FloatKind, protoreflect.DoubleKind:
+		return v.Float() != 0
+	case protoreflect.StringKind:
+		return v.String() != ""
+	case protoreflect.BytesKind:
+		return len(v.Bytes()) != 0
+	default:
+		return false
+	}
+}
+
 func isKeyLeaf(fd protoreflect.FieldDescriptor) bool {
 	if fd == nil {
 		return false
@@ -392,6 +437,10 @@ func isKeyLeaf(fd protoreflect.FieldDescriptor) bool {
 	default:
 		return true
 	}
+}
+
+func KeyLeaf(fd protoreflect.FieldDescriptor) bool {
+	return isKeyLeaf(fd)
 }
 
 func keyProbeValue(fd protoreflect.FieldDescriptor) (protoreflect.Value, bool) {
