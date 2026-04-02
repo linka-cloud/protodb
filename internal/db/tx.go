@@ -649,19 +649,19 @@ func (tx *tx) delete(ctx context.Context, m proto.Message) error {
 	if err != nil {
 		return err
 	}
+	trace.SpanFromContext(ctx).SetAttributes(
+		attribute.String("key", value),
+		attribute.String("key_field", field),
+	)
 
 	uid, ok, err := tx.uid(ctx, k, false)
 	if err != nil {
 		return err
 	}
 	if !ok {
-		return badger.ErrKeyNotFound
+		return nil
 	}
-	trace.SpanFromContext(ctx).SetAttributes(
-		attribute.String("key", value),
-		attribute.String("key_field", field),
-		attribute.Int64("uid", int64(uid)),
-	)
+	trace.SpanFromContext(ctx).SetAttributes(attribute.Int64("uid", int64(uid)))
 
 	if err := ctx.Err(); err != nil {
 		tx.close()
