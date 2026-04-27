@@ -54,6 +54,10 @@ func (r *Gossip) elect(ctx context.Context, peers []electionPeer, meta *pb2.Meta
 		return
 	}
 	log := logger.C(ctx)
+	if meta.LocalVersion < r.maxVersion {
+		log.Infof("local version %d is behind max version %d: skipping election", meta.LocalVersion, r.maxVersion)
+		return
+	}
 	log.Debugf("replication clients: %d", len(peers))
 	log.Info("starting election")
 	count := 0
@@ -143,6 +147,10 @@ func (r *Gossip) Election(_ context.Context, req *pb2.Message) (*pb2.Message, er
 			}
 			go r.Elect(context.Background())
 		case pb2.ElectionTypeLeader:
+			if req.Meta.GetLocalVersion() < meta.LocalVersion {
+				log.Infof("rejecting stale leader %s at version %d behind local version %d", req.Name, req.Meta.GetLocalVersion(), meta.LocalVersion)
+				return &pb2.Message{Type: pb2.ElectionTypeSkip, Name: r.name, Meta: meta.CloneVT()}, nil
+			}
 			if r.IsLeader() && req.Name != r.name {
 				remoteWins := req.Meta.GetLocalVersion() > meta.LocalVersion || (req.Meta.GetLocalVersion() == meta.LocalVersion && strings.Compare(req.Name, r.name) < 0)
 				if !remoteWins {
@@ -155,6 +163,10 @@ func (r *Gossip) Election(_ context.Context, req *pb2.Message) (*pb2.Message, er
 		}
 	default:
 		if req.Type == pb2.ElectionTypeLeader {
+			if req.Meta.GetLocalVersion() < meta.LocalVersion {
+				log.Infof("rejecting stale leader %s at version %d behind local version %d", req.Name, req.Meta.GetLocalVersion(), meta.LocalVersion)
+				return &pb2.Message{Type: pb2.ElectionTypeSkip, Name: r.name, Meta: meta.CloneVT()}, nil
+			}
 			r.onNewLeader(r.ctx, req.Name)
 		} else {
 			t = pb2.ElectionTypeSkip

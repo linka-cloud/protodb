@@ -121,11 +121,12 @@ func (r *Gossip) handleEvent(ctx context.Context, e memberlist.NodeEvent) {
 		if r.maxVersion > r.localVersion() && len(r.bootNodes) == 0 && !r.HasLeader() {
 			log.Infof("local version %d is behind max version %d: waiting for leader", r.localVersion(), r.maxVersion)
 		}
-		if (r.maxVersion <= r.localVersion() && len(r.bootNodes) == 0) || m.IsLeader {
+		leaderReady := m.IsLeader && m.LocalVersion >= r.localVersion()
+		if (r.maxVersion <= r.localVersion() && len(r.bootNodes) == 0) || leaderReady {
 			select {
 			case <-r.converged:
 			default:
-				if m.IsLeader {
+				if leaderReady {
 					log.Infof("node %s is the leader", e.Node.Name)
 				} else {
 					log.Infof("joining leader election")

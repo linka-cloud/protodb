@@ -155,6 +155,39 @@ func TestElectWhileShuttingDownDoesNothing(t *testing.T) {
 	notReady(t, r.ready)
 }
 
+func TestElectBehindMaxVersionSkipsElection(t *testing.T) {
+	r := newElectionTestGossip("self", 3)
+	r.maxVersion = 4
+
+	r.elect(context.Background(), nil, &pb2.Meta{LocalVersion: 3})
+
+	assert.Equal(t, "", r.CurrentLeader())
+	assert.False(t, r.IsLeader())
+	notReady(t, r.ready)
+}
+
+func TestElectionLeaderMessageRejectsStaleLeaderWhenReady(t *testing.T) {
+	r := newElectionTestGossip("self", 7)
+	r.setReady()
+
+	res, err := r.Election(context.Background(), &pb2.Message{Type: pb2.ElectionTypeLeader, Name: "peer", Meta: &pb2.Meta{LocalVersion: 6}})
+	require.NoError(t, err)
+	assert.Equal(t, pb2.ElectionTypeSkip, res.Type)
+	assert.Equal(t, "", r.CurrentLeader())
+	assert.False(t, r.IsLeader())
+}
+
+func TestElectionLeaderMessageRejectsStaleLeaderWhenNotReady(t *testing.T) {
+	r := newElectionTestGossip("self", 7)
+
+	res, err := r.Election(context.Background(), &pb2.Message{Type: pb2.ElectionTypeLeader, Name: "peer", Meta: &pb2.Meta{LocalVersion: 6}})
+	require.NoError(t, err)
+	assert.Equal(t, pb2.ElectionTypeSkip, res.Type)
+	assert.Equal(t, "", r.CurrentLeader())
+	assert.False(t, r.IsLeader())
+	notReady(t, r.ready)
+}
+
 type fakeElectionClient struct {
 	res   *pb2.Message
 	err   error
