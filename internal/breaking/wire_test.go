@@ -130,11 +130,11 @@ func buildRpcRulesFile(t *testing.T, updated bool) protoreflect.FileDescriptor {
 	req2 := protobuilder.NewMessage("Request2")
 	resp2 := protobuilder.NewMessage("Response2")
 
-	reqType := protobuilder.RpcTypeMessage(req, false)
-	respType := protobuilder.RpcTypeMessage(resp, false)
+	reqType := protobuilder.RPCTypeMessage(req, false)
+	respType := protobuilder.RPCTypeMessage(resp, false)
 	if updated {
-		reqType = protobuilder.RpcTypeMessage(req2, true)
-		respType = protobuilder.RpcTypeMessage(resp2, true)
+		reqType = protobuilder.RPCTypeMessage(req2, true)
+		respType = protobuilder.RPCTypeMessage(resp2, true)
 	}
 	method := protobuilder.NewMethod("Call", reqType, respType)
 	if updated {
