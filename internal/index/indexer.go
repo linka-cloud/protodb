@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"iter"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -412,7 +413,7 @@ func (idx *Indexer) OrderedUIDGroupsSeq(ctx context.Context, tx Tx, name protore
 			for uid := range bm.Iter() {
 				uids = append(uids, uid)
 			}
-			sort.Slice(uids, func(i, j int) bool { return uids[i] < uids[j] })
+			slices.Sort(uids)
 			if !yield(uids, nil) {
 				return
 			}

@@ -1,7 +1,6 @@
 package gossip
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -53,8 +52,7 @@ func TestGossipSimpleMethodsTable(t *testing.T) {
 }
 
 func TestRunSkipsElectionWhenLeaderAlreadyKnown(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	r := &Gossip{
 		ctx:          ctx,

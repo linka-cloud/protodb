@@ -148,7 +148,6 @@ func (c *Cluster) StopAll() error {
 	var mu sync.Mutex
 	g := errgroup.Group{}
 	for i := range c.dbs {
-		i := i
 		if db := c.Get(i); db != nil {
 			g.Go(func() error {
 				e := c.Stop(i)

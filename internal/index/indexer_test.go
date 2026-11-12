@@ -337,7 +337,7 @@ func buildUniqueDocDescriptor(t *testing.T) protoreflect.MessageDescriptor {
 	keyOpts := &descriptorpb.FieldOptions{}
 	proto.SetExtension(keyOpts, protopts.E_Key, true)
 	unique := &descriptorpb.FieldOptions{}
-	proto.SetExtension(unique, protopts.E_Index, &protopts.Index{Unique: proto.Bool(true)})
+	proto.SetExtension(unique, protopts.E_Index, &protopts.Index{Unique: new(true)})
 
 	msg := protobuilder.NewMessage("User").
 		AddField(protobuilder.NewField("key", protobuilder.FieldTypeString()).SetNumber(1).SetOptions(keyOpts)).
@@ -386,7 +386,7 @@ func buildUniqueTagsDescriptor(t *testing.T) protoreflect.MessageDescriptor {
 	keyOpts := &descriptorpb.FieldOptions{}
 	proto.SetExtension(keyOpts, protopts.E_Key, true)
 	unique := &descriptorpb.FieldOptions{}
-	proto.SetExtension(unique, protopts.E_Index, &protopts.Index{Unique: proto.Bool(true)})
+	proto.SetExtension(unique, protopts.E_Index, &protopts.Index{Unique: new(true)})
 
 	msg := protobuilder.NewMessage("WithTags").
 		AddField(protobuilder.NewField("key", protobuilder.FieldTypeString()).SetNumber(1).SetOptions(keyOpts)).

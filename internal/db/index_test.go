@@ -743,7 +743,7 @@ func buildIndexedFileDescriptorV1(t *testing.T) *descriptorpb.FileDescriptorProt
 	proto.SetExtension(keyOpts, protopts.E_Key, true)
 
 	indexOpts := &descriptorpb.FieldOptions{}
-	proto.SetExtension(indexOpts, protopts.E_Index, &protopts.Index{Unique: proto.Bool(false)})
+	proto.SetExtension(indexOpts, protopts.E_Index, &protopts.Index{Unique: new(false)})
 
 	keyField := protobuilder.NewField("key", protobuilder.FieldTypeString()).
 		SetNumber(1).
@@ -785,7 +785,7 @@ func buildIndexedFileDescriptorV2(t *testing.T) *descriptorpb.FileDescriptorProt
 	proto.SetExtension(keyOpts, protopts.E_Key, true)
 
 	indexOpts := &descriptorpb.FieldOptions{}
-	proto.SetExtension(indexOpts, protopts.E_Index, &protopts.Index{Unique: proto.Bool(false)})
+	proto.SetExtension(indexOpts, protopts.E_Index, &protopts.Index{Unique: new(false)})
 
 	keyField := protobuilder.NewField("key", protobuilder.FieldTypeString()).
 		SetNumber(1).
@@ -815,7 +815,7 @@ func buildNestedIndexedFileDescriptor(t *testing.T) *descriptorpb.FileDescriptor
 	proto.SetExtension(keyOpts, protopts.E_Key, true)
 
 	indexOpts := &descriptorpb.FieldOptions{}
-	proto.SetExtension(indexOpts, protopts.E_Index, &protopts.Index{Unique: proto.Bool(false)})
+	proto.SetExtension(indexOpts, protopts.E_Index, &protopts.Index{Unique: new(false)})
 
 	metaRole := protobuilder.NewField("role", protobuilder.FieldTypeString()).
 		SetNumber(1).
@@ -857,7 +857,7 @@ func buildUniqueIndexedDescriptor(t *testing.T) *descriptorpb.FileDescriptorProt
 	proto.SetExtension(keyOpts, protopts.E_Key, true)
 
 	uniqueOpts := &descriptorpb.FieldOptions{}
-	proto.SetExtension(uniqueOpts, protopts.E_Index, &protopts.Index{Unique: proto.Bool(true)})
+	proto.SetExtension(uniqueOpts, protopts.E_Index, &protopts.Index{Unique: new(true)})
 
 	keyField := protobuilder.NewField("key", protobuilder.FieldTypeString()).
 		SetNumber(1).

@@ -202,7 +202,7 @@ func openBenchDB(b *testing.B) (*db, protoreflect.MessageDescriptor) {
 
 func seedBenchDocs(b *testing.B, ctx context.Context, d *db, md protoreflect.MessageDescriptor, n int) {
 	b.Helper()
-	for i := 0; i < n; i++ {
+	for i := range n {
 		status := "down"
 		if i%2 == 0 {
 			status = "up"

@@ -191,39 +191,29 @@ func newBadgerCollector() *badgerMetricsCollector {
 		},
 		mapMetrics: []badgerMapMetric{
 			{
-				badgerMetric: badgerMetric{
-					expvarName: "badger_v3_lsm_level_gets_total",
-					desc:       prometheus.NewDesc(namespace+"_"+"badger_lsm_level_gets_total", "LSM level gets", []string{"level"}, nil),
-					valueType:  prometheus.CounterValue,
-				},
+				expvarName: "badger_v3_lsm_level_gets_total",
+				desc:       prometheus.NewDesc(namespace+"_"+"badger_lsm_level_gets_total", "LSM level gets", []string{"level"}, nil),
+				valueType:  prometheus.CounterValue,
 			},
 			{
-				badgerMetric: badgerMetric{
-					expvarName: "badger_v3_lsm_bloom_hits_total",
-					desc:       prometheus.NewDesc(namespace+"_"+"badger_lsm_bloom_hits_total", "LSM bloom hits", []string{"level"}, nil),
-					valueType:  prometheus.CounterValue,
-				},
+				expvarName: "badger_v3_lsm_bloom_hits_total",
+				desc:       prometheus.NewDesc(namespace+"_"+"badger_lsm_bloom_hits_total", "LSM bloom hits", []string{"level"}, nil),
+				valueType:  prometheus.CounterValue,
 			},
 			{
-				badgerMetric: badgerMetric{
-					expvarName: "badger_v3_lsm_size_bytes",
-					desc:       prometheus.NewDesc(namespace+"_"+"badger_lsm_size_bytes", "LSM size in bytes", []string{"database"}, nil),
-					valueType:  prometheus.GaugeValue,
-				},
+				expvarName: "badger_v3_lsm_size_bytes",
+				desc:       prometheus.NewDesc(namespace+"_"+"badger_lsm_size_bytes", "LSM size in bytes", []string{"database"}, nil),
+				valueType:  prometheus.GaugeValue,
 			},
 			{
-				badgerMetric: badgerMetric{
-					expvarName: "badger_v3_vlog_size_bytes",
-					desc:       prometheus.NewDesc(namespace+"_"+"badger_vlog_size_bytes", "Value log size in bytes", []string{"database"}, nil),
-					valueType:  prometheus.GaugeValue,
-				},
+				expvarName: "badger_v3_vlog_size_bytes",
+				desc:       prometheus.NewDesc(namespace+"_"+"badger_vlog_size_bytes", "Value log size in bytes", []string{"database"}, nil),
+				valueType:  prometheus.GaugeValue,
 			},
 			{
-				badgerMetric: badgerMetric{
-					expvarName: "badger_v3_pending_writes_total",
-					desc:       prometheus.NewDesc(namespace+"_"+"badger_pending_writes_total", "Pending writes", []string{"database"}, nil),
-					valueType:  prometheus.GaugeValue,
-				},
+				expvarName: "badger_v3_pending_writes_total",
+				desc:       prometheus.NewDesc(namespace+"_"+"badger_pending_writes_total", "Pending writes", []string{"database"}, nil),
+				valueType:  prometheus.GaugeValue,
 			},
 		},
 	}

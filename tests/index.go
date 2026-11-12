@@ -394,7 +394,7 @@ func buildIndexCRUDFile(t *testing.T) protoreflect.FileDescriptor {
 	keyOpts := &descriptorpb.FieldOptions{}
 	proto.SetExtension(keyOpts, protopts.E_Key, true)
 	idxOpts := &descriptorpb.FieldOptions{}
-	proto.SetExtension(idxOpts, protopts.E_Index, &protopts.Index{Unique: proto.Bool(false)})
+	proto.SetExtension(idxOpts, protopts.E_Index, &protopts.Index{Unique: new(false)})
 
 	key := protobuilder.NewField("key", protobuilder.FieldTypeString()).SetNumber(1).SetOptions(keyOpts)
 	status := protobuilder.NewField("status", protobuilder.FieldTypeString()).SetNumber(2).SetOptions(idxOpts)
@@ -414,7 +414,7 @@ func buildIndexCRUDUniqueFile(t *testing.T) protoreflect.FileDescriptor {
 	keyOpts := &descriptorpb.FieldOptions{}
 	proto.SetExtension(keyOpts, protopts.E_Key, true)
 	uniqueOpts := &descriptorpb.FieldOptions{}
-	proto.SetExtension(uniqueOpts, protopts.E_Index, &protopts.Index{Unique: proto.Bool(true)})
+	proto.SetExtension(uniqueOpts, protopts.E_Index, &protopts.Index{Unique: new(true)})
 
 	key := protobuilder.NewField("key", protobuilder.FieldTypeString()).SetNumber(1).SetOptions(keyOpts)
 	email := protobuilder.NewField("email", protobuilder.FieldTypeString()).SetNumber(2).SetOptions(uniqueOpts)
@@ -465,7 +465,7 @@ func buildIndexCreationFile(t *testing.T, indexed bool) protoreflect.FileDescrip
 
 	statusOpts := &descriptorpb.FieldOptions{}
 	if indexed {
-		proto.SetExtension(statusOpts, protopts.E_Index, &protopts.Index{Unique: proto.Bool(false)})
+		proto.SetExtension(statusOpts, protopts.E_Index, &protopts.Index{Unique: new(false)})
 	}
 
 	key := protobuilder.NewField("key", protobuilder.FieldTypeString()).SetNumber(1).SetOptions(keyOpts)

@@ -137,13 +137,11 @@ func (r *tx) Delete(ctx context.Context, key []byte) error {
 
 func (r *tx) Commit(ctx context.Context, at uint64) error {
 	if r.mode == replication.ModeAsync {
-		r.swg.Add(1)
-		go func() {
-			defer r.swg.Done()
+		r.swg.Go(func() {
 			if err := r.do(ctx, &pb.Op{Action: &pb.Op_Commit{Commit: &pb.Commit{At: at}}}); err != nil {
 				logger.C(ctx).WithError(err).Error("failed to replicate commit")
 			}
-		}()
+		})
 	} else {
 		if err := r.do(ctx, &pb.Op{Action: &pb.Op_Commit{Commit: &pb.Commit{At: at}}}); err != nil {
 			return err

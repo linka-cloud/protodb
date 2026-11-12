@@ -209,7 +209,7 @@ func deleteByStep(ctx context.Context, cli protodb.Client, prefix string, start,
 
 func expectedNames(prefix string, count int) []string {
 	names := make([]string, 0, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		names = append(names, fmt.Sprintf("%s-%04d", prefix, i))
 	}
 	return names

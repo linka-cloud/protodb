@@ -798,8 +798,8 @@ func fieldMaskTouchesIndexed(md protoreflect.MessageDescriptor, maskPaths []stri
 	indexed := make([]string, 0, len(entries))
 	for _, e := range entries {
 		p := e
-		if i := strings.IndexByte(e, '|'); i >= 0 {
-			p = e[:i]
+		if before, _, ok := strings.Cut(e, "|"); ok {
+			p = before
 		}
 		if p != "" {
 			indexed = append(indexed, p)
